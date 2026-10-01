@@ -1,14 +1,23 @@
-# Docs kept local for now. To publish the README later, add a line: !README.md
-*.md
+# Project docs, kept local until release. Root-anchored so runbooks/ and
+# agent/prompts/ stay tracked. To publish one, delete its line.
+/README.md
+/ARCHITECTURE.md
+/COSTS.md
+/BUILD_PLAN.md
+/CLAUDE.md
+
+# Private notes
+notes.md
+scratch/
 
 # Terraform
 .terraform/
-*.tfstate
-*.tfstate.*
+*.tfstate*
 *.tfvars
-!example.tfvars
+*.tfvars.json
 crash.log
 *.tfplan
+.build/
 
 # Python
 .venv/

@@ -1,0 +1,51 @@
+import math
+
+import pytest
+from pydantic import ValidationError
+
+from models import Hypothesis
+
+VALID = {
+    "root_cause": "Upstream payments-api p99 rose from 120ms to 4.8s at 14:02; checkout-api times out waiting on it.",
+    "confidence": 0.82,
+    "evidence": ["payments-api p99 4.8s at 14:03", "checkout-api CPU flat at 12%"],
+    "affected_component": "payments-api",
+}
+
+
+def test_accepts_a_valid_hypothesis() -> None:
+    h = Hypothesis.model_validate(VALID)
+    assert h.affected_component == "payments-api"
+
+
+@pytest.mark.parametrize("confidence", [0.0, 1.0])
+def test_accepts_confidence_at_the_bounds(confidence: float) -> None:
+    Hypothesis.model_validate({**VALID, "confidence": confidence})
+
+
+@pytest.mark.parametrize("confidence", [-0.01, 1.01, 85, math.nan, math.inf])
+def test_rejects_confidence_outside_zero_to_one(confidence: float) -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**VALID, "confidence": confidence})
+
+
+@pytest.mark.parametrize("field", ["root_cause", "affected_component"])
+def test_rejects_empty_strings(field: str) -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**VALID, field: ""})
+
+
+def test_rejects_a_hypothesis_with_no_evidence() -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**VALID, "evidence": []})
+
+
+def test_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**VALID, "fix_applied": True})
+
+
+def test_every_field_is_described_for_the_model() -> None:
+    schema = Hypothesis.model_json_schema()
+    for name, prop in schema["properties"].items():
+        assert prop.get("description"), f"{name} has no description in the output schema"
