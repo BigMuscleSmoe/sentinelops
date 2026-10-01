@@ -171,7 +171,7 @@ resource "aws_iam_role_policy_attachment" "github_deploy_poweruser" {
 }
 
 # Every role the pipeline creates must carry this boundary, so no workload role
-# can ever touch IAM — even if someone attaches AdministratorAccess to it.
+# can ever touch IAM, even if someone attaches AdministratorAccess to it.
 data "aws_iam_policy_document" "workload_boundary" {
   statement {
     sid       = "AllowWorkloadServices"

@@ -119,7 +119,7 @@ def test_step_limit_returns_halted_hypothesis_instead_of_raising() -> None:
     assert result.affected_component == "unknown"
     assert "step limit" in result.evidence[0]
     assert "15 of 15 tool calls" in result.evidence[0]
-    assert "get_recent_logs ×15" in result.evidence[1]
+    assert "get_recent_logs x15" in result.evidence[1]
 
 
 # --- token cap ------------------------------------------------------------------
@@ -209,7 +209,7 @@ def test_wall_clock_cuts_off_a_hung_call() -> None:
     assert time.monotonic() - started < 2
     assert result.halted_by is StopReason.WALL_CLOCK
     assert result.confidence == 0.0
-    assert "get_recent_logs ×1" in result.evidence[1]
+    assert "get_recent_logs x1" in result.evidence[1]
 
 
 # --- budget and logging ---------------------------------------------------------

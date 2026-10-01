@@ -13,6 +13,18 @@ env:
   TF_IN_AUTOMATION: "true"
 
 jobs:
+  # Runs on PRs and on main. Includes the repo-wide rules in test_repo_rules.py.
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run pytest -q
+
   # PRs get no AWS credentials: the OIDC trust only accepts refs/heads/main.
   check:
     if: github.event_name == 'pull_request'
@@ -31,6 +43,7 @@ jobs:
 
   # Skipped until bootstrap has run and its outputs are set as repo variables.
   deploy:
+    needs: test
     if: github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:

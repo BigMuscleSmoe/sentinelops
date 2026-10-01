@@ -54,6 +54,19 @@ def test_halted_by_is_hidden_from_the_model() -> None:
     assert "halted_by" not in Hypothesis.model_json_schema()["properties"]
 
 
+def test_halted_by_survives_the_hop_to_the_remediation_flow() -> None:
+    # The agent and the Durable Function are separate processes. If halted_by
+    # were dropped in serialization, a halted run would arrive looking finished.
+    halted = Hypothesis.model_validate(
+        {**VALID, "confidence": 0.95, "halted_by": StopReason.STEP_LIMIT}
+    )
+
+    received = Hypothesis.model_validate_json(halted.model_dump_json())
+
+    assert received.halted_by is StopReason.STEP_LIMIT
+    assert not received.can_open_pr
+
+
 @pytest.mark.parametrize(
     ("confidence", "halted_by", "expected"),
     [

@@ -1,4 +1,4 @@
-# Copy these into GitHub: Settings → Secrets and variables → Actions → Variables.
+# Copy these into GitHub: Settings > Secrets and variables > Actions > Variables.
 
 output "AWS_DEPLOY_ROLE_ARN" {
   value = aws_iam_role.github_deploy.arn

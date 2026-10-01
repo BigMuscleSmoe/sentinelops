@@ -164,7 +164,7 @@ class RunGuard:
             return "No tool calls were made before halting."
         counts = Counter(self.tool_calls)  # keeps first-call order
         return "Tool calls made before halting: " + ", ".join(
-            f"{name} ×{n}" for name, n in counts.items()
+            f"{name} x{n}" for name, n in counts.items()
         )
 
     def _log(self, event: str, **fields: object) -> None:
