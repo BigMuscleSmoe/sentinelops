@@ -3,7 +3,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from models import Hypothesis
+from models import Hypothesis, StopReason
 
 VALID = {
     "root_cause": "Upstream payments-api p99 rose from 120ms to 4.8s at 14:02; checkout-api times out waiting on it.",
@@ -43,6 +43,31 @@ def test_rejects_a_hypothesis_with_no_evidence() -> None:
 def test_rejects_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         Hypothesis.model_validate({**VALID, "fix_applied": True})
+
+
+def test_halted_by_defaults_to_none() -> None:
+    assert Hypothesis.model_validate(VALID).halted_by is None
+
+
+def test_halted_by_is_hidden_from_the_model() -> None:
+    # The guard sets it; the model must not be invited to.
+    assert "halted_by" not in Hypothesis.model_json_schema()["properties"]
+
+
+@pytest.mark.parametrize(
+    ("confidence", "halted_by", "expected"),
+    [
+        (0.85, None, True),
+        (0.7, None, True),
+        (0.69, None, False),
+        (0.0, None, False),
+        (0.95, StopReason.STEP_LIMIT, False),
+        (1.0, StopReason.WALL_CLOCK, False),
+    ],
+)
+def test_can_open_pr(confidence: float, halted_by: StopReason | None, expected: bool) -> None:
+    h = Hypothesis.model_validate({**VALID, "confidence": confidence, "halted_by": halted_by})
+    assert h.can_open_pr is expected
 
 
 def test_every_field_is_described_for_the_model() -> None:

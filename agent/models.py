@@ -7,6 +7,15 @@ are written as instructions to it, not as notes for developers.
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
+
+PR_CONFIDENCE_THRESHOLD = 0.7
+
+
+class StopReason(StrEnum):
+    STEP_LIMIT = "step_limit"
+    TOKEN_LIMIT = "token_limit"
+    WALL_CLOCK = "wall_clock"
 
 
 class Hypothesis(BaseModel):
@@ -45,20 +54,11 @@ class Hypothesis(BaseModel):
             "dependency, not the service that alarmed."
         ),
     )
+    # Set by the guard, never by the model, so it's left out of the output
+    # schema the model sees. None means the investigation ran to completion.
+    halted_by: SkipJsonSchema[StopReason | None] = None
 
-
-class StopReason(StrEnum):
-    STEP_LIMIT = "step_limit"
-    TOKEN_LIMIT = "token_limit"
-    TIME_LIMIT = "time_limit"
-
-
-class PartialReport(BaseModel):
-    """What an investigation got through before a guard stopped it."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    stop_reason: StopReason
-    tool_calls: list[str]
-    input_tokens: int
-    elapsed_s: float
+    @property
+    def can_open_pr(self) -> bool:
+        # A halted run didn't finish investigating; its confidence means nothing.
+        return self.halted_by is None and self.confidence >= PR_CONFIDENCE_THRESHOLD
