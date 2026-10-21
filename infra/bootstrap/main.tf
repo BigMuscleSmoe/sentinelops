@@ -1,9 +1,11 @@
 # Account-level foundations that must exist before CI can deploy anything:
 # the state bucket, the budget alarm, and the GitHub OIDC deploy role.
 #
-# Applied once, locally, with SSO credentials. State stays local (and
-# gitignored) because the bucket it would live in is created here. If the
-# state file is lost, `terraform import` the handful of resources below.
+# Applied once, locally, with an IAM user's CLI profile. Not IAM Identity
+# Center: that requires an AWS Organization, overkill for one account.
+# State stays local (and gitignored) because the bucket it would live in is
+# created here. If the state file is lost, `terraform import` the handful of
+# resources below.
 
 terraform {
   required_version = ">= 1.11"
