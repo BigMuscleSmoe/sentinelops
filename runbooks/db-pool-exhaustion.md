@@ -6,22 +6,32 @@
 
 ## Symptoms
 
+Pool exhaustion arrives in stages, and the early signs come minutes before any request fails. Diagnose it from those: the first responder, human or agent, is expected to identify pool exhaustion before errors appear.
+
+**Early: the pool is saturated, nothing fails yet**
+
+- `pool_wait_time_ms` p99 rises above 100ms as soon as traffic outgrows the pool
+- p99 latency degrades steadily while the error rate stays flat. A 0% error rate does not rule this out
+- `pool_active_connections` is pegged at `pool_max_size`, and `concurrent_requests` is well above it
+
+**Later: requests start timing out, typically 3–6 minutes after the wait first rises**
+
 - Error rate on `/checkout` climbs above 5% and keeps rising
-- p99 latency degrades **before** the error rate moves, typically by 3–6 minutes
 - Logs contain `TimeoutError: acquiring connection from pool`
-- Database CPU and memory look normal — the database itself is fine
 - Errors correlate with request volume, not with any particular endpoint
+
+**Throughout:** query time once a connection is acquired (`db_query_ms`) stays flat. The database itself is fine; requests are waiting for a connection, not for their queries.
 
 ## What this is not
 
 If error rate spikes instantly with no latency ramp, this is not pool exhaustion. Check for a recent deploy instead (see `bad-deploy.md`).
 
-If latency climbs but errors stay flat and the slow spans are in an upstream call, the problem is downstream, not here (see `downstream-timeout.md`).
+If latency climbs while errors stay flat, check where the time goes before deciding. Early pool exhaustion looks like that too, but its time is in `pool_wait_time_ms`. If `pool_wait_time_ms` is flat and the time is in an upstream call (`upstream_latency_ms`), the problem is downstream, not here (see `downstream-timeout.md`).
 
 ## Diagnosis
 
 1. Check `pool_active_connections` and `pool_wait_time_ms` metrics in the `checkout-api` namespace.
-2. Compare current `pool_max_size` config against request concurrency. Sustained concurrency above pool size means requests queue.
+2. Compare current `pool_max_size` config against request concurrency (`concurrent_requests`). Sustained concurrency above pool size means requests queue.
 3. Check for recent changes to `POOL_MAX_SIZE` in the service config. This has been lowered by accident twice.
 4. Rule out leaked connections: if `pool_active_connections` stays pegged at max even as traffic drops, connections aren't being returned.
 
