@@ -148,10 +148,13 @@ data "aws_iam_policy_document" "github_trust" {
     }
 
     # Only pushes to main can deploy. PRs and other branches get no AWS access.
+    # GitHub's subject names the owner and repo by numeric ID as well as by
+    # name, so an account or repo that later takes over either name can't
+    # match. Renaming either one changes the subject: update it and re-apply.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:BigMuscleSmoe@194560622/sentinelops@1398747725:ref:refs/heads/main"]
     }
   }
 }
