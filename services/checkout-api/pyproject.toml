@@ -1,0 +1,15 @@
+[project]
+name = "sentinelops-checkout-api"
+version = "1.42.0"
+requires-python = ">=3.12,<3.13"
+# None at runtime: boto3 comes with the Lambda Python runtime.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

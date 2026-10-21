@@ -13,12 +13,17 @@ env:
   TF_IN_AUTOMATION: "true"
 
 jobs:
-  # Runs on PRs and on main. Includes the repo-wide rules in test_repo_rules.py.
+  # Runs on PRs and on main. The agent's suite includes the repo-wide rules in
+  # test_repo_rules.py.
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [agent, services/checkout-api]
     defaults:
       run:
-        working-directory: agent
+        working-directory: ${{ matrix.project }}
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -77,3 +82,24 @@ jobs:
           aws lambda invoke --function-name "$(terraform output -raw hello_function_name)" out.json
           cat out.json
           grep -q '"hello"' out.json
+
+      # Signed with the deploy role's session: every route requires SigV4. A new
+      # route or permission can take a few seconds to start answering. The
+      # version must be the one just built, so a stale deploy can't pass.
+      - name: Smoke test checkout-api
+        run: |
+          url="$(terraform output -raw checkout_api_url)/health"
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("../services/checkout-api/pyproject.toml", "rb"))["project"]["version"])')
+          for attempt in 1 2 3 4 5 6; do
+            status=$(curl -sS -o health.json -w '%{http_code}' \
+              --aws-sigv4 "aws:amz:${AWS_REGION}:execute-api" \
+              --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+              -H "x-amz-security-token: ${AWS_SESSION_TOKEN}" \
+              "$url") || status=000
+            [ "$status" = 200 ] && break
+            echo "attempt $attempt: HTTP $status"
+            sleep 10
+          done
+          cat health.json
+          jq -e --arg version "$version" \
+            '.status == "ok" and .service == "checkout-api" and .version == $version' health.json
