@@ -22,23 +22,21 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
+from checkout import VERSION
 from checkout.app import App
-from checkout.catalog import PRODUCTS
 from checkout.config import Config
+from sim import releases
 from sim.backend import Backend
 from sim.pool import MAX_ATTEMPTS, PoolState, Reservation, applied, holds, plan_reservation, reserved
+from traffic import mix
 
 ROUND_TRIP_S = 0.010  # one DynamoDB call from Lambda; the real one is measured in Phase 1, evening 3
 BREAK_AT = 1_800_000_000.0  # virtual epoch seconds; positive, because Windows can't format earlier ones
 PERIOD_S = 10
-BASELINE_PER_MINUTE = 12
 BURST_START_RATE = 6.0  # requests per second
 BURST_PEAK_RATE = 22.0
 BURST_RAMP_S = 300
 BURST_S = 360  # the ramp, then a minute at the peak
-ROUTE_MIX = {"GET /products/{id}": 0.5, "POST /cart/items": 0.3, "POST /checkout": 0.2}
-UNKNOWN_PRODUCT_SHARE = 0.02
-PROMO_SHARE = 0.3
 
 
 @dataclass(frozen=True)
@@ -46,12 +44,14 @@ class Scenario:
     pool_max_size: int  # from the break on; 20 is the healthy setting
     burst: bool
     horizon_s: int  # how long to run after the break
+    release: str = VERSION  # the code that runs from the break on
 
 
 POOL_FAULT = Scenario(pool_max_size=2, burst=True, horizon_s=480)
 SMALL_POOL_NO_BURST = Scenario(pool_max_size=2, burst=False, horizon_s=600)
 HEALTHY_BURST = Scenario(pool_max_size=20, burst=True, horizon_s=480)
 HEALTHY_BASELINE = Scenario(pool_max_size=20, burst=False, horizon_s=7200)
+BAD_DEPLOY = Scenario(pool_max_size=20, burst=True, horizon_s=480, release="1.43.0")
 
 
 def p99(values: Sequence[float]) -> float:
@@ -141,7 +141,7 @@ def burst_rate(t: float) -> float:
 def arrivals(scenario: Scenario, rng: random.Random) -> list[float]:
     """Arrival times relative to the break: steady traffic from a minute before it,
     plus the burst from the break on."""
-    every_s = 60 / BASELINE_PER_MINUTE
+    every_s = 60 / mix.REQUESTS_PER_MINUTE
     steps = int((scenario.horizon_s + 60) / every_s)
     times = [-60 + i * every_s + rng.uniform(-1.0, 1.0) for i in range(steps)]
     if scenario.burst:  # a Poisson process, thinned to follow the ramp
@@ -153,20 +153,11 @@ def arrivals(scenario: Scenario, rng: random.Random) -> list[float]:
 
 
 def request_event(rng: random.Random) -> dict[str, Any]:
-    """One request in the traffic generator's mix, as an HTTP API event."""
-    route = rng.choices(list(ROUTE_MIX), weights=list(ROUTE_MIX.values()))[0]
-    product_ids = sorted(PRODUCTS)
-    if route == "GET /products/{id}":
-        product_id = "p-9999" if rng.random() < UNKNOWN_PRODUCT_SHARE else rng.choice(product_ids)
-        return {"routeKey": route, "pathParameters": {"id": product_id}}
-    if route == "POST /cart/items":
-        body: dict[str, Any] = {"product_id": rng.choice(product_ids), "quantity": rng.randint(1, 3)}
-    else:
-        chosen = rng.sample(product_ids, rng.randint(1, 3))
-        body = {"items": [{"product_id": p, "quantity": rng.randint(1, 2)} for p in chosen]}
-        if rng.random() < PROMO_SHARE:
-            body["promo_code"] = rng.choice(["TRAIL10", "SUMMIT20"])
-    return {"routeKey": route, "body": json.dumps(body), "isBase64Encoded": False}
+    """One request from the generator's mix, as the HTTP API event checkout-api gets."""
+    call = mix.sample(rng)
+    if call.body is None:
+        return {"routeKey": call.route, "pathParameters": dict(call.path_parameters)}
+    return {"routeKey": call.route, "body": json.dumps(call.body), "isBase64Encoded": False}
 
 
 def run(
@@ -176,7 +167,7 @@ def run(
     rng = random.Random(seed)
     clock = VirtualClock()
     healthy = Config()
-    broken = replace(healthy, pool_max_size=scenario.pool_max_size)
+    broken = replace(healthy, pool_max_size=scenario.pool_max_size, version=scenario.release)
     current = healthy
     lines: list[str] = []
     app = App(
@@ -186,10 +177,14 @@ def run(
         sleep=clock.sleep,
         emit=lines.append,
     )
-    for n, at in enumerate(arrivals(scenario, rng)):
-        current = broken if at >= 0 else healthy
-        clock.now = BREAK_AT + at
-        app.handle(request_event(rng), request_id=f"sim-{n:06d}", cold_start=False)
+    try:
+        for n, at in enumerate(arrivals(scenario, rng)):
+            current = broken if at >= 0 else healthy
+            releases.deploy(current.version)
+            clock.now = BREAK_AT + at
+            app.handle(request_event(rng), request_id=f"sim-{n:06d}", cold_start=False)
+    finally:
+        releases.deploy(VERSION)
     return [json.loads(line) for line in lines]
 
 
@@ -256,3 +251,4 @@ if __name__ == "__main__":
     report("small pool, steady traffic only", SMALL_POOL_NO_BURST, 4)
     report("healthy pool and the burst", HEALTHY_BURST, 5)
     report("pool fault again, with unconditional ledger updates", POOL_FAULT, 1, racy=True)
+    report("bad deploy: release 1.43.0 and the burst", BAD_DEPLOY, 1)

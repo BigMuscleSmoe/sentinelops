@@ -1,15 +1,20 @@
 # The demo service the agent investigates: one Lambda behind an HTTP API.
 
+locals {
+  # Three functions are built from this directory: checkout-api, the fault
+  # controller, and the traffic generator. Each excludes the others' packages.
+  checkout_dir = "${path.module}/../services/checkout-api"
+  # Tests and local tooling, kept out of every zip built from it.
+  checkout_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__"]
+}
+
 module "checkout_api" {
   source = "./modules/python_lambda"
 
   name        = "sentinelops-checkout-api"
   description = "Demo service that SentinelOps investigates"
-  source_dir  = "${path.module}/../services/checkout-api"
-  excludes = [
-    "pyproject.toml", "uv.lock", "tests", "sim/pool_sim.py",
-    ".venv", ".pytest_cache", "**/__pycache__",
-  ]
+  source_dir  = local.checkout_dir
+  excludes    = concat(local.checkout_tooling, ["sim/pool_sim.py", "controller", "traffic"])
   # Over 128: every request makes two DynamoDB calls, and boto3's signing is CPU
   # bound, so more memory (and with it CPU) keeps the round trips short.
   memory_size = 256
@@ -17,6 +22,7 @@ module "checkout_api" {
 
   environment = {
     POOL_TABLE              = aws_dynamodb_table.checkout_pool.name
+    FLAGS_TABLE             = aws_dynamodb_table.checkout_flags.name
     POOL_MAX_SIZE           = "20"
     POOL_ACQUIRE_TIMEOUT_MS = "1500"
     PAYMENTS_TIMEOUT_MS     = "2000"
@@ -35,6 +41,13 @@ data "aws_iam_policy_document" "checkout_api" {
     sid       = "PoolLedger"
     actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
     resources = [aws_dynamodb_table.checkout_pool.arn]
+  }
+
+  # Reads the fault flag; only the fault controller writes it.
+  statement {
+    sid       = "ReadFaultFlag"
+    actions   = ["dynamodb:GetItem"]
+    resources = [aws_dynamodb_table.checkout_flags.arn]
   }
 }
 

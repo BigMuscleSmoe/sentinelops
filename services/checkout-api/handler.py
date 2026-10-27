@@ -1,6 +1,6 @@
 """Lambda entry point for checkout-api.
 
-Everything is built at import, during the init phase, so the DynamoDB client's
+Everything is built at import, during the init phase, so the DynamoDB clients'
 setup never shows up in a request's latency_ms.
 """
 
@@ -12,12 +12,23 @@ from typing import Any
 
 from checkout.app import App
 from checkout.config import Config
+from sim import releases
 from sim.backend import Backend
+from sim.flags import FlagReader
 from sim.pool import DynamoLedger
 
-_config = Config.from_env(os.environ)
+_flags = FlagReader.from_env(os.environ, Config.from_env(os.environ), time.time)
+
+
+def _settings() -> Config:
+    """This request's settings, and the release they name, deployed in this process."""
+    settings = _flags()
+    releases.deploy(settings.version)
+    return settings
+
+
 app = App(
-    settings=lambda: _config,
+    settings=_settings,
     # Wall clock, not monotonic: the ledger compares times across instances.
     backend=Backend(DynamoLedger.from_env(os.environ, time.time), random.Random()),
     clock=time.time,

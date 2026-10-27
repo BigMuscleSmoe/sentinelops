@@ -8,3 +8,9 @@ variable "log_retention_days" {
   type        = number
   default     = 7
 }
+
+variable "traffic_enabled" {
+  description = "Run checkout-api's baseline traffic: 12 requests a minute, ~$3.70/month for the generator."
+  type        = bool
+  default     = true
+}

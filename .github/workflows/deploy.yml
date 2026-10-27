@@ -77,12 +77,6 @@ jobs:
       - run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform apply -input=false -auto-approve
 
-      - name: Smoke test
-        run: |
-          aws lambda invoke --function-name "$(terraform output -raw hello_function_name)" out.json
-          cat out.json
-          grep -q '"hello"' out.json
-
       # Signed with the deploy role's session: every route requires SigV4. A new
       # route or permission can take a few seconds to start answering. The
       # version must be the one just built, so a stale deploy can't pass.
