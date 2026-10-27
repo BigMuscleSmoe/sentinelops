@@ -5,8 +5,9 @@ locals {
   # controller, and the traffic generator and burst, which share the traffic
   # package. Each excludes the others' packages.
   checkout_dir = "${path.module}/../services/checkout-api"
-  # Tests and local tooling, kept out of every zip built from it.
-  checkout_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__"]
+  # Tests and local tooling, kept out of every zip built from it. tools/ holds
+  # the live-run scripts, which name every fault.
+  checkout_tooling = ["pyproject.toml", "uv.lock", "tests", "tools", ".venv", ".pytest_cache", "**/__pycache__"]
 }
 
 module "checkout_api" {
