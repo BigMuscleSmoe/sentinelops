@@ -19,12 +19,23 @@ import boto3  # provided by the Lambda runtime
 
 from controller.actions import FaultController
 
+_lambda = boto3.client("lambda")
+_burst_function = os.environ["BURST_FUNCTION"]
+
+
+def start_burst() -> None:
+    """Starts the traffic burst and returns at once. The invoke is asynchronous, and
+    Lambda drops it rather than run it late (infra/traffic.tf)."""
+    _lambda.invoke(FunctionName=_burst_function, InvocationType="Event", Payload=b"{}")
+
+
 controller = FaultController(
     boto3.client("dynamodb"),
     os.environ["FLAGS_TABLE"],
     os.environ["DEPLOY_HISTORY_TABLE"],
     time.time,
     random.Random(),
+    start_burst,
 )
 
 

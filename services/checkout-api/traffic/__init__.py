@@ -1,2 +1,2 @@
-"""Traffic for checkout-api: the mix every caller draws from, and the generator
-that keeps a steady baseline running."""
+"""Traffic for checkout-api: the mix every caller draws from, the generator
+that keeps a steady baseline running, and the burst every break sends."""

@@ -1,8 +1,9 @@
 # The demo service the agent investigates: one Lambda behind an HTTP API.
 
 locals {
-  # Three functions are built from this directory: checkout-api, the fault
-  # controller, and the traffic generator. Each excludes the others' packages.
+  # Four functions are built from this directory: checkout-api, the fault
+  # controller, and the traffic generator and burst, which share the traffic
+  # package. Each excludes the others' packages.
   checkout_dir = "${path.module}/../services/checkout-api"
   # Tests and local tooling, kept out of every zip built from it.
   checkout_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__"]
@@ -19,6 +20,11 @@ module "checkout_api" {
   # bound, so more memory (and with it CPU) keeps the round trips short.
   memory_size = 256
   timeout     = 10
+  # A ceiling on what a runaway caller can run up. The burst peaks at ~50 in
+  # flight under the pool fault. Lambda turns away whatever comes past the cap,
+  # and those requests never reach the service's metrics, so the cap must stay
+  # well above any demo's peak.
+  reserved_concurrent_executions = 80
 
   environment = {
     POOL_TABLE              = aws_dynamodb_table.checkout_pool.name

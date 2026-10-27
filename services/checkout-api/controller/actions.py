@@ -3,9 +3,11 @@
 A break is one transaction: the flag, only if no fault is active; the fault's
 cause in deploy history, dated now; one decoy, dated 1 to 6 hours ago; and the
 rollback, dated when the flag expires, so the history matches what the
-service does even if nobody clears it. clear deletes the flag and moves the
-rollback to now. Every history write is conditional, so none overwrites
-another.
+service does even if nobody clears it. Once the transaction lands, it starts
+the traffic burst, which every fault needs to show within a minute. clear
+deletes the flag and moves the rollback to now; a burst still running runs
+out, harmlessly, against the healthy service. Every history write is
+conditional, so none overwrites another.
 """
 
 import math
@@ -53,12 +55,14 @@ class FaultController:
         history_table: str,
         clock: Callable[[], float],
         rng: random.Random,
+        start_burst: Callable[[], None],
     ) -> None:
         self._client = client
         self._flags_table = flags_table
         self._history_table = history_table
         self._clock = clock
         self._rng = rng
+        self._start_burst = start_burst
 
     def handle(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         action = payload.get("action")
@@ -107,7 +111,18 @@ class FaultController:
             if _condition_failed(exc, 0):
                 return {**self.status(), "ok": False, "error": "a fault is already active"}
             raise
-        return {"ok": True, "active": True, "mode": mode, "expires_at": timestamp(expires_at)}
+        broken = {"active": True, "mode": mode, "expires_at": timestamp(expires_at)}
+        try:
+            self._start_burst()
+        except Exception as exc:  # the fault is set either way, so say so rather than raise
+            return {
+                "ok": False,
+                **broken,
+                "burst": False,
+                "error": f"the fault is active, but its burst didn't start ({type(exc).__name__}); "
+                "without the burst it barely shows, so clear it",
+            }
+        return {"ok": True, **broken, "burst": True}
 
     def clear(self) -> dict[str, Any]:
         item = self._read_flag()

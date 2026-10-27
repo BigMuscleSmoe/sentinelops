@@ -1,5 +1,6 @@
 # Breaks checkout-api on purpose, and clears it: the only writer of the fault
-# flag, and of deploy history after the seed. Invoked from the CLI for now; see
+# flag, and of deploy history after the seed, and the only caller of the
+# traffic burst. Invoked from the CLI for now; see
 # services/checkout-api/controller/handler.py.
 
 module "fault_controller" {
@@ -15,6 +16,7 @@ module "fault_controller" {
   environment = {
     FLAGS_TABLE          = aws_dynamodb_table.checkout_flags.name
     DEPLOY_HISTORY_TABLE = aws_dynamodb_table.deploy_history.name
+    BURST_FUNCTION       = module.traffic_burst.function_name
   }
   policy_json = data.aws_iam_policy_document.fault_controller.json
 
@@ -37,5 +39,11 @@ data "aws_iam_policy_document" "fault_controller" {
     sid       = "DeployHistory"
     actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem"]
     resources = [aws_dynamodb_table.deploy_history.arn]
+  }
+
+  statement {
+    sid       = "StartBurst"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [module.traffic_burst.function_arn]
   }
 }

@@ -11,7 +11,6 @@ import statistics
 import pytest
 
 from sim.pool_sim import (
-    BURST_S,
     HEALTHY_BASELINE,
     HEALTHY_BURST,
     POOL_FAULT,
@@ -20,6 +19,7 @@ from sim.pool_sim import (
     periods,
     run,
 )
+from traffic.burst import DURATION_S as BURST_S
 
 SEEDS = (1, 2, 3)
 QUIET = {"pool-wait": None, "errors": None, "latency": None}

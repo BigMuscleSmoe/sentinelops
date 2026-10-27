@@ -195,6 +195,8 @@ class DynamoLedger:
 
     Fails open. If the item can't be read or written, the request goes ahead as
     if the pool were idle, so a ledger problem can never pass for pool exhaustion.
+    Its warnings name only the exception's type: a traceback would print this
+    file's path into the service's logs, and the simulation must never show there.
     """
 
     def __init__(
@@ -225,8 +227,8 @@ class DynamoLedger:
         args = (now, max_size, timeout_s, hold_s, after_release_s, self._rng)
         try:
             pool = self._read()
-        except Exception:
-            logger.warning("pool ledger read failed; treating the pool as idle", exc_info=True)
+        except Exception as exc:
+            logger.warning("pool ledger read failed (%s); treating the pool as idle", type(exc).__name__)
             return reserved(plan_reservation(PoolState(), *args), None)
         for _ in range(MAX_ATTEMPTS):
             plan = plan_reservation(pool, *args)
@@ -236,7 +238,7 @@ class DynamoLedger:
                 if _error_code(exc) == "ConditionalCheckFailedException" and "Item" in exc.response:
                     pool = _pool(exc.response["Item"])  # somebody got there first; plan again from what they left
                     continue
-                logger.warning("pool ledger write failed; going ahead unrecorded", exc_info=True)
+                logger.warning("pool ledger write failed (%s); going ahead unrecorded", type(exc).__name__)
                 return reserved(plan, None)
             if plan.slot is None:
                 return reserved(plan, None)

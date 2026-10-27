@@ -13,3 +13,7 @@ output "fault_controller_function_name" {
 output "traffic_generator_function_name" {
   value = module.traffic_generator.function_name
 }
+
+output "traffic_burst_function_name" {
+  value = module.traffic_burst.function_name
+}

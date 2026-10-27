@@ -282,7 +282,8 @@ def test_fails_open_when_the_item_cannot_be_read(caplog):
         r = ledger(stub).reserve(max_size=2, timeout_s=1.5, hold_s=0.1, after_release_s=0.0)
     assert (r.wait_s, r.timed_out) == (0.0, False)
     assert not stub.named("update_item")
-    assert "treating the pool as idle" in caplog.text
+    assert "read failed (ClientError); treating the pool as idle" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)  # no traceback, so no file paths
 
 
 def test_goes_ahead_unrecorded_when_the_update_fails(caplog):
@@ -291,7 +292,8 @@ def test_goes_ahead_unrecorded_when_the_update_fails(caplog):
         r = ledger(stub).reserve(max_size=2, timeout_s=1.5, hold_s=0.1, after_release_s=0.0)
     assert len(stub.named("update_item")) == 1
     assert r.wait_s == pytest.approx(0.2)  # as planned
-    assert "going ahead unrecorded" in caplog.text
+    assert "write failed (ClientError); going ahead unrecorded" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)
 
 
 def test_stops_after_max_attempts(caplog):

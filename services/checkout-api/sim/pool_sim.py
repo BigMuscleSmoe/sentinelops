@@ -28,15 +28,14 @@ from checkout.config import Config
 from sim import releases
 from sim.backend import Backend
 from sim.pool import MAX_ATTEMPTS, PoolState, Reservation, applied, holds, plan_reservation, reserved
-from traffic import mix
+from traffic import burst, mix
 
-ROUND_TRIP_S = 0.010  # one DynamoDB call from Lambda; the real one is measured in Phase 1, evening 3
+# One DynamoDB call from Lambda. Measured 2026-10-27, checkout-api's consistent
+# GetItem on the flags table takes ~4 ms (median; p95 11 ms). An update takes
+# longer, so 10 ms errs slow, and the tests also run 0 and 40 ms.
+ROUND_TRIP_S = 0.010
 BREAK_AT = 1_800_000_000.0  # virtual epoch seconds; positive, because Windows can't format earlier ones
 PERIOD_S = 10
-BURST_START_RATE = 6.0  # requests per second
-BURST_PEAK_RATE = 22.0
-BURST_RAMP_S = 300
-BURST_S = 360  # the ramp, then a minute at the peak
 
 
 @dataclass(frozen=True)
@@ -134,21 +133,14 @@ class MemoryLedger:
         return reserved(plan, None)
 
 
-def burst_rate(t: float) -> float:
-    return BURST_START_RATE + (BURST_PEAK_RATE - BURST_START_RATE) * min(t / BURST_RAMP_S, 1.0)
-
-
 def arrivals(scenario: Scenario, rng: random.Random) -> list[float]:
     """Arrival times relative to the break: steady traffic from a minute before it,
-    plus the burst from the break on."""
+    plus, from the break on, the schedule the burst function sends."""
     every_s = 60 / mix.REQUESTS_PER_MINUTE
     steps = int((scenario.horizon_s + 60) / every_s)
     times = [-60 + i * every_s + rng.uniform(-1.0, 1.0) for i in range(steps)]
-    if scenario.burst:  # a Poisson process, thinned to follow the ramp
-        t = 0.0
-        while (t := t + rng.expovariate(BURST_PEAK_RATE)) < BURST_S:
-            if rng.random() < burst_rate(t) / BURST_PEAK_RATE:
-                times.append(t)
+    if scenario.burst:
+        times += burst.schedule(rng)
     return sorted(times)
 
 

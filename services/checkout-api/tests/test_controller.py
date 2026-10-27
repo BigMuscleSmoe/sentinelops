@@ -1,4 +1,4 @@
-"""The fault controller: what a break writes, what clear moves, and what status says."""
+"""The fault controller: what a break writes and starts, what clear moves, and what status says."""
 
 import importlib
 import random
@@ -59,6 +59,24 @@ class StubDynamo:
                 self.flag = None
 
 
+class Bursts:
+    """Starts no traffic: records each burst, as how many transactions had landed by then."""
+
+    def __init__(self, dynamo: StubDynamo) -> None:
+        self.dynamo = dynamo
+        self.started: list[int] = []
+        self.refuse: Exception | None = None
+
+    def __call__(self) -> None:
+        if self.refuse:
+            raise self.refuse
+        self.started.append(len(self.dynamo.transactions))
+
+
+class AccessDeniedException(Exception):
+    """Named like the error botocore raises when the role may not invoke the burst."""
+
+
 @pytest.fixture
 def clock():
     return VirtualClock(NOW)
@@ -70,8 +88,13 @@ def dynamo():
 
 
 @pytest.fixture
-def controller(dynamo, clock):
-    return FaultController(dynamo, FLAGS, HISTORY, clock, random.Random(4))
+def bursts(dynamo):
+    return Bursts(dynamo)
+
+
+@pytest.fixture
+def controller(dynamo, clock, bursts):
+    return FaultController(dynamo, FLAGS, HISTORY, clock, random.Random(4), bursts)
 
 
 def epoch(ts: str) -> float:
@@ -85,7 +108,13 @@ def puts(transaction: list[dict]) -> list[dict]:
 def test_a_break_writes_the_flag_cause_decoy_and_rollback_in_one_transaction(controller, dynamo):
     result = controller.handle({"action": "break", "mode": "db_pool_exhaustion"})
 
-    assert result == {"ok": True, "active": True, "mode": "db_pool_exhaustion", "expires_at": timestamp(EXPIRES_AT)}
+    assert result == {
+        "ok": True,
+        "active": True,
+        "mode": "db_pool_exhaustion",
+        "expires_at": timestamp(EXPIRES_AT),
+        "burst": True,
+    }
     (transaction,) = dynamo.transactions
     flag, cause, decoy, rollback = puts(transaction)
     assert flag["TableName"] == FLAGS
@@ -122,17 +151,39 @@ def test_checkout_api_reads_each_flag_as_its_fault(controller, dynamo, mode, exp
     assert flag is not None and dict(flag.changes) == expected and flag.expires_at == EXPIRES_AT
 
 
-def test_a_break_while_a_fault_is_active_is_refused(controller, dynamo):
+@pytest.mark.parametrize("mode", ["db_pool_exhaustion", "bad_deploy"])
+def test_every_break_starts_the_burst_once_its_transaction_has_landed(controller, bursts, mode):
+    controller.handle({"action": "break", "mode": mode})
+    assert bursts.started == [1]
+
+
+def test_a_break_while_a_fault_is_active_is_refused_and_starts_no_burst(controller, dynamo, bursts):
     controller.handle({"action": "break", "mode": "bad_deploy"})
     dynamo.refuse = Cancelled("ConditionalCheckFailed", "None", "None", "None")
     result = controller.handle({"action": "break", "mode": "db_pool_exhaustion"})
     assert (result["ok"], result["error"], result["mode"]) == (False, "a fault is already active", "bad_deploy")
+    assert bursts.started == [1]  # only the first break's
 
 
-def test_any_other_failure_is_raised(controller, dynamo):
+def test_any_other_failure_is_raised(controller, dynamo, bursts):
     dynamo.refuse = Cancelled("None", "ConditionalCheckFailed", "None", "None")  # a history key was taken
     with pytest.raises(Cancelled):
         controller.handle({"action": "break", "mode": "db_pool_exhaustion"})
+    assert bursts.started == []
+
+
+def test_a_burst_that_fails_to_start_is_reported_and_the_fault_stays(controller, bursts):
+    bursts.refuse = AccessDeniedException("not authorized to invoke")
+    result = controller.handle({"action": "break", "mode": "db_pool_exhaustion"})
+
+    assert (result["ok"], result["active"], result["burst"], result["mode"]) == (
+        False,
+        True,
+        False,
+        "db_pool_exhaustion",
+    )
+    assert "burst didn't start (AccessDeniedException)" in result["error"]
+    assert controller.handle({"action": "status"})["active"] is True
 
 
 @pytest.mark.parametrize(
@@ -144,16 +195,18 @@ def test_any_other_failure_is_raised(controller, dynamo):
         ({}, "unknown action None"),
     ],
 )
-def test_a_bad_payload_is_refused_without_writing(controller, dynamo, payload, error):
+def test_a_bad_payload_is_refused_without_writing(controller, dynamo, bursts, payload, error):
     result = controller.handle(payload)
     assert result["ok"] is False and result["error"].startswith(error)
     assert dynamo.transactions == []
+    assert bursts.started == []
 
 
-def test_clear_deletes_the_flag_and_moves_the_rollback_to_now(controller, dynamo, clock):
+def test_clear_deletes_the_flag_and_moves_the_rollback_to_now(controller, dynamo, clock, bursts):
     controller.handle({"action": "break", "mode": "db_pool_exhaustion"})
     clock.sleep(120)
     assert controller.handle({"action": "clear"}) == {"ok": True, "cleared": "db_pool_exhaustion"}
+    assert bursts.started == [1]  # clear starts nothing, and leaves a running burst to run out
 
     delete_flag, delete_rollback, put_rollback = dynamo.transactions[1]
     assert delete_flag["Delete"]["Key"] == FLAG_KEY
@@ -210,16 +263,32 @@ def test_the_copies_match_checkout_api_and_the_seeded_history():
     assert f'"{faults.RELEASE_COMMIT}"' in seeded and f'"{faults.RELEASE}"' in seeded
 
 
-def test_the_lambda_entry_point_wires_the_controller(monkeypatch, dynamo, capsys):
+class StubLambda:
+    def __init__(self) -> None:
+        self.invocations: list[dict] = []
+
+    def invoke(self, **kwargs):
+        self.invocations.append(kwargs)
+        return {"StatusCode": 202}
+
+
+def test_the_lambda_entry_point_wires_the_controller_and_the_burst(monkeypatch, dynamo, capsys):
+    lambda_client = StubLambda()
     boto3 = types.ModuleType("boto3")
-    boto3.client = lambda service: dynamo
+    boto3.client = lambda service: {"dynamodb": dynamo, "lambda": lambda_client}[service]
     monkeypatch.setitem(sys.modules, "boto3", boto3)
     monkeypatch.setenv("FLAGS_TABLE", FLAGS)
     monkeypatch.setenv("DEPLOY_HISTORY_TABLE", HISTORY)
+    monkeypatch.setenv("BURST_FUNCTION", "sentinelops-traffic-burst")
     monkeypatch.delitem(sys.modules, "controller.handler", raising=False)
     module = importlib.import_module("controller.handler")
     try:
         assert module.handler({"action": "status"}, None) == {"ok": True, "active": False}
         assert '"action": "status"' in capsys.readouterr().out
+        assert module.handler({"action": "break", "mode": "bad_deploy"}, None)["burst"] is True
+        # Asynchronous, so the controller returns at once, and with nothing that names the fault.
+        assert lambda_client.invocations == [
+            {"FunctionName": "sentinelops-traffic-burst", "InvocationType": "Event", "Payload": b"{}"}
+        ]
     finally:
         sys.modules.pop("controller.handler", None)

@@ -39,6 +39,12 @@ variable "timeout" {
   default = 5
 }
 
+variable "reserved_concurrent_executions" {
+  description = "The most instances that may run at once, reserved from the account's quota; -1 for no limit of its own."
+  type        = number
+  default     = -1
+}
+
 variable "environment" {
   type    = map(string)
   default = {}
