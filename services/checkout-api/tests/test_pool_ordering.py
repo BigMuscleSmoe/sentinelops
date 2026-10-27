@@ -23,6 +23,11 @@ from traffic.burst import DURATION_S as BURST_S
 
 SEEDS = (1, 2, 3)
 QUIET = {"pool-wait": None, "errors": None, "latency": None}
+# Live, a 10 s alarm goes to ALARM ~17 s after the period that trips it ends, and
+# the fault takes ~2.5 s to start (both measured 2026-10-27). Within 30 s here
+# keeps a click on "break" under the 60 s the demo promises; the first live
+# break took 42 s.
+FIRST_ALARM_S = 30
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +44,7 @@ def overloaded(lines: list[dict]) -> list[int]:
 @pytest.mark.parametrize("seed", SEEDS)
 def test_pool_wait_alarms_first_then_latency_then_errors(fault_runs, seed):
     alarms = first_alarms(fault_runs[seed], 0, POOL_FAULT.horizon_s)
-    assert alarms["pool-wait"] is not None and alarms["pool-wait"] <= 40
+    assert alarms["pool-wait"] is not None and alarms["pool-wait"] <= FIRST_ALARM_S
     assert alarms["errors"] is not None
     assert 180 <= alarms["errors"] - alarms["pool-wait"] <= 360  # the runbook's 3 to 6 minutes
     assert alarms["latency"] is not None and alarms["latency"] <= alarms["errors"]
@@ -76,7 +81,7 @@ def test_errors_stop_when_the_burst_does(fault_runs, seed):
 @pytest.mark.parametrize("round_trip_s", [0.0, 0.040])
 def test_the_round_trip_time_does_not_change_the_story(round_trip_s):
     alarms = first_alarms(run(POOL_FAULT, 1, round_trip_s=round_trip_s), 0, POOL_FAULT.horizon_s)
-    assert alarms["pool-wait"] <= 40
+    assert alarms["pool-wait"] <= FIRST_ALARM_S
     assert 180 <= alarms["errors"] - alarms["pool-wait"] <= 360
 
 
