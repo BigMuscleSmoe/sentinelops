@@ -14,13 +14,13 @@ env:
 
 jobs:
   # Runs on PRs and on main. The agent's suite includes the repo-wide rules in
-  # test_repo_rules.py.
+  # test_repo_rules.py. No leg reaches AWS: the tools replay recorded AWS calls.
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        project: [agent, services/checkout-api]
+        project: [agent, tools, services/checkout-api]
     defaults:
       run:
         working-directory: ${{ matrix.project }}

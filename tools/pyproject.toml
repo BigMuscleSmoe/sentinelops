@@ -1,0 +1,26 @@
+[project]
+name = "sentinelops-tools"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# None at runtime: boto3 comes with the Lambda Python runtime, and the agent
+# brings its own.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "boto3>=1.43",
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+# Flat layout, like the other projects here: the package sits next to this file.
+[tool.uv.build-backend]
+module-name = "sentinelops_tools"
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

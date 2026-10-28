@@ -1,0 +1,71 @@
+{
+ "now": "2026-10-27T18:56:46.774000+00:00",
+ "calls": [
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793127376775,
+    "endTime": 1793127406774,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  },
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793127316775,
+    "endTime": 1793127376774,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  },
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793127196775,
+    "endTime": 1793127316774,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  },
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793126956775,
+    "endTime": 1793127196774,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  },
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793126806774,
+    "endTime": 1793126956774,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  }
+ ],
+ "text": "No checkout-api error lines from 18:46:46 to 18:56:46 UTC.\nLogs can trail the metrics by minutes under load; recent lines may be missing."
+}

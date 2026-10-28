@@ -1,0 +1,119 @@
+{
+ "now": "2026-10-27T19:05:57.026000+00:00",
+ "calls": [
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793127927027,
+    "endTime": 1793127957026,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.route = \"GET /products/{id}\" }"
+   },
+   "response": {
+    "events": [
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127951044,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:51.044Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"058aacde-0095-4d64-9c57-e5f43b562a5e\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":76.0,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":75.8,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127951044,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089544595537275438231606475039216173128436823818241"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127951162,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:51.162Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"392579d6-00de-48ec-97b6-f5f2dbb9582a\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":60.8,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":60.6,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127951162,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089547227025208864845137176253972345635094529507332"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127951521,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:51.521Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"1ba4a485-e54c-4cc0-84f9-2f165c8d515a\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":37.2,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.4,\"concurrent_requests\":1,\"db_query_ms\":36.6,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127951521,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089555232992735137338844987576832226396875176476679"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127954270,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:54.270Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"b4cea4ba-b4c3-44be-8b9b-72ff8305e398\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":50.6,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.2,\"concurrent_requests\":1,\"db_query_ms\":50.2,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127954270,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089616537741285898021861069266363736742655116640284"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127954977,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:54.977Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"bf56947b-c32d-4f0f-9554-b576ab1a1bb1\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":45.1,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":44.9,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127954978,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089632304368141259172422135019182499134239844794408"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]a662cac0dfb443f89b9d9f6176115a91",
+      "timestamp": 1793127955354,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:55.354Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 404: product p-9999 not found\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"4efe3f92-4e68-47ee-9ff7-7018d8ea97b9\",\"route\":\"GET /products/{id}\",\"status\":404,\"latency_ms\":47.4,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":47.1,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127955354,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127963966,
+      "eventId": "39988089640711749081105217351305336915302804712754380804"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]a662cac0dfb443f89b9d9f6176115a91",
+      "timestamp": 1793127955453,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:55.453Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"5dc8804b-d051-4748-9c32-664300b26ffa\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":41.4,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":41.2,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127955453,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127963966,
+      "eventId": "39988089642919522855759749042317373024294992501846441991"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]a662cac0dfb443f89b9d9f6176115a91",
+      "timestamp": 1793127956064,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:56.064Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"419df564-913f-45a1-86fb-3ef88faf5f61\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":51.3,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.1,\"concurrent_requests\":1,\"db_query_ms\":51.0,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127956064,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127963966,
+      "eventId": "39988089656545278172061959781795696888883141382000476170"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]a662cac0dfb443f89b9d9f6176115a91",
+      "timestamp": 1793127956286,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:56.286Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"d3636eab-ff09-49a4-803b-47b08aaea1fa\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":46.1,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":2,\"pool_wait_time_ms\":0.4,\"concurrent_requests\":2,\"db_query_ms\":45.5,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127956286,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127963966,
+      "eventId": "39988089661496043606135758119216626345411077636328128528"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127956355,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:56.355Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"bfea9c5f-dd52-421c-b007-687d55417220\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":97.4,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":3,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":3,\"db_query_ms\":92.3,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127956355,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089663034795024834371111171238962208576395085807659"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]9fa777df461948469162f2f6dadd3c86",
+      "timestamp": 1793127956493,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:56.493Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"a69597b7-3128-4b36-825c-6a14cbe9955a\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":55.4,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.1,\"concurrent_requests\":1,\"db_query_ms\":55.2,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127956493,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127963544,
+      "eventId": "39988089666112297862231597109004816976917968359072923661"
+     },
+     {
+      "logStreamName": "2026/10/27/sentinelops-checkout-api[$LATEST]268af440b8564707bc924b859143a8be",
+      "timestamp": 1793127956552,
+      "message": "{\"timestamp\":\"2026-10-27T19:05:56.552Z\",\"level\":\"INFO\",\"message\":\"GET /products/{id} 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"426da633-7b37-4d4c-8133-f2b7927b995b\",\"route\":\"GET /products/{id}\",\"status\":200,\"latency_ms\":79.4,\"error\":0,\"pool_max_size\":20,\"pool_active_connections\":2,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":2,\"db_query_ms\":79.2,\"cold_start\":false,\"_aws\":{\"Timestamp\":1793127956553,\"CloudWatchMetrics\":[{\"Namespace\":\"checkout-api\",\"Dimensions\":[[]],\"Metrics\":[{\"Name\":\"error\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"latency_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_wait_time_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1},{\"Name\":\"pool_active_connections\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"concurrent_requests\",\"Unit\":\"Count\",\"StorageResolution\":1},{\"Name\":\"db_query_ms\",\"Unit\":\"Milliseconds\",\"StorageResolution\":1}]}]}}\n",
+      "ingestionTime": 1793127959986,
+      "eventId": "39988089667428041828944903870053775461920303611763949614"
+     }
+    ],
+    "searchedLogStreams": [],
+    "nextToken": "Bxkq6kVGFtq2y_MoigeqscPOdhXVbhiVtLoAmXb5jCoBUvVk9T6JepvjsH2imDfe-KVO8X5K9wu9M4Ot3YGVanQbwIssYnBDABPkItOuAvFgORorjl5tO0aoPlSuv4CK6o1fixcwIwspV43PO_cj3D1NVoITVBW_s2yvjODZMWHXAn_57I9p5flYV_V7AZSn_0QKKUGHZebmJc3rv9Nd-JTsePKqUMxJKc_X_NyeQsyPs9roAv4CuWbmfK5RF7TV24nl4SQL0vQtlgjvUUHeHAz_-exLA_QJxizmeqIlrT0uIv7p94ybbkdhM78KmTPyUqfr7TyBGo64RVpAOCM7Yg"
+   }
+  },
+  {
+   "operation": "filter_log_events",
+   "params": {
+    "logGroupName": "/aws/lambda/sentinelops-checkout-api",
+    "startTime": 1793127927027,
+    "endTime": 1793127957026,
+    "filterPattern": "{ $.service = \"checkout-api\" && $.route = \"GET /products/{id}\" }",
+    "nextToken": "Bxkq6kVGFtq2y_MoigeqscPOdhXVbhiVtLoAmXb5jCoBUvVk9T6JepvjsH2imDfe-KVO8X5K9wu9M4Ot3YGVanQbwIssYnBDABPkItOuAvFgORorjl5tO0aoPlSuv4CK6o1fixcwIwspV43PO_cj3D1NVoITVBW_s2yvjODZMWHXAn_57I9p5flYV_V7AZSn_0QKKUGHZebmJc3rv9Nd-JTsePKqUMxJKc_X_NyeQsyPs9roAv4CuWbmfK5RF7TV24nl4SQL0vQtlgjvUUHeHAz_-exLA_QJxizmeqIlrT0uIv7p94ybbkdhM78KmTPyUqfr7TyBGo64RVpAOCM7Yg"
+   },
+   "response": {
+    "events": [],
+    "searchedLogStreams": []
+   }
+  }
+ ],
+ "trimmed": "each page cut to its newest 12 events"
+}

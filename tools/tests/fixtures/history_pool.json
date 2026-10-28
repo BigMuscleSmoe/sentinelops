@@ -1,0 +1,196 @@
+{
+ "now": "2026-10-27T18:56:46.774000+00:00",
+ "calls": [
+  {
+   "operation": "query",
+   "params": {
+    "TableName": "sentinelops-deploy-history",
+    "KeyConditionExpression": "#service = :service AND #ts <= :now",
+    "ProjectionExpression": "#ts, #kind, #version, #commit, #author, #message, #changes",
+    "ExpressionAttributeNames": {
+     "#service": "service",
+     "#ts": "ts",
+     "#kind": "kind",
+     "#version": "version",
+     "#commit": "commit",
+     "#author": "author",
+     "#message": "message",
+     "#changes": "changes"
+    },
+    "ExpressionAttributeValues": {
+     ":service": {
+      "S": "checkout-api"
+     },
+     ":now": {
+      "S": "2026-10-27T18:56:46.774Z"
+     }
+    },
+    "ScanIndexForward": false,
+    "Limit": 4
+   },
+   "response": {
+    "Items": [
+     {
+      "ts": {
+       "S": "2026-10-27T18:56:06.039Z"
+      },
+      "version": {
+       "S": "1.42.0"
+      },
+      "author": {
+       "S": "maya"
+      },
+      "kind": {
+       "S": "config"
+      },
+      "message": {
+       "S": "Size the checkout DB pool to the new replica's connection limit"
+      },
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "new": {
+           "S": "2"
+          },
+          "key": {
+           "S": "POOL_MAX_SIZE"
+          },
+          "old": {
+           "S": "20"
+          }
+         }
+        }
+       ]
+      },
+      "commit": {
+       "S": "3f8a2d1"
+      }
+     },
+     {
+      "ts": {
+       "S": "2026-10-27T14:19:02.761Z"
+      },
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "new": {
+           "S": "48"
+          },
+          "key": {
+           "S": "CART_TTL_HOURS"
+          },
+          "old": {
+           "S": "24"
+          }
+         }
+        }
+       ]
+      },
+      "author": {
+       "S": "ken"
+      },
+      "version": {
+       "S": "1.42.0"
+      },
+      "kind": {
+       "S": "config"
+      },
+      "commit": {
+       "S": "3f8a2d1"
+      },
+      "message": {
+       "S": "Keep abandoned carts for two days"
+      }
+     },
+     {
+      "ts": {
+       "S": "2026-10-27T14:09:25.796Z"
+      },
+      "message": {
+       "S": "Turn on product recommendations"
+      },
+      "version": {
+       "S": "1.42.0"
+      },
+      "author": {
+       "S": "maya"
+      },
+      "kind": {
+       "S": "config"
+      },
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "new": {
+           "S": "true"
+          },
+          "key": {
+           "S": "RECOMMENDATIONS_ENABLED"
+          },
+          "old": {
+           "S": "false"
+          }
+         }
+        }
+       ]
+      },
+      "commit": {
+       "S": "3f8a2d1"
+      }
+     },
+     {
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "new": {
+           "S": "1.42.0"
+          },
+          "key": {
+           "S": "version"
+          },
+          "old": {
+           "S": "1.43.0"
+          }
+         }
+        }
+       ]
+      },
+      "message": {
+       "S": "Roll back to 1.42.0"
+      },
+      "kind": {
+       "S": "deploy"
+      },
+      "ts": {
+       "S": "2026-10-27T03:06:06.528Z"
+      },
+      "author": {
+       "S": "oncall"
+      },
+      "version": {
+       "S": "1.42.0"
+      },
+      "commit": {
+       "S": "3f8a2d1"
+      }
+     }
+    ],
+    "Count": 4,
+    "ScannedCount": 4,
+    "LastEvaluatedKey": {
+     "ts": {
+      "S": "2026-10-27T03:06:06.528Z"
+     },
+     "service": {
+      "S": "checkout-api"
+     }
+    }
+   }
+  }
+ ],
+ "text": "The 4 most recent deploys and config changes to checkout-api up to 2026-10-27T18:56:46.774Z, newest first.\nOlder records exist; ask for a larger limit (at most 20).\n{\"ts\":\"2026-10-27T18:56:06.039Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"maya\",\"message\":\"Size the checkout DB pool to the new replica's connection limit\",\"changes\":[{\"key\":\"POOL_MAX_SIZE\",\"old\":\"20\",\"new\":\"2\"}]}\n{\"ts\":\"2026-10-27T14:19:02.761Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"ken\",\"message\":\"Keep abandoned carts for two days\",\"changes\":[{\"key\":\"CART_TTL_HOURS\",\"old\":\"24\",\"new\":\"48\"}]}\n{\"ts\":\"2026-10-27T14:09:25.796Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"maya\",\"message\":\"Turn on product recommendations\",\"changes\":[{\"key\":\"RECOMMENDATIONS_ENABLED\",\"old\":\"false\",\"new\":\"true\"}]}\n{\"ts\":\"2026-10-27T03:06:06.528Z\",\"kind\":\"deploy\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"oncall\",\"message\":\"Roll back to 1.42.0\",\"changes\":[{\"key\":\"version\",\"old\":\"1.43.0\",\"new\":\"1.42.0\"}]}"
+}
