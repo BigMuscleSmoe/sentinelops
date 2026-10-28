@@ -3,11 +3,15 @@
 Enforced here, in code, and deliberately absent from the system prompt.
 
 The agent loop reports into a RunGuard: tools wrapped with guarded_tool()
-count themselves and append the remaining budget to their result,
-record_input_tokens() runs after each model call, check() before each model
-call. A tripped limit raises a GuardLimitExceeded subclass to unwind the loop;
-run_guarded() catches it, or the wall-clock deadline, and returns a halted
-Hypothesis instead. Callers of run_guarded never see a limit as an exception.
+count themselves and append the remaining budget to their result;
+record_input_tokens() and record_cost() run after each model call, and
+check() before each one, given the most that call can cost. A tripped limit
+raises a GuardLimitExceeded subclass to unwind the loop; run_guarded() catches
+it, or the wall-clock deadline, and returns a halted Hypothesis instead.
+Callers of run_guarded never see a limit as an exception.
+
+The guard counts dollars the way it counts steps. pricing.py turns a call's
+usage into dollars; the guard doesn't know which model it's paying for.
 """
 
 import asyncio
@@ -15,6 +19,7 @@ import functools
 import inspect
 import json
 import logging
+import math
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -32,6 +37,7 @@ logger = logging.getLogger("sentinelops.guards")
 class Limits:
     max_tool_calls: int = 15
     max_input_tokens: int = 200_000
+    max_cost_usd: float = 0.10
     max_wall_clock_s: float = 300.0
 
 
@@ -47,6 +53,10 @@ class TokenLimitExceeded(GuardLimitExceeded):
     reason = StopReason.TOKEN_LIMIT
 
 
+class CostLimitExceeded(GuardLimitExceeded):
+    reason = StopReason.COST_LIMIT
+
+
 class WallClockExceeded(GuardLimitExceeded):
     reason = StopReason.WALL_CLOCK
 
@@ -54,6 +64,7 @@ class WallClockExceeded(GuardLimitExceeded):
 _EXCEPTIONS: dict[StopReason, type[GuardLimitExceeded]] = {
     StopReason.STEP_LIMIT: StepLimitExceeded,
     StopReason.TOKEN_LIMIT: TokenLimitExceeded,
+    StopReason.COST_LIMIT: CostLimitExceeded,
     StopReason.WALL_CLOCK: WallClockExceeded,
 }
 
@@ -61,6 +72,7 @@ _EXCEPTIONS: dict[StopReason, type[GuardLimitExceeded]] = {
 class Remaining(BaseModel):
     steps: int
     input_tokens: int
+    cost_usd: float
     seconds: float
 
 
@@ -75,6 +87,7 @@ class RunGuard:
         self._started_at = clock()
         self.tool_calls: list[str] = []
         self.input_tokens = 0
+        self.cost_usd = 0.0
         self.tripped: StopReason | None = None
 
     @property
@@ -89,22 +102,37 @@ class RunGuard:
         return Remaining(
             steps=max(0, self.limits.max_tool_calls - len(self.tool_calls)),
             input_tokens=max(0, self.limits.max_input_tokens - self.input_tokens),
+            cost_usd=round(max(0.0, self.limits.max_cost_usd - self.cost_usd), 6),
             seconds=round(self.seconds_left, 1),
         )
 
     def budget_line(self) -> str:
         # Lands in context on every tool result, so it stays this short.
         r = self.remaining()
-        return f"[budget: {r.steps} steps, {r.input_tokens // 1000}k tokens, {int(r.seconds)}s remaining]"
+        return (
+            f"[budget: {r.steps} steps, {r.input_tokens // 1000}k tokens, "
+            f"${r.cost_usd:.3f}, {int(r.seconds)}s remaining]"
+        )
 
-    def check(self) -> None:
-        """Raise if the time or token budget is spent. Call before each model call."""
+    def check(self, reserve_usd: float = 0.0) -> None:
+        """Raise if the time, token, or cost budget is spent. Call before each model call.
+
+        reserve_usd is the most the coming call can cost. The call is refused if
+        it could take spending past the cap, because once it's sent it's paid for.
+        """
+        if not reserve_usd >= 0:
+            raise ValueError(f"reserve must be non-negative, got {reserve_usd}")
         if self.tripped is not None:
             self._trip(self.tripped)
         if self.elapsed_s >= self.limits.max_wall_clock_s:
             self._trip(StopReason.WALL_CLOCK)
         if self.input_tokens >= self.limits.max_input_tokens:
             self._trip(StopReason.TOKEN_LIMIT)
+        if (
+            self.cost_usd >= self.limits.max_cost_usd
+            or self.cost_usd + reserve_usd > self.limits.max_cost_usd
+        ):
+            self._trip(StopReason.COST_LIMIT)
 
     def record_tool_call(self, name: str) -> None:
         """Count a tool call before it runs. Raises instead of counting past the cap."""
@@ -124,6 +152,12 @@ class RunGuard:
             raise ValueError(f"input token count must be non-negative, got {count}")
         self.input_tokens += count
 
+    def record_cost(self, usd: float) -> None:
+        """Add one model call's cost to the running total. Like the tokens, never raises past the cap."""
+        if not math.isfinite(usd) or usd < 0:
+            raise ValueError(f"cost must be a non-negative number, got {usd}")
+        self.cost_usd += usd
+
     def halted_hypothesis(self) -> Hypothesis:
         assert self.tripped is not None, "halted_hypothesis() before any limit tripped"
         return Hypothesis(
@@ -132,7 +166,8 @@ class RunGuard:
             evidence=[
                 f"Halted by the {self._describe(self.tripped)}. Used {len(self.tool_calls)} of "
                 f"{self.limits.max_tool_calls} tool calls, {self.input_tokens:,} of "
-                f"{self.limits.max_input_tokens:,} input tokens, {self.elapsed_s:.0f}s of "
+                f"{self.limits.max_input_tokens:,} input tokens, ${self.cost_usd:.4f} of "
+                f"${self.limits.max_cost_usd:.2f}, {self.elapsed_s:.0f}s of "
                 f"{self.limits.max_wall_clock_s:.0f}s.",
                 self._summarize_tool_calls(),
             ],
@@ -156,6 +191,8 @@ class RunGuard:
                 return f"step limit ({self.limits.max_tool_calls} tool calls)"
             case StopReason.TOKEN_LIMIT:
                 return f"input-token limit ({self.limits.max_input_tokens:,} tokens)"
+            case StopReason.COST_LIMIT:
+                return f"cost limit (${self.limits.max_cost_usd:.2f})"
             case StopReason.WALL_CLOCK:
                 return f"wall-clock limit ({self.limits.max_wall_clock_s:.0f}s)"
 
@@ -175,6 +212,7 @@ class RunGuard:
                     **fields,
                     "steps_used": len(self.tool_calls),
                     "input_tokens": self.input_tokens,
+                    "cost_usd": round(self.cost_usd, 6),
                     "elapsed_s": round(self.elapsed_s, 1),
                     "remaining": self.remaining().model_dump(),
                 }
@@ -237,4 +275,6 @@ async def run_guarded(
     # return a confident answer. The guard's record, not the loop's exit, decides.
     if guard.tripped is not None:
         return guard.halted_hypothesis()
-    return result
+    # The model's schema leaves out halted_by, but nothing stops the model
+    # sending it. Only the guard reports a halt.
+    return result.model_copy(update={"halted_by": None})

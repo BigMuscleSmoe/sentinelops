@@ -129,7 +129,7 @@ def test_a_run_that_finishes_in_budget_returns_the_agents_answer() -> None:
 
     result = asyncio.run(run_guarded(guard, loop.run))
 
-    assert result is CONFIDENT_ANSWER
+    assert result == CONFIDENT_ANSWER
     assert result.halted_by is None
     assert result.can_open_pr
     assert executions[0] == 7

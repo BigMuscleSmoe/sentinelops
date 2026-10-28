@@ -4,6 +4,7 @@ Field descriptions are sent to the model as part of the output schema, so they
 are written as instructions to it, not as notes for developers.
 """
 
+from collections.abc import Collection
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +16,7 @@ PR_CONFIDENCE_THRESHOLD = 0.7
 class StopReason(StrEnum):
     STEP_LIMIT = "step_limit"
     TOKEN_LIMIT = "token_limit"
+    COST_LIMIT = "cost_limit"
     WALL_CLOCK = "wall_clock"
 
 
@@ -54,9 +56,26 @@ class Hypothesis(BaseModel):
             "dependency, not the service that alarmed."
         ),
     )
+    runbook_cited: str | None = Field(
+        default=None,
+        description=(
+            "The file name of the runbook this diagnosis follows, exactly as a "
+            "runbook search in this investigation returned it. Null if no search "
+            "returned a runbook that fits."
+        ),
+    )
     # Set by the guard, never by the model, so it's left out of the output
     # schema the model sees. None means the investigation ran to completion.
     halted_by: SkipJsonSchema[StopReason | None] = None
+
+    def with_citation_checked(self, retrieved: Collection[str]) -> "Hypothesis":
+        """This hypothesis, with runbook_cited cleared unless this run's searches returned it.
+
+        The model can name any file it likes; only the run knows what it read.
+        """
+        if self.runbook_cited is None or self.runbook_cited in retrieved:
+            return self
+        return self.model_copy(update={"runbook_cited": None})
 
     @property
     def can_open_pr(self) -> bool:

@@ -2,11 +2,13 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import time
 
 import pytest
 
 from guards import (
+    CostLimitExceeded,
     Limits,
     Remaining,
     RunGuard,
@@ -54,29 +56,32 @@ def tool_call_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
 
 
 def test_defaults_match_the_documented_limits() -> None:
-    assert Limits() == Limits(max_tool_calls=15, max_input_tokens=200_000, max_wall_clock_s=300.0)
+    assert Limits() == Limits(
+        max_tool_calls=15, max_input_tokens=200_000, max_cost_usd=0.10, max_wall_clock_s=300.0
+    )
 
 
 # --- normal completion ---------------------------------------------------------
 
 
-def test_run_under_all_three_limits_returns_the_agents_hypothesis(clock: FakeClock) -> None:
+def test_run_under_all_four_limits_returns_the_agents_hypothesis(clock: FakeClock) -> None:
     guard = RunGuard(clock=clock)
 
     async def work() -> Hypothesis:
         for i in range(15):  # right at the step cap, not past it
-            guard.check()
+            guard.check(reserve_usd=0.004)
             guard.record_input_tokens(13_000)  # 195k total
+            guard.record_cost(0.006)  # $0.09 total
             guard.record_tool_call(f"tool_{i}")
             clock.advance(19)  # 285s total
         return DIAGNOSIS
 
     result = asyncio.run(run_guarded(guard, work))
 
-    assert result is DIAGNOSIS
+    assert result == DIAGNOSIS
     assert result.halted_by is None
     assert guard.tripped is None
-    assert guard.remaining() == Remaining(steps=0, input_tokens=5_000, seconds=15.0)
+    assert guard.remaining() == Remaining(steps=0, input_tokens=5_000, cost_usd=0.01, seconds=15.0)
 
 
 def test_completed_run_at_zero_confidence_is_not_halted() -> None:
@@ -165,6 +170,68 @@ def test_rejects_negative_token_counts(guard: RunGuard) -> None:
         guard.record_input_tokens(-1)
 
 
+# --- cost cap -------------------------------------------------------------------
+
+
+def test_costs_accumulate_across_calls(guard: RunGuard) -> None:
+    guard.record_cost(0.0125)
+    guard.record_cost(0.0375)
+    guard.check(reserve_usd=0.05)  # exactly at the cap: still allowed
+
+    assert guard.cost_usd == pytest.approx(0.05)
+    assert guard.remaining().cost_usd == 0.05
+
+
+def test_a_call_that_could_pass_the_cap_is_refused_before_it_is_sent(guard: RunGuard) -> None:
+    guard.record_cost(0.09)
+
+    with pytest.raises(CostLimitExceeded):
+        guard.check(reserve_usd=0.011)  # the worst case would end at $0.101
+
+    assert guard.tripped is StopReason.COST_LIMIT
+    assert guard.cost_usd == 0.09, "a refused call costs nothing"
+
+
+def test_spending_the_whole_budget_stops_the_next_call(guard: RunGuard) -> None:
+    guard.record_cost(0.06)
+    guard.record_cost(0.06)  # recording never raises, even past the cap
+
+    with pytest.raises(CostLimitExceeded):
+        guard.check()
+    with pytest.raises(CostLimitExceeded):
+        guard.record_tool_call("get_metrics")
+
+
+def test_cost_limit_returns_halted_hypothesis_instead_of_raising() -> None:
+    guard = RunGuard()
+
+    async def work() -> Hypothesis:
+        guard.record_tool_call("get_metrics")
+        while True:  # each call priced at its worst case first
+            guard.check(reserve_usd=0.018)
+            guard.record_cost(0.013)
+
+    result = asyncio.run(run_guarded(guard, work))
+
+    assert result.halted_by is StopReason.COST_LIMIT
+    assert result.confidence == 0.0
+    assert "cost limit ($0.10)" in result.evidence[0]
+    # Seven calls spent $0.091. The eighth could have reached $0.109, so it was never sent.
+    assert "$0.0910 of $0.10" in result.evidence[0]
+
+
+@pytest.mark.parametrize("usd", [-0.01, math.nan, math.inf])
+def test_rejects_costs_that_are_not_a_real_amount(guard: RunGuard, usd: float) -> None:
+    with pytest.raises(ValueError):
+        guard.record_cost(usd)
+
+
+@pytest.mark.parametrize("usd", [-0.01, math.nan])
+def test_rejects_a_reserve_that_is_not_a_real_amount(guard: RunGuard, usd: float) -> None:
+    with pytest.raises(ValueError):
+        guard.check(reserve_usd=usd)
+
+
 # --- wall clock -----------------------------------------------------------------
 
 
@@ -216,28 +283,35 @@ def test_wall_clock_cuts_off_a_hung_call() -> None:
 
 
 def test_remaining_reports_each_budget(guard: RunGuard, clock: FakeClock) -> None:
-    assert guard.remaining() == Remaining(steps=15, input_tokens=200_000, seconds=300.0)
+    assert guard.remaining() == Remaining(
+        steps=15, input_tokens=200_000, cost_usd=0.10, seconds=300.0
+    )
 
     guard.record_tool_call("get_metrics")
     guard.record_input_tokens(12_345)
+    guard.record_cost(0.0123)
     clock.advance(42)
 
-    assert guard.remaining() == Remaining(steps=14, input_tokens=187_655, seconds=258.0)
+    assert guard.remaining() == Remaining(
+        steps=14, input_tokens=187_655, cost_usd=0.0877, seconds=258.0
+    )
 
 
 def test_remaining_never_goes_negative(guard: RunGuard, clock: FakeClock) -> None:
     guard.record_input_tokens(999_999)
+    guard.record_cost(5.0)
     clock.advance(1000)
-    assert guard.remaining() == Remaining(steps=15, input_tokens=0, seconds=0.0)
+    assert guard.remaining() == Remaining(steps=15, input_tokens=0, cost_usd=0.0, seconds=0.0)
 
 
 def test_budget_line_is_compact(guard: RunGuard, clock: FakeClock) -> None:
     for _ in range(6):
         guard.record_tool_call("get_metrics")
     guard.record_input_tokens(57_900)
+    guard.record_cost(0.0171)
     clock.advance(101.6)
 
-    assert guard.budget_line() == "[budget: 9 steps, 142k tokens, 198s remaining]"
+    assert guard.budget_line() == "[budget: 9 steps, 142k tokens, $0.083, 198s remaining]"
 
 
 def test_guarded_tool_counts_the_call_and_appends_the_budget(guard: RunGuard) -> None:
@@ -248,7 +322,7 @@ def test_guarded_tool_counts_the_call_and_appends_the_budget(guard: RunGuard) ->
     tool = guarded_tool(guard, get_metrics)
 
     assert tool("Latency", window_minutes=10) == (
-        "Latency p99=4.8s over 10m\n[budget: 14 steps, 200k tokens, 300s remaining]"
+        "Latency p99=4.8s over 10m\n[budget: 14 steps, 200k tokens, $0.100, 300s remaining]"
     )
     assert guard.tool_calls == ["get_metrics"]
     # Frameworks build the tool schema from these.
@@ -298,8 +372,14 @@ def test_logs_a_structured_line_per_tool_call(
     assert [line["tool"] for line in lines] == ["get_recent_logs", "get_metrics"]
     assert lines[1]["steps_used"] == 2
     assert lines[1]["input_tokens"] == 25_000
+    assert lines[1]["cost_usd"] == 0.0
     assert lines[1]["elapsed_s"] == 5.0
-    assert lines[1]["remaining"] == {"steps": 13, "input_tokens": 175_000, "seconds": 295.0}
+    assert lines[1]["remaining"] == {
+        "steps": 13,
+        "input_tokens": 175_000,
+        "cost_usd": 0.1,
+        "seconds": 295.0,
+    }
 
 
 def test_refused_call_is_logged_as_a_trip_not_a_tool_call(
@@ -363,6 +443,19 @@ def test_a_timeout_inside_work_is_not_mistaken_for_the_deadline() -> None:
     with pytest.raises(TimeoutError, match="CloudWatch"):
         asyncio.run(run_guarded(guard, work))
     assert guard.tripped is None
+
+
+def test_a_halted_by_sent_by_the_model_is_cleared() -> None:
+    # Hidden from the schema, but nothing stops the model sending the field.
+    claimed = DIAGNOSIS.model_copy(update={"halted_by": StopReason.STEP_LIMIT})
+
+    async def work() -> Hypothesis:
+        return claimed
+
+    result = asyncio.run(run_guarded(RunGuard(), work))
+
+    assert result.halted_by is None
+    assert result.root_cause == DIAGNOSIS.root_cause
 
 
 def test_halted_with_no_tool_calls_says_so() -> None:

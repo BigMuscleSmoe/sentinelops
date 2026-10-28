@@ -75,6 +75,7 @@ def test_halted_by_survives_the_hop_to_the_remediation_flow() -> None:
         (0.69, None, False),
         (0.0, None, False),
         (0.95, StopReason.STEP_LIMIT, False),
+        (0.95, StopReason.COST_LIMIT, False),
         (1.0, StopReason.WALL_CLOCK, False),
     ],
 )
@@ -87,3 +88,29 @@ def test_every_field_is_described_for_the_model() -> None:
     schema = Hypothesis.model_json_schema()
     for name, prop in schema["properties"].items():
         assert prop.get("description"), f"{name} has no description in the output schema"
+
+
+def test_runbook_cited_defaults_to_none_and_is_offered_to_the_model() -> None:
+    assert Hypothesis.model_validate(VALID).runbook_cited is None
+    assert "runbook_cited" in Hypothesis.model_json_schema()["properties"]
+
+
+def test_a_citation_this_run_retrieved_is_kept() -> None:
+    h = Hypothesis.model_validate({**VALID, "runbook_cited": "db-pool-exhaustion.md"})
+    assert h.with_citation_checked({"db-pool-exhaustion.md"}) is h
+
+
+def test_a_citation_this_run_never_retrieved_is_cleared() -> None:
+    # The model can name a file it never read. Only the run's own record counts.
+    h = Hypothesis.model_validate({**VALID, "runbook_cited": "db-pool-exhaustion.md"})
+
+    checked = h.with_citation_checked(set())
+
+    assert checked.runbook_cited is None
+    assert checked.root_cause == h.root_cause
+    assert h.runbook_cited == "db-pool-exhaustion.md", "the original is left alone"
+
+
+def test_no_citation_needs_no_check() -> None:
+    h = Hypothesis.model_validate(VALID)
+    assert h.with_citation_checked(set()) is h
