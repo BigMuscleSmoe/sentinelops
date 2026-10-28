@@ -1,0 +1,66 @@
+{
+ "moment": "2026-10-27T19:06:00+00:00",
+ "calls": [
+  {
+   "operation": "describe_alarms",
+   "params": {
+    "AlarmNames": [
+     "sentinelops-checkout-errors"
+    ],
+    "AlarmTypes": [
+     "MetricAlarm"
+    ]
+   },
+   "response": {
+    "MetricAlarms": [
+     {
+      "AlarmName": "sentinelops-checkout-errors",
+      "AlarmDescription": "Over 5% of checkout-api requests fail with a 500",
+      "StateValue": "OK",
+      "StateReason": "Threshold Crossed: 2 out of the last 3 datapoints [0.0 (27/10/26 19:12:40), 0.0 (27/10/26 19:12:20)] were not greater than the threshold (0.05) (minimum 2 datapoints for ALARM -> OK transition).",
+      "StateUpdatedTimestamp": {
+       "$dt": "2026-10-27T19:13:07.025000+00:00"
+      },
+      "MetricName": "error",
+      "Namespace": "checkout-api",
+      "Statistic": "Average",
+      "Period": 10,
+      "EvaluationPeriods": 3,
+      "DatapointsToAlarm": 2,
+      "Threshold": 0.05,
+      "ComparisonOperator": "GreaterThanThreshold"
+     }
+    ]
+   }
+  },
+  {
+   "operation": "describe_alarm_history",
+   "params": {
+    "AlarmName": "sentinelops-checkout-errors",
+    "HistoryItemType": "StateUpdate",
+    "StartDate": {
+     "$dt": "2026-10-26T19:06:00+00:00"
+    },
+    "EndDate": {
+     "$dt": "2026-10-27T19:06:00+00:00"
+    },
+    "ScanBy": "TimestampDescending",
+    "MaxRecords": 1
+   },
+   "response": {
+    "AlarmHistoryItems": [
+     {
+      "AlarmName": "sentinelops-checkout-errors",
+      "Timestamp": {
+       "$dt": "2026-10-27T19:05:57.026000+00:00"
+      },
+      "HistoryItemType": "StateUpdate",
+      "HistorySummary": "Alarm updated from OK to ALARM",
+      "HistoryData": "{\"version\":\"1.0\",\"oldState\":{\"stateValue\":\"OK\",\"stateReason\":\"Threshold Crossed: 2 out of the last 3 datapoints [0.0 (27/10/26 19:02:20), 0.0 (27/10/26 19:02:10)] were not greater than the threshold (0.05) (minimum 2 datapoints for ALARM -> OK transition).\",\"stateReasonData\":{\"version\":\"1.0\",\"queryDate\":\"2026-10-27T19:02:47.026+0000\",\"startDate\":\"2026-10-27T19:02:00.000+0000\",\"statistic\":\"Average\",\"period\":10,\"recentDatapoints\":[0.2222222222222222,0.0,0.0],\"threshold\":0.05,\"evaluatedDatapoints\":[{\"timestamp\":\"2026-10-27T19:02:20.000+0000\",\"sampleCount\":3.0,\"value\":0.0},{\"timestamp\":\"2026-10-27T19:02:10.000+0000\",\"sampleCount\":2.0,\"value\":0.0}]}},\"newState\":{\"stateValue\":\"ALARM\",\"stateReason\":\"Threshold Crossed: 2 out of the last 3 datapoints [0.05970149253731343 (27/10/26 19:05:30), 0.0851063829787234 (27/10/26 19:05:20)] were greater than the threshold (0.05) (minimum 2 datapoints for OK -> ALARM transition).\",\"stateReasonData\":{\"version\":\"1.0\",\"queryDate\":\"2026-10-27T19:05:57.025+0000\",\"startDate\":\"2026-10-27T19:05:10.000+0000\",\"statistic\":\"Average\",\"period\":10,\"recentDatapoints\":[0.0,0.0851063829787234,0.05970149253731343],\"threshold\":0.05,\"evaluatedDatapoints\":[{\"timestamp\":\"2026-10-27T19:05:30.000+0000\",\"sampleCount\":67.0,\"value\":0.05970149253731343},{\"timestamp\":\"2026-10-27T19:05:20.000+0000\",\"sampleCount\":47.0,\"value\":0.0851063829787234}]}}}"
+     }
+    ]
+   }
+  }
+ ],
+ "prompt": "An alarm fired on checkout-api.\n\nAlarm: sentinelops-checkout-errors\nFired at: 2026-10-27T19:05:57.026Z\nDescription: Over 5% of checkout-api requests fail with a 500\nCondition: error Average > 0.05 over 10 s periods, in 2 of 3 periods.\nCloudWatch's reason: Threshold Crossed: 2 out of the last 3 datapoints [0.05970149253731343 (27/10/26 19:05:30), 0.0851063829787234 (27/10/26 19:05:20)] were greater than the threshold (0.05) (minimum 2 datapoints for OK -> ALARM transition).\n\nFind out why it fired, and end with a Hypothesis."
+}

@@ -14,7 +14,8 @@ env:
 
 jobs:
   # Runs on PRs and on main. The agent's suite includes the repo-wide rules in
-  # test_repo_rules.py. No leg reaches AWS: the tools replay recorded AWS calls.
+  # test_repo_rules.py. No leg reaches AWS or a model: the tools replay recorded
+  # AWS calls, and the agent's loop runs against a scripted Messages API.
   test:
     runs-on: ubuntu-latest
     strategy:
