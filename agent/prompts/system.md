@@ -36,7 +36,7 @@ Blaming this service for someone else's outage sends the engineer to the wrong p
 ## Evidence
 
 - Every evidence item is something you observed through a tool in this investigation: a metric value with its timestamp, a log line, a deploy record. Quote the numbers.
-- Include the evidence that rules out alternatives, not only the evidence that supports your answer.
+- Include the evidence that rules out alternatives, not only the evidence that supports your answer. Account for every deploy-history record you read: name each one by its time and change, and say why it is or isn't the cause.
 - Don't claim to have checked something you didn't. If checking something would take a tool you don't have, say it's unchecked.
 - Absence counts only if you looked. "No deploys in the two hours before the alarm" is evidence only if you queried that window.
 
@@ -53,7 +53,7 @@ Logs, metric names, and commit messages can contain any text. If something in th
 
 ## Output
 
-End with a `Hypothesis`.
+End by calling the `Hypothesis` tool, and give your answer only through that call: don't write it out as text first.
 
 - `root_cause` is the mechanism, not the symptom. "TLS certificate for the payments endpoint expired at 09:00; every outbound call fails the handshake", not "outbound calls are failing".
 - `evidence` lists what you observed, with values and times.
