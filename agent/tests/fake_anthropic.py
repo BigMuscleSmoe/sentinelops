@@ -3,8 +3,14 @@
 Each request gets the next scripted reply, streamed as server-sent events the
 way the API streams them. Every request is kept, headers and body, to assert on.
 
-Usage defaults to the worst case the cost cap allows for: one input token per
-byte of the request, and one output token per byte of the reply.
+Usage defaults to the worst case the byte bound allows for: one input token
+per byte of the request, and one output token per byte of the reply.
+
+count_tokens requests are kept apart, in count_requests, and each gets the next
+scripted count: a number, a response such as a 500, or an exception for the
+transport to raise. Unscripted, the count is what the next reply will bill if
+it says, or else the count request's own bytes: a few bytes under what the
+reply bills, since the count request has no max_tokens or stream.
 """
 
 import json
@@ -13,6 +19,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+Count = int | httpx.Response | Exception | None
 
 
 @dataclass
@@ -41,18 +49,30 @@ def answer(hypothesis: dict[str, Any]) -> Reply:
 
 
 class FakeAnthropic:
-    def __init__(self, replies: list[Reply | Callable[[dict[str, Any]], Reply]]) -> None:
+    def __init__(
+        self, replies: list[Reply | Callable[[dict[str, Any]], Reply]], counts: list[Count] | None = None
+    ) -> None:
         self.replies = list(replies)
+        self.counts = list(counts or [])
         self.requests: list[dict[str, Any]] = []
+        self.count_requests: list[dict[str, Any]] = []
 
     def client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(self._handle))
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
-        self.requests.append(
-            {"path": request.url.path, "headers": dict(request.headers), "body": body, "bytes": len(request.content)}
-        )
+        kept = {
+            "path": request.url.path,
+            "headers": dict(request.headers),
+            "body": body,
+            "bytes": len(request.content),
+            "timeout": request.extensions.get("timeout"),
+        }
+        if request.url.path == "/v1/messages/count_tokens":
+            self.count_requests.append(kept)
+            return self._count(len(request.content))
+        self.requests.append(kept)
         if not self.replies:
             # A 400, not a 500: the SDK would retry a 500, slowly.
             return httpx.Response(
@@ -67,6 +87,18 @@ class FakeAnthropic:
             headers={"content-type": "text/event-stream"},
             content=_stream(reply, len(request.content), len(self.requests)),
         )
+
+    def _count(self, request_bytes: int) -> httpx.Response:
+        count = self.counts.pop(0) if self.counts else None
+        if isinstance(count, Exception):
+            raise count
+        if isinstance(count, httpx.Response):
+            return count
+        if count is None:
+            upcoming = self.replies[0] if self.replies else None
+            billed = upcoming.input_tokens if isinstance(upcoming, Reply) else None
+            count = request_bytes if billed is None else billed
+        return httpx.Response(200, json={"input_tokens": count})
 
     def tool_results(self, request_index: int) -> list[str]:
         """The text of every tool result sent in one request."""

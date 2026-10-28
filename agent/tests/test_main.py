@@ -106,14 +106,15 @@ def test_the_api_key_is_sent_and_never_shown(tmp_path: Path, caplog: pytest.LogC
     code, out, err = run(REPLAY, session, fake, tmp_path / "run.json")
 
     assert code == main.EXIT_OK
-    assert all(r["headers"]["x-api-key"] == FAKE_KEY for r in fake.requests)
+    assert fake.count_requests, "the count requests carry the key too"
+    assert all(r["headers"]["x-api-key"] == FAKE_KEY for r in fake.requests + fake.count_requests)
     shown = {
         "logs": caplog.text + "".join(repr(r.args) for r in caplog.records),
         "stdout": out,
         "stderr": err,
         "transcript": (tmp_path / "run.json").read_text(encoding="utf-8"),
         "environment": json.dumps(dict(os.environ)),
-        "request bodies": json.dumps([r["body"] for r in fake.requests]),
+        "request bodies": json.dumps([r["body"] for r in fake.requests + fake.count_requests]),
     }
     for where, content in shown.items():
         assert FAKE_KEY not in content, f"the key is in the {where}"

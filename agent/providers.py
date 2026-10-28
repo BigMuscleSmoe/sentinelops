@@ -113,7 +113,8 @@ def build_model(settings: Settings, api_key: str | None = None, http_client: Any
         model_id=settings.model_id,
         max_tokens=settings.max_output_tokens,
         params={"thinking": THINKING},
-        # The local estimate, not the count_tokens API: no extra call per turn.
-        # The cost cap doesn't rely on it.
+        # Strands' estimate stays local and unused by the cost cap: hooks.py counts
+        # each whole request itself, where this flag's count covers only the
+        # messages since the last reply, without thinking, and guesses on errors.
         use_native_token_count=False,
     )

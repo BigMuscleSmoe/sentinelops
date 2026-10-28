@@ -7,9 +7,11 @@ import time
 from typing import Literal
 
 import pytest
+from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
 from fake_anthropic import FakeAnthropic, Reply, answer, text, thinking, tool_use
 from guards import Limits
+from hooks import COUNTED_FIELDS
 from models import StopReason
 from pricing import price_for
 from providers import Settings, build_model
@@ -126,9 +128,10 @@ def test_each_call_is_priced_from_its_own_usage_and_never_beyond_its_reservation
     report = run(fake)
 
     for call, request in zip(report.model_calls, fake.requests):
-        # The fake bills one token per byte, the most the bound allows for.
+        # The fake bills one token per byte, the most the bound allows for,
+        # and counts each prompt a few bytes short: no max_tokens or stream.
         assert call.prompt_tokens == request["bytes"]
-        assert call.bound_tokens >= call.prompt_tokens
+        assert call.counted_tokens < call.prompt_tokens < call.limit_tokens < call.bound_tokens
         assert call.reserved_usd >= call.cost_usd
     assert report.cost_usd == pytest.approx(sum(c.cost_usd for c in report.model_calls))
     assert report.input_tokens == sum(r["bytes"] for r in fake.requests)
@@ -152,6 +155,7 @@ def test_a_call_that_could_pass_the_cost_cap_is_never_sent() -> None:
     report = run(fake, limits=Limits(max_cost_usd=0.005))  # the first call could cost ~$0.0098
 
     assert fake.requests == []
+    assert len(fake.count_requests) == 1, "counted once, refused, and never retried"
     assert report.hypothesis.halted_by is StopReason.COST_LIMIT
     assert report.cost_usd == 0.0
 
@@ -200,6 +204,38 @@ def test_a_model_that_stops_without_a_hypothesis_is_made_to_give_one() -> None:
     assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
 
 
+def test_each_call_is_counted_on_the_request_it_sends() -> None:
+    fake = FakeAnthropic(
+        [Reply([tool_use("get_metrics")]), Reply([text("Done.")], stop_reason="end_turn"), answer(DIAGNOSIS)]
+    )
+
+    run(fake)
+
+    assert len(fake.count_requests) == len(fake.requests) == 3
+    for counted, sent in zip(fake.count_requests, fake.requests):
+        assert counted["body"] == {key: value for key, value in sent["body"].items() if key in COUNTED_FIELDS}
+        assert counted["headers"].get("anthropic-beta") == sent["headers"].get("anthropic-beta")
+    assert fake.count_requests[2]["body"]["tool_choice"] == {"type": "tool", "name": "Hypothesis"}
+    # Pinned: a field Strands starts to send has to be sorted into the counted or uncounted ones on purpose.
+    sent = {"max_tokens", "messages", "model", "stream", "system", "thinking", "tools"}
+    assert [set(r["body"]) for r in fake.requests] == [sent, sent, sent | {"tool_choice"}]
+
+
+def test_an_answer_in_native_json_is_counted_on_the_request_that_asks_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    # As Sonnet 5.5 and Opus 5.5 answer, once they've rejected a forced tool in this process.
+    monkeypatch.setitem(_UNSUPPORTED_MECHANISMS, ("anthropic", SETTINGS.model_id), {"forced"})
+    fake = FakeAnthropic(
+        [Reply([text("Done.")], stop_reason="end_turn"), Reply([text(json.dumps(DIAGNOSIS))], stop_reason="end_turn")]
+    )
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+    native = fake.requests[1]["body"]
+    assert native["tool_choice"] == {"type": "none"} and native["output_config"]["format"]["type"] == "json_schema"
+    assert fake.count_requests[1]["body"] == {key: value for key, value in native.items() if key in COUNTED_FIELDS}
+
+
 def test_the_model_cannot_report_a_halt() -> None:
     fake = FakeAnthropic([answer({**DIAGNOSIS, "halted_by": "step_limit"})])
 
@@ -242,8 +278,5 @@ def test_a_failed_call_ends_the_run_and_is_charged_the_most_it_could_cost() -> N
     assert report.hypothesis is None
     assert report.failure.startswith("BadRequestError")
     assert report.model_calls == []
-    assert report.cost_usd == pytest.approx(HAIKU.most_a_call_costs(fake_bound(fake), 16_000), rel=0.2)
-
-
-def fake_bound(fake: FakeAnthropic) -> int:
-    return fake.requests[0]["bytes"] + 2_000
+    counted = fake.count_requests[0]["bytes"]  # the fake's count, unscripted
+    assert report.cost_usd == pytest.approx(HAIKU.most_a_call_costs(counted + 1_000, 16_000))

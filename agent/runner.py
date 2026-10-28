@@ -62,6 +62,7 @@ async def investigate(
     """
     from strands import Agent, ModelRetryStrategy, tool
     from strands.agent.conversation_manager import NullConversationManager
+    from strands.middleware import InvokeModelStage
     from strands.tools.executors import SequentialToolExecutor
 
     guard = RunGuard(limits, clock=clock)
@@ -80,6 +81,8 @@ async def investigate(
         retry_strategy=ModelRetryStrategy(max_attempts=3, initial_delay=2, max_delay=8),
         hooks=[hooks],
     )
+    # Each call's cost is reserved, or the call refused, on the request about to go out.
+    agent.add_middleware(InvokeModelStage.Input, hooks.before_send)
 
     async def work() -> Hypothesis:
         result = await agent.invoke_async(prompt, structured_output_model=Hypothesis)
