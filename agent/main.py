@@ -118,7 +118,10 @@ async def run(
     if report.hypothesis is None:
         print(f"No Hypothesis: {report.failure}", file=stderr)
         return EXIT_FAILED
-    print(report.hypothesis.model_dump_json(indent=2), file=stdout)
+    # ASCII-escaped: Windows encodes a redirected stdout as cp1252, which has no
+    # arrow, and the model writes them. Printed raw, one ends a paid-for run in
+    # UnicodeEncodeError. stderr escapes what it can't encode, so it's safe.
+    print(json.dumps(report.hypothesis.model_dump(mode="json"), indent=2), file=stdout)
     return EXIT_OK
 
 

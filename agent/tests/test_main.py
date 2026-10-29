@@ -99,6 +99,34 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     assert len(record["model_calls"]) == 4 and record["cost_usd"] > 0
 
 
+def test_a_hypothesis_beyond_ascii_prints_on_a_cp1252_stdout(tmp_path: Path) -> None:
+    # What Windows gives a redirected stdout: cp1252, strict. Runs 7 and 8 of
+    # 2026-10-29 wrote an arrow and ended in UnicodeEncodeError after the run.
+    arrow = chr(0x2192)
+    diagnosis = {**DIAGNOSIS, "root_cause": f"1.42.0 {arrow} 1.43.0 removed the null check in apply_promo."}
+    fake = FakeAnthropic([Reply([tool_use("get_metrics")]), answer(diagnosis)])
+    args = main.parse_args([*REPLAY, "--transcript", str(tmp_path / "run.json")])
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+
+    code = asyncio.run(
+        main.run(
+            args,
+            settings=Settings(),
+            price=HAIKU,
+            session=replay_session(tools=["metrics_bad_deploy"]),
+            http_client=fake.client(),
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+    )
+    stdout.flush()
+
+    assert code == main.EXIT_OK
+    printed = raw.getvalue().decode("ascii")
+    assert json.loads(printed)["root_cause"] == diagnosis["root_cause"]
+
+
 def test_the_api_key_is_sent_and_never_shown(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)  # every logger, libraries included, at their most talkative
     session, fake = replay_session(), investigating()
