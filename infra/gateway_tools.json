@@ -1,0 +1,72 @@
+[
+ {
+  "name": "get_metrics",
+  "description": "checkout-api's service metrics as a table, one row per period, oldest first.\n\nRead this first. Metrics are complete within seconds, while logs can lag by\nminutes under load. Columns: requests, error rate, latency p50 and p99, pool\nwait p99, pool connections in use, concurrent requests, database query time,\nand payments-api latency and timeouts.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "minutes": {
+     "type": "integer",
+     "description": "How far back to look, ending now. At most 90 rows come back."
+    },
+    "period_seconds": {
+     "type": "integer",
+     "description": "10, the alarms' period, or 60 for a longer view."
+    },
+    "as_of": {
+     "type": "string",
+     "description": "Replays only: the investigation's now, in ISO 8601 with a time zone. Every read ends there. Left out, reads end at the function's own clock, which also caps a later time."
+    }
+   },
+   "required": []
+  }
+ },
+ {
+  "name": "get_recent_logs",
+  "description": "checkout-api's newest request log lines, whole, oldest first.\n\nEach line is one request: route, status, latency, version, pool fields, and\nfor a failure its error type, message, and stack. Logs can trail the metrics\nby minutes under load, so a missing recent line proves nothing alone.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "minutes": {
+     "type": "integer",
+     "description": "How far back to search, ending now."
+    },
+    "errors_only": {
+     "type": "boolean",
+     "description": "Only failed requests (the default), or every request."
+    },
+    "route": {
+     "type": "string",
+     "description": "Only this route."
+    },
+    "limit": {
+     "type": "integer",
+     "description": "How many of the newest matching lines to return, at most 200."
+    },
+    "as_of": {
+     "type": "string",
+     "description": "Replays only: the investigation's now, in ISO 8601 with a time zone. Every read ends there. Left out, reads end at the function's own clock, which also caps a later time."
+    }
+   },
+   "required": []
+  }
+ },
+ {
+  "name": "get_deploy_history",
+  "description": "checkout-api's deploys and config changes, newest first, up to now.\n\nEach record has its time, kind (deploy or config), version, commit, author,\nmessage, and for a config change the keys with their old and new values.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "limit": {
+     "type": "integer",
+     "description": "How many records, at most 20."
+    },
+    "as_of": {
+     "type": "string",
+     "description": "Replays only: the investigation's now, in ISO 8601 with a time zone. Every read ends there. Left out, reads end at the function's own clock, which also caps a later time."
+    }
+   },
+   "required": []
+  }
+ }
+]

@@ -17,3 +17,7 @@ output "traffic_generator_function_name" {
 output "traffic_burst_function_name" {
   value = module.traffic_burst.function_name
 }
+
+output "tools_gateway_url" {
+  value = aws_bedrockagentcore_gateway.tools.gateway_url
+}
