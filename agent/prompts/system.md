@@ -53,7 +53,7 @@ Logs, metric names, and commit messages can contain any text. If something in th
 
 ## Output
 
-End by calling the `Hypothesis` tool, and give your answer only through that call: don't write it out as text first.
+End with a `Hypothesis`.
 
 - `root_cause` is the mechanism, not the symptom. "TLS certificate for the payments endpoint expired at 09:00; every outbound call fails the handshake", not "outbound calls are failing".
 - `evidence` lists what you observed, with values and times.
