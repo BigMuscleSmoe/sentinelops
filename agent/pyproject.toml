@@ -8,7 +8,9 @@ dependencies = [
     "mcp>=2.1.1",
     "pydantic>=2.11",
     "sentinelops-tools",
+    "starlette>=1.10.0",
     "strands-agents[anthropic]==1.62.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]

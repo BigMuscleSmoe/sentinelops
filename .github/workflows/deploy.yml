@@ -74,6 +74,17 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      # The agent's Runtime package, which the apply zips and deploys. This uv
+      # is the one that staged the local plan's package, so both stage the same
+      # bytes and the apply uploads nothing a local plan didn't show. The build
+      # prints the staged folder's SHA-256 to compare.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.21"
+      - name: Build the agent's Runtime package
+        working-directory: agent
+        run: python3 build_runtime.py
+
       - run: terraform fmt -check -recursive
       - run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform apply -input=false -auto-approve

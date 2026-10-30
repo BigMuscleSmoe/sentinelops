@@ -21,3 +21,7 @@ output "traffic_burst_function_name" {
 output "tools_gateway_url" {
   value = aws_bedrockagentcore_gateway.tools.gateway_url
 }
+
+output "agent_runtime_arn" {
+  value = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
+}

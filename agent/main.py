@@ -17,17 +17,13 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from alarm import AlarmEvent, AlarmNotFiring
+from investigation import Refused, investigate_alarm, parse_utc
 from pricing import ModelPrice, UnknownModelPrice, price_for
-from providers import KeyUnavailable, Settings, SettingsError, build_model, read_api_key
-from runner import RunReport, investigate
-from sentinelops_tools.env import ToolEnv, utc_now
-from sentinelops_tools.toolset import make_tools
+from providers import Settings, SettingsError
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED = 0, 1, 2
 TRANSCRIPTS = Path("scratch") / "runs"
@@ -89,52 +85,23 @@ async def run(
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
 ) -> int:
-    cloudwatch = session.client("cloudwatch")
-    try:
-        if args.as_of is None:
-            alarm = AlarmEvent.live(cloudwatch, args.alarm)
-        else:
-            alarm = AlarmEvent.as_of(cloudwatch, args.alarm, args.as_of)
-    except AlarmNotFiring as e:
-        return refuse(str(e), stderr)
-
-    try:
-        api_key = (
-            read_api_key(session.client("secretsmanager")) if settings.provider == "anthropic" else None
-        )
-        model = build_model(settings, api_key, http_client=http_client)
-    except (KeyUnavailable, SettingsError) as e:
-        return refuse(str(e), stderr)
-    del api_key  # the model client holds it now
-
-    fired_at = alarm.fired_at
-    gateway = None
-    if args.gateway:
-        from gateway import Gateway
-
-        gateway = Gateway(args.gateway, session.get_credentials(), settings.region, transport=gateway_transport)
-        tools = gateway.tools(as_of=fired_at if args.as_of else None)
-    else:
-        env = ToolEnv.from_session(session, now=(lambda: fired_at) if args.as_of else utc_now)
-        tools = make_tools(env)
-    try:
-        report = await investigate(
-            alarm.prompt(),
-            model=model,
-            tools=tools,
-            price=price,
-            max_output_tokens=settings.max_output_tokens,
-        )
-    finally:
-        await model.client.close()
-        if gateway is not None:
-            await gateway.aclose()
-
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = args.transcript or TRANSCRIPTS / f"{stamp}-{alarm.name}.json"
-    write_transcript(
-        path, alarm, settings, report, replay=args.as_of is not None, gateway=gateway is not None
+    outcome = await investigate_alarm(
+        args.alarm,
+        args.as_of,
+        gateway_url=args.gateway,
+        settings=settings,
+        price=price,
+        session=session,
+        http_client=http_client,
+        gateway_transport=gateway_transport,
     )
+    if isinstance(outcome, Refused):
+        return refuse(outcome.reason, stderr)
+
+    report = outcome.report
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = args.transcript or TRANSCRIPTS / f"{stamp}-{outcome.alarm.name}.json"
+    write_transcript(path, outcome.record())
     print(f"{report.summary()} | transcript: {path}", file=stderr)
     if report.hypothesis is None:
         print(f"No Hypothesis: {report.failure}", file=stderr)
@@ -146,28 +113,7 @@ async def run(
     return EXIT_OK
 
 
-def write_transcript(
-    path: Path, alarm: AlarmEvent, settings: Settings, report: RunReport, replay: bool, gateway: bool = False
-) -> None:
-    record = {
-        "alarm": {
-            "name": alarm.name,
-            "fired_at": alarm.fired_at.isoformat(),
-            "condition": alarm.condition,
-            "reason": alarm.reason,
-            "replay": replay,
-        },
-        "model": {"provider": settings.provider, "model_id": settings.model_id},
-        "tools_via": "gateway" if gateway else "local",
-        "hypothesis": report.hypothesis.model_dump(mode="json") if report.hypothesis else None,
-        "failure": report.failure,
-        "tool_calls": report.tool_calls,
-        "model_calls": [asdict(call) for call in report.model_calls],
-        "input_tokens": report.input_tokens,
-        "cost_usd": round(report.cost_usd, 6),
-        "seconds": round(report.seconds, 1),
-        "messages": report.messages,
-    }
+def write_transcript(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, indent=1, default=str), encoding="utf-8")
 
@@ -178,10 +124,10 @@ def refuse(reason: str, stderr: TextIO) -> int:
 
 
 def _utc(value: str) -> datetime:
-    moment = datetime.fromisoformat(value)
-    if moment.tzinfo is None:
-        raise argparse.ArgumentTypeError(f"{value} has no time zone; end it with Z for UTC")
-    return moment.astimezone(UTC)
+    try:
+        return parse_utc(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 if __name__ == "__main__":
