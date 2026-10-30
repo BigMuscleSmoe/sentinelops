@@ -14,8 +14,10 @@ import pytest
 
 import main
 from fake_anthropic import FakeAnthropic, Reply, answer, text, tool_use
+from fake_gateway import URL, FakeGateway
 from pricing import price_for
 from providers import API_KEY_SECRET, Settings
+from sentinelops_tools.env import ToolEnv
 from stubs import AGENT_FIXTURES, TOOL_FIXTURES, FakeSession, load
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
@@ -43,7 +45,14 @@ def replay_session(tools: list[str] = TOOL_FIXTURE_NAMES) -> FakeSession:
     return session
 
 
-def run(argv: list[str], session: FakeSession, fake: FakeAnthropic, transcript: Path) -> tuple[int, str, str]:
+@pytest.fixture(autouse=True)
+def tools_run_here_unless_a_test_says(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SENTINELOPS_GATEWAY_URL", raising=False)
+
+
+def run(
+    argv: list[str], session: FakeSession, fake: FakeAnthropic, transcript: Path, **kwargs: object
+) -> tuple[int, str, str]:
     args = main.parse_args([*argv, "--transcript", str(transcript)])
     out, err = io.StringIO(), io.StringIO()
     code = asyncio.run(
@@ -55,6 +64,7 @@ def run(argv: list[str], session: FakeSession, fake: FakeAnthropic, transcript: 
             http_client=fake.client(),
             stdout=out,
             stderr=err,
+            **kwargs,
         )
     )
     return code, out.getvalue(), err.getvalue()
@@ -94,9 +104,28 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     assert record["alarm"]["replay"] is True
     assert record["alarm"]["fired_at"] == "2026-10-27T19:05:57.026000+00:00"
     assert record["model"] == {"provider": "anthropic", "model_id": "claude-haiku-5-5"}
+    assert record["tools_via"] == "local"
     assert record["hypothesis"]["root_cause"] == DIAGNOSIS["root_cause"]
     assert record["tool_calls"] == ["get_metrics", "get_recent_logs", "get_deploy_history"]
     assert len(record["model_calls"]) == 4 and record["cost_usd"] > 0
+
+
+def test_a_replay_through_the_gateway_gives_the_model_what_a_local_one_does(tmp_path: Path) -> None:
+    session, fake = replay_session(), investigating()
+    gateway = FakeGateway(ToolEnv.from_session(session))
+
+    code, out, _ = run(
+        [*REPLAY, "--gateway", URL], session, fake, tmp_path / "run.json", gateway_transport=gateway.transport()
+    )
+
+    assert code == main.EXIT_OK
+    session.assert_all_called()  # each tool's recorded calls, made by its Lambda handler
+    for result, name in zip(fake.tool_results(3), TOOL_FIXTURE_NAMES, strict=True):
+        assert result.rsplit("\n", 1)[0] == load(TOOL_FIXTURES / f"{name}.json")["text"]
+    assert [arguments["as_of"] for _, arguments in gateway.calls] == ["2026-10-27T19:05:57.026Z"] * 3
+    assert json.loads(out)["root_cause"] == DIAGNOSIS["root_cause"]
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    assert record["tools_via"] == "gateway"
 
 
 def test_a_hypothesis_beyond_ascii_prints_on_a_cp1252_stdout(tmp_path: Path) -> None:

@@ -687,6 +687,8 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "boto3" },
+    { name = "httpx2" },
+    { name = "mcp" },
     { name = "pydantic" },
     { name = "sentinelops-tools" },
     { name = "strands-agents", extra = ["anthropic"] },
@@ -700,6 +702,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.43" },
+    { name = "httpx2", specifier = ">=2.16.0" },
+    { name = "mcp", specifier = ">=2.1.1" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "sentinelops-tools", editable = "../tools" },
     { name = "strands-agents", extras = ["anthropic"], specifier = "==1.62.0" },

@@ -4,6 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "boto3>=1.43",
+    "httpx2>=2.16.0",
+    "mcp>=2.1.1",
     "pydantic>=2.11",
     "sentinelops-tools",
     "strands-agents[anthropic]==1.62.0",

@@ -5,8 +5,10 @@
 
 Live, the alarm must be in ALARM now. With --as-of, the run replays the
 alarm's last change into ALARM at or before that time, and every tool reads
-as of that moment. The Hypothesis goes to stdout as JSON. The summary and the
-guard's JSON log lines go to stderr, and the transcript to scratch/runs/.
+as of that moment. The tools run here, unless --gateway (or
+SENTINELOPS_GATEWAY_URL) names the AgentCore Gateway to run them. The
+Hypothesis goes to stdout as JSON. The summary and the guard's JSON log lines
+go to stderr, and the transcript to scratch/runs/.
 """
 
 import argparse
@@ -44,6 +46,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=os.environ.get("AWS_PROFILE", "sentinelops"),
         help="the AWS CLI profile (default: $AWS_PROFILE, else sentinelops)",
     )
+    parser.add_argument(
+        "--gateway",
+        default=os.environ.get("SENTINELOPS_GATEWAY_URL"),
+        help="run the tools through this AgentCore Gateway MCP URL "
+        "(default: $SENTINELOPS_GATEWAY_URL; unset, they run here)",
+    )
     parser.add_argument("--transcript", type=Path, help="where to write the transcript")
     return parser.parse_args(argv)
 
@@ -77,6 +85,7 @@ async def run(
     price: ModelPrice,
     session: Any,
     http_client: Any = None,
+    gateway_transport: Any = None,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
 ) -> int:
@@ -99,21 +108,33 @@ async def run(
     del api_key  # the model client holds it now
 
     fired_at = alarm.fired_at
-    env = ToolEnv.from_session(session, now=(lambda: fired_at) if args.as_of else utc_now)
+    gateway = None
+    if args.gateway:
+        from gateway import Gateway
+
+        gateway = Gateway(args.gateway, session.get_credentials(), settings.region, transport=gateway_transport)
+        tools = gateway.tools(as_of=fired_at if args.as_of else None)
+    else:
+        env = ToolEnv.from_session(session, now=(lambda: fired_at) if args.as_of else utc_now)
+        tools = make_tools(env)
     try:
         report = await investigate(
             alarm.prompt(),
             model=model,
-            tools=make_tools(env),
+            tools=tools,
             price=price,
             max_output_tokens=settings.max_output_tokens,
         )
     finally:
         await model.client.close()
+        if gateway is not None:
+            await gateway.aclose()
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = args.transcript or TRANSCRIPTS / f"{stamp}-{alarm.name}.json"
-    write_transcript(path, alarm, settings, report, replay=args.as_of is not None)
+    write_transcript(
+        path, alarm, settings, report, replay=args.as_of is not None, gateway=gateway is not None
+    )
     print(f"{report.summary()} | transcript: {path}", file=stderr)
     if report.hypothesis is None:
         print(f"No Hypothesis: {report.failure}", file=stderr)
@@ -126,7 +147,7 @@ async def run(
 
 
 def write_transcript(
-    path: Path, alarm: AlarmEvent, settings: Settings, report: RunReport, replay: bool
+    path: Path, alarm: AlarmEvent, settings: Settings, report: RunReport, replay: bool, gateway: bool = False
 ) -> None:
     record = {
         "alarm": {
@@ -137,6 +158,7 @@ def write_transcript(
             "replay": replay,
         },
         "model": {"provider": settings.provider, "model_id": settings.model_id},
+        "tools_via": "gateway" if gateway else "local",
         "hypothesis": report.hypothesis.model_dump(mode="json") if report.hypothesis else None,
         "failure": report.failure,
         "tool_calls": report.tool_calls,

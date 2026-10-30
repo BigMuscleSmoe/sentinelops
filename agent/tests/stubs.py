@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import boto3
+from botocore.credentials import Credentials
 from botocore.stub import Stubber
 
 AGENT_FIXTURES = Path(__file__).parent / "fixtures"
@@ -55,6 +56,9 @@ class FakeSession:
 
     def client(self, service: str, **_: Any) -> Any:
         return self.clients[service]
+
+    def get_credentials(self) -> Credentials:
+        return Credentials("testing", "testing")
 
     def expect(self, operation: str, params: dict[str, Any] | None, response: dict[str, Any]) -> None:
         self.stubbers[SERVICE_OF[operation]].add_response(operation, response, params)

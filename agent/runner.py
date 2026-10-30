@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections import Counter
-from collections.abc import Callable, Collection
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,7 +47,7 @@ async def investigate(
     prompt: str,
     *,
     model: Any,
-    tools: list[Callable[..., str]],
+    tools: list[Callable[..., str]] | list[Callable[..., Awaitable[str]]],
     price: ModelPrice,
     max_output_tokens: int,
     limits: Limits = Limits(),
