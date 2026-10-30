@@ -1,0 +1,18 @@
+[project]
+name = "sentinelops-trigger"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# None at runtime: boto3 comes with the Lambda Python runtime (1.42.97 there
+# on 2026-10-30, which has InvokeAgentRuntime and StopRuntimeSession).
+dependencies = []
+
+[dependency-groups]
+# boto3 for botocore's Stubber, which checks each call against the real API.
+dev = [
+    "boto3>=1.43",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

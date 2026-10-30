@@ -25,3 +25,7 @@ output "tools_gateway_url" {
 output "agent_runtime_arn" {
   value = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
 }
+
+output "trigger_function_name" {
+  value = module.trigger.function_name
+}
