@@ -29,9 +29,13 @@ def history(env: ToolEnv, limit: int = 10) -> str:
         ExpressionAttributeNames={"#service": "service", **names},
         ExpressionAttributeValues={":service": {"S": env.service}, ":now": {"S": now}},
         ScanIndexForward=False,
-        Limit=limit,
+        # One more than shown: DynamoDB returns LastEvaluatedKey on any page of
+        # exactly Limit items, even with nothing older, so only an extra item
+        # proves older records exist.
+        Limit=limit + 1,
     )
-    records = [_record(item) for item in response.get("Items", [])]
+    items = response.get("Items", [])
+    records = [_record(item) for item in items[:limit]]
     if not records:
         return f"No deploys or config changes to {env.service} recorded up to {now}."
 
@@ -40,7 +44,7 @@ def history(env: ToolEnv, limit: int = 10) -> str:
         f"{now}, newest first.",
         *notes,
     ]
-    if "LastEvaluatedKey" in response:
+    if len(items) > limit:
         lines.append(f"Older records exist; ask for a larger limit (at most {MAX_RECORDS}).")
     lines += [json.dumps(r, separators=(",", ":")) for r in records]
     return "\n".join(lines)

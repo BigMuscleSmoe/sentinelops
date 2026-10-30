@@ -26,7 +26,7 @@
      }
     },
     "ScanIndexForward": false,
-    "Limit": 4
+    "Limit": 5
    },
    "response": {
     "Items": [
@@ -177,16 +177,53 @@
       "commit": {
        "S": "3f8a2d1"
       }
+     },
+     {
+      "version": {
+       "S": "1.43.0"
+      },
+      "ts": {
+       "S": "2026-10-27T03:01:46.357Z"
+      },
+      "commit": {
+       "S": "9c41e7b"
+      },
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "new": {
+           "S": "1.43.0"
+          },
+          "key": {
+           "S": "version"
+          },
+          "old": {
+           "S": "1.42.0"
+          }
+         }
+        }
+       ]
+      },
+      "kind": {
+       "S": "deploy"
+      },
+      "author": {
+       "S": "tomas"
+      },
+      "message": {
+       "S": "Simplify promo pricing"
+      }
      }
     ],
-    "Count": 4,
-    "ScannedCount": 4,
+    "Count": 5,
+    "ScannedCount": 5,
     "LastEvaluatedKey": {
-     "ts": {
-      "S": "2026-10-27T03:06:06.528Z"
-     },
      "service": {
       "S": "checkout-api"
+     },
+     "ts": {
+      "S": "2026-10-27T03:01:46.357Z"
      }
     }
    }

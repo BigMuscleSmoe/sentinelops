@@ -8633,9 +8633,9 @@
     "limit": 11
    },
    "live_tries": 1,
-   "chars": 2506,
+   "chars": 2448,
    "first_line": "The 11 most recent deploys and config changes to checkout-api up to 2026-10-27T18:56:46.774Z, newest first.",
-   "sha256": "cdd735f9fbea3d2b9af2eb9dd8362f86593bf6ce1010dde34eb1030699babb56"
+   "sha256": "bcfb4abf8808279247bfe0410d5abcee54650e76211dab456fa37acab138dbca"
   },
   {
    "alarm": "sentinelops-checkout-pool-wait",
@@ -8985,9 +8985,9 @@
     "limit": 11
    },
    "live_tries": 1,
-   "chars": 2506,
+   "chars": 2448,
    "first_line": "The 11 most recent deploys and config changes to checkout-api up to 2026-10-27T19:00:27.088Z, newest first.",
-   "sha256": "5f3fe9c006f55def56f3e7dd30a9413ca71a197a312bdf7d8242741b781acc3b"
+   "sha256": "deea17a0e01be304cf976ca5c4720e05b356635e662b4c0819a6bd025b58fa44"
   },
   {
    "alarm": "sentinelops-checkout-latency",
@@ -9337,9 +9337,9 @@
     "limit": 11
    },
    "live_tries": 1,
-   "chars": 2506,
+   "chars": 2448,
    "first_line": "The 11 most recent deploys and config changes to checkout-api up to 2026-10-27T19:01:07.026Z, newest first.",
-   "sha256": "0b9140400ab5b50e169fcd1f8e069f3cc74de1648436344b1f17890d3be50a94"
+   "sha256": "c23cc9a454857fc755e25fb65b35853616f6fb780d0089a458e450e2cd9024b2"
   },
   {
    "alarm": "sentinelops-checkout-errors",
@@ -9689,9 +9689,9 @@
     "limit": 13
    },
    "live_tries": 1,
-   "chars": 2914,
+   "chars": 2856,
    "first_line": "The 13 most recent deploys and config changes to checkout-api up to 2026-10-27T19:05:57.026Z, newest first.",
-   "sha256": "666f1f31367f8365196478a01e0a9aad071ba0d34262285713774147202fa2e1"
+   "sha256": "e55c031ed8b80bcddec4ace8a5302af41ff8f8c992ae7819f25c0e39fd3cdc02"
   },
   {
    "alarm": "sentinelops-checkout-errors",

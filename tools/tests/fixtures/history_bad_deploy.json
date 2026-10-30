@@ -26,7 +26,7 @@
      }
     },
     "ScanIndexForward": false,
-    "Limit": 10
+    "Limit": 11
    },
    "response": {
     "Items": [
@@ -399,16 +399,53 @@
       "version": {
        "S": "1.41.0"
       }
+     },
+     {
+      "author": {
+       "S": "tomas"
+      },
+      "changes": {
+       "L": [
+        {
+         "M": {
+          "key": {
+           "S": "version"
+          },
+          "new": {
+           "S": "1.40.0"
+          },
+          "old": {
+           "S": "1.39.0"
+          }
+         }
+        }
+       ]
+      },
+      "commit": {
+       "S": "5a0f3c8"
+      },
+      "kind": {
+       "S": "deploy"
+      },
+      "message": {
+       "S": "Raise the payments-api client timeout to 2 s"
+      },
+      "ts": {
+       "S": "2026-09-17T13:05:37.000Z"
+      },
+      "version": {
+       "S": "1.40.0"
+      }
      }
     ],
-    "Count": 10,
-    "ScannedCount": 10,
+    "Count": 11,
+    "ScannedCount": 11,
     "LastEvaluatedKey": {
+     "ts": {
+      "S": "2026-09-17T13:05:37.000Z"
+     },
      "service": {
       "S": "checkout-api"
-     },
-     "ts": {
-      "S": "2026-09-30T15:22:18.000Z"
      }
     }
    }
