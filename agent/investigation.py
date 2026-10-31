@@ -1,10 +1,11 @@
 """One investigation of one alarm, for both ways to start one: main.py from this
 machine, and app.py on AgentCore Runtime.
 
-It reads the alarm, live or as of a past moment, reads the API key, builds the
-model, picks the tools (through the Gateway when a URL is given, else run in
-this process), and runs the guarded investigation. A refusal comes back as a
-Refused, never an exception, so each entry point reports it its own way.
+It reads the alarm, live or as of a past moment, signs in to the model (by
+federation once its IDs are set, else with the API key), picks the tools
+(through the Gateway when a URL is given, else run in this process), and runs
+the guarded investigation. A refusal comes back as a Refused, never an
+exception, so each entry point reports it its own way.
 """
 
 from dataclasses import asdict, dataclass
@@ -13,7 +14,15 @@ from typing import Any
 
 from alarm import AlarmEvent, AlarmNotFiring
 from pricing import ModelPrice
-from providers import KeyUnavailable, Settings, SettingsError, build_model, read_api_key
+from providers import (
+    FederationFailed,
+    KeyUnavailable,
+    Settings,
+    SettingsError,
+    build_model,
+    federated_credentials,
+    read_api_key,
+)
 from runner import RunReport, investigate
 from sentinelops_tools.env import ToolEnv, utc_now
 from sentinelops_tools.toolset import make_tools
@@ -45,7 +54,11 @@ class Investigation:
                 "reason": self.alarm.reason,
                 "replay": self.replay,
             },
-            "model": {"provider": self.settings.provider, "model_id": self.settings.model_id},
+            "model": {
+                "provider": self.settings.provider,
+                "model_id": self.settings.model_id,
+                "auth": self.settings.auth,
+            },
             "tools_via": "gateway" if self.gateway else "local",
             "hypothesis": report.hypothesis.model_dump(mode="json") if report.hypothesis else None,
             "failure": report.failure,
@@ -75,9 +88,14 @@ async def investigate_alarm(
     price: ModelPrice,
     session: Any,
     http_client: Any = None,
+    token_http_client: Any = None,
     gateway_transport: Any = None,
 ) -> Investigation | Refused:
-    """Investigate the alarm live, or as of a past moment, where every tool reads as of then."""
+    """Investigate the alarm live, or as of a past moment, where every tool reads as of then.
+
+    http_client, token_http_client, and gateway_transport are for tests: a fake
+    Messages API, token endpoint, and Gateway.
+    """
     cloudwatch = session.client("cloudwatch")
     try:
         if as_of is None:
@@ -88,13 +106,9 @@ async def investigate_alarm(
         return Refused(str(e))
 
     try:
-        api_key = (
-            read_api_key(session.client("secretsmanager")) if settings.provider == "anthropic" else None
-        )
-        model = build_model(settings, api_key, http_client=http_client)
-    except (KeyUnavailable, SettingsError) as e:
+        model = _signed_in_model(settings, session, http_client, token_http_client)
+    except (FederationFailed, KeyUnavailable, SettingsError) as e:
         return Refused(str(e))
-    del api_key  # the model client holds it now
 
     fired_at = alarm.fired_at
     replay = as_of is not None
@@ -120,3 +134,18 @@ async def investigate_alarm(
         if gateway is not None:
             await gateway.aclose()
     return Investigation(alarm, settings, report, replay=replay, gateway=gateway is not None)
+
+
+def _signed_in_model(settings: Settings, session: Any, http_client: Any, token_http_client: Any) -> Any:
+    """The model, signed in by federation when its IDs are set, else with the key.
+
+    With federation set, the key is never read: half a setup was refused with
+    the settings, and a failed sign-in is a refusal, not a fallback.
+    """
+    if settings.provider != "anthropic":
+        return build_model(settings, http_client=http_client)
+    if settings.federation is not None:
+        credentials = federated_credentials(settings.federation, session, http_client=token_http_client)
+        return build_model(settings, http_client=http_client, credentials=credentials)
+    # The key goes straight to the model client, never bound to a name here.
+    return build_model(settings, read_api_key(session.client("secretsmanager")), http_client=http_client)

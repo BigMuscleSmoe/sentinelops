@@ -9,6 +9,8 @@ its outcome and record: "done" or "failed" with the transcript main.py writes,
 "refused" with the reason nothing ran, or "invalid" (400) for a body it can't
 use. The tools always run through the Gateway at SENTINELOPS_GATEWAY_URL: the
 runtime's role may call the Gateway and read none of what the tools read.
+The model is signed in to by federation as the runtime's role once Terraform
+sets the SENTINELOPS_ANTHROPIC_* IDs, else with the API key.
 Only the trigger invokes this, one run at a time; the global limits live
 there.
 
@@ -45,9 +47,11 @@ def create_app(
     environ: Mapping[str, str] = os.environ,
     session_factory: Callable[[str], Any] | None = None,
     http_client: Any = None,
+    token_http_client: Any = None,
     gateway_transport: Any = None,
 ) -> Starlette:
-    """The app. Tests pass the environment, an AWS session, and stand-ins for the model and Gateway."""
+    """The app. Tests pass the environment, an AWS session, and stand-ins for the
+    model, the token endpoint, and the Gateway."""
     started = int(time.time())
 
     async def ping(request: Request) -> Response:
@@ -80,6 +84,7 @@ def create_app(
             price=price,
             session=(session_factory or _aws_session)(settings.region),
             http_client=http_client,
+            token_http_client=token_http_client,
             gateway_transport=gateway_transport,
         )
         if isinstance(outcome, Refused):

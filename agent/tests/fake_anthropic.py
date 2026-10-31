@@ -11,6 +11,11 @@ scripted count: a number, a response such as a 500, or an exception for the
 transport to raise. Unscripted, the count is what the next reply will bill if
 it says, or else the count request's own bytes: a few bytes under what the
 reply bills, since the count request has no max_tokens or stream.
+
+Federation's token exchanges go through token_client(), a sync client as the
+SDK's exchange needs, and are kept in token_requests. Each gets the next
+scripted answer (a response, or an exception for the transport to raise),
+else ACCESS_TOKEN for 600 s.
 """
 
 import json
@@ -21,6 +26,14 @@ from typing import Any
 import httpx
 
 Count = int | httpx.Response | Exception | None
+# Shaped like the real thing, so anything that masks tokens by their look would act on it.
+ACCESS_TOKEN = "sk-ant-oat01-" + "N0tARealToken5w" * 6 + "-AA"
+# The Claude Console's IDs for federation, as the environment carries them.
+FEDERATION_IDS = {
+    "SENTINELOPS_ANTHROPIC_ORGANIZATION_ID": "7d3c3a5e-1f2b-4c8d-9e0a-5b6c7d8e9f01",
+    "SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID": "svac_01TestOnlyServiceAccount",
+    "SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID": "fdrl_01TestOnlyRuntimeRule",
+}
 
 
 @dataclass
@@ -50,15 +63,23 @@ def answer(hypothesis: dict[str, Any]) -> Reply:
 
 class FakeAnthropic:
     def __init__(
-        self, replies: list[Reply | Callable[[dict[str, Any]], Reply]], counts: list[Count] | None = None
+        self,
+        replies: list[Reply | Callable[[dict[str, Any]], Reply]],
+        counts: list[Count] | None = None,
+        tokens: list[httpx.Response | Exception] | None = None,
     ) -> None:
         self.replies = list(replies)
         self.counts = list(counts or [])
+        self.tokens = list(tokens or [])
         self.requests: list[dict[str, Any]] = []
         self.count_requests: list[dict[str, Any]] = []
+        self.token_requests: list[dict[str, Any]] = []
 
     def client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(self._handle))
+
+    def token_client(self) -> httpx.Client:
+        return httpx.Client(transport=httpx.MockTransport(self._handle))
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -72,6 +93,22 @@ class FakeAnthropic:
         if request.url.path == "/v1/messages/count_tokens":
             self.count_requests.append(kept)
             return self._count(len(request.content))
+        if request.url.path == "/v1/oauth/token":
+            self.token_requests.append(kept)
+            if self.tokens:
+                token = self.tokens.pop(0)
+                if isinstance(token, Exception):
+                    raise token
+                return token
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": ACCESS_TOKEN,
+                    "token_type": "Bearer",
+                    "expires_in": 600,
+                    "scope": "workspace:inference",
+                },
+            )
         self.requests.append(kept)
         if not self.replies:
             # A 400, not a 500: the SDK would retry a 500, slowly.

@@ -5,7 +5,7 @@ the same runs, live in tools/tests/fixtures.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,13 @@ SERVICE_OF = {
     "filter_log_events": "logs",
     "query": "dynamodb",
     "get_secret_value": "secretsmanager",
+    "get_web_identity_token": "sts",
 }
+# Shaped like a JWT from STS, so anything that masks tokens by their look would act on it.
+WEB_IDENTITY_TOKEN = (
+    "eyJraWQiOiJSU0FfMCIsInR5cCI6IkpXVCIsImFsZyI6IlJTMjU2In0."
+    "eyJzdWIiOiJ0ZXN0LW9ubHkiLCJhdWQiOiJ0ZXN0LW9ubHkifQ." + "N0tARealSignature9" * 8
+)
 
 
 def _decode(value: Any) -> Any:
@@ -62,6 +68,14 @@ class FakeSession:
 
     def expect(self, operation: str, params: dict[str, Any] | None, response: dict[str, Any]) -> None:
         self.stubbers[SERVICE_OF[operation]].add_response(operation, response, params)
+
+    def expect_web_identity_token(self, token: str = WEB_IDENTITY_TOKEN) -> None:
+        """STS signing one JWT, asked for exactly as the runtime's role may ask (agent_runtime.tf)."""
+        self.expect(
+            "get_web_identity_token",
+            {"Audience": ["https://api.anthropic.com"], "SigningAlgorithm": "RS256", "DurationSeconds": 300},
+            {"WebIdentityToken": token, "Expiration": datetime(2026, 10, 27, 19, 11, tzinfo=UTC)},
+        )
 
     def fail(self, operation: str, code: str, message: str = "") -> None:
         self.stubbers[SERVICE_OF[operation]].add_client_error(

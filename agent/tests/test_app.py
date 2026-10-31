@@ -13,10 +13,10 @@ import pytest
 
 import app as runtime_app
 from app import GATEWAY_URL, SESSION_HEADER, create_app
-from fake_anthropic import FakeAnthropic, answer
+from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, answer
 from fake_gateway import URL, FakeGateway
 from sentinelops_tools.env import ToolEnv
-from stubs import AGENT_FIXTURES, TOOL_FIXTURES, FakeSession, load
+from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 from test_main import DIAGNOSIS, ERRORS, FAKE_KEY, TOOL_FIXTURE_NAMES, investigating, replay_session
 
 REPLAY = {"alarm": ERRORS, "as_of": "2026-10-27T19:06:00Z"}
@@ -88,6 +88,27 @@ def test_a_replay_runs_through_the_gateway_and_answers_with_its_transcript(
         }
     ]
     assert logged[0]["summary"].startswith("tool calls: get_metrics x1, get_recent_logs x1, get_deploy_history x1")
+
+
+def test_the_runtime_signs_in_by_federation_once_terraform_sets_the_ids() -> None:
+    session, fake = replay_session(federated=True), investigating()
+    app = create_app(
+        environ={GATEWAY_URL: URL, **FEDERATION_IDS},
+        session_factory=lambda region: session,
+        http_client=fake.client(),
+        token_http_client=fake.token_client(),
+        gateway_transport=FakeGateway(ToolEnv.from_session(session)).transport(),
+    )
+
+    response = call(app, "POST", "/invocations", json.dumps(REPLAY).encode(), **{SESSION_HEADER: "s-2"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["outcome"] == "done" and body["model"]["auth"] == "federation"
+    session.assert_all_called()  # the alarm, one JWT from STS, and the tools: no key
+    assert len(fake.token_requests) == 1
+    assert all(r["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}" for r in fake.requests)
+    assert ACCESS_TOKEN not in response.text and WEB_IDENTITY_TOKEN not in response.text
 
 
 def test_without_the_gateway_nothing_runs() -> None:

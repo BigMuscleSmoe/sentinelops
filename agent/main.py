@@ -81,6 +81,7 @@ async def run(
     price: ModelPrice,
     session: Any,
     http_client: Any = None,
+    token_http_client: Any = None,
     gateway_transport: Any = None,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
@@ -93,6 +94,7 @@ async def run(
         price=price,
         session=session,
         http_client=http_client,
+        token_http_client=token_http_client,
         gateway_transport=gateway_transport,
     )
     if isinstance(outcome, Refused):

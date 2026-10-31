@@ -15,3 +15,9 @@ output "AWS_REGION" {
 output "workload_boundary_arn" {
   value = aws_iam_policy.workload_boundary.arn
 }
+
+# Not for GitHub: the issuer to register in the Claude Console, under Workload
+# identity. Unique to this account, though it holds no account ID.
+output "outbound_federation_issuer_url" {
+  value = aws_iam_outbound_web_identity_federation.this.issuer_identifier
+}

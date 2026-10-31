@@ -1,5 +1,7 @@
 # Account-level foundations that must exist before CI can deploy anything:
-# the state bucket, the budget alarm, and the GitHub OIDC deploy role.
+# the state bucket, the budget alarm, and the GitHub OIDC deploy role. Also
+# the account settings the deploy role may not change: outbound identity
+# federation.
 #
 # Applied once, locally, with an IAM user's CLI profile. Not IAM Identity
 # Center: that requires an AWS Organization, overkill for one account.
@@ -284,3 +286,13 @@ resource "aws_iam_role_policy" "github_deploy_iam" {
   role   = aws_iam_role.github_deploy.id
   policy = data.aws_iam_policy_document.github_deploy_iam.json
 }
+
+# --- Outbound identity federation ---------------------------------------------
+
+# Lets IAM principals here ask STS for a signed JWT (sts:GetWebIdentityToken),
+# which the agent trades for short-lived Anthropic API tokens: no API key to
+# store or rotate. It's an account setting the deploy role can't change, so it
+# lives here. On its own it grants nothing: a principal still needs
+# sts:GetWebIdentityToken, and Anthropic accepts only the principals its
+# federation rules name. Destroying it turns the setting off.
+resource "aws_iam_outbound_web_identity_federation" "this" {}

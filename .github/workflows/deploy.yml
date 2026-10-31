@@ -87,7 +87,11 @@ jobs:
 
       - run: terraform fmt -check -recursive
       - run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      # Federation's IDs for the runtime, as one line of JSON: masked here, and
+      # sensitive in Terraform, so no plan prints them. Unset, null: the key.
       - run: terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_anthropic_federation: ${{ secrets.ANTHROPIC_FEDERATION || 'null' }}
 
       # Signed with the deploy role's session: every route requires SigV4. A new
       # route or permission can take a few seconds to start answering. The

@@ -13,16 +13,17 @@ from pathlib import Path
 import pytest
 
 import main
-from fake_anthropic import FakeAnthropic, Reply, answer, text, tool_use
+from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, Reply, answer, text, tool_use
 from fake_gateway import URL, FakeGateway
 from pricing import price_for
-from providers import API_KEY_SECRET, Settings
+from providers import API_KEY_SECRET, FEDERATION_ENV, Settings
 from sentinelops_tools.env import ToolEnv
-from stubs import AGENT_FIXTURES, TOOL_FIXTURES, FakeSession, load
+from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 # Shaped like a real key, so anything that masks keys by their look would act on it.
 FAKE_KEY = "sk-ant-api03-" + "N0tARealKey7q" * 7 + "-AA"
+FEDERATED = Settings.from_env(FEDERATION_IDS)
 ERRORS = "sentinelops-checkout-errors"
 REPLAY = ["--alarm", ERRORS, "--as-of", "2026-10-27T19:06:00Z"]
 TOOL_FIXTURE_NAMES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_bad_deploy"]
@@ -34,12 +35,16 @@ DIAGNOSIS = {
 }
 
 
-def replay_session(tools: list[str] = TOOL_FIXTURE_NAMES) -> FakeSession:
+def replay_session(tools: list[str] = TOOL_FIXTURE_NAMES, *, federated: bool = False) -> FakeSession:
+    """The alarm, then the key or one JWT from STS, then each tool's recorded calls."""
     session = FakeSession()
     session.replay(load(AGENT_FIXTURES / "alarm_bad_deploy.json"))
-    session.expect(
-        "get_secret_value", {"SecretId": API_KEY_SECRET}, {"Name": API_KEY_SECRET, "SecretString": FAKE_KEY}
-    )
+    if federated:
+        session.expect_web_identity_token()
+    else:
+        session.expect(
+            "get_secret_value", {"SecretId": API_KEY_SECRET}, {"Name": API_KEY_SECRET, "SecretString": FAKE_KEY}
+        )
     for name in tools:
         session.replay(load(TOOL_FIXTURES / f"{name}.json"))
     return session
@@ -51,17 +56,23 @@ def tools_run_here_unless_a_test_says(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def run(
-    argv: list[str], session: FakeSession, fake: FakeAnthropic, transcript: Path, **kwargs: object
+    argv: list[str],
+    session: FakeSession,
+    fake: FakeAnthropic,
+    transcript: Path,
+    settings: Settings | None = None,
+    **kwargs: object,
 ) -> tuple[int, str, str]:
     args = main.parse_args([*argv, "--transcript", str(transcript)])
     out, err = io.StringIO(), io.StringIO()
     code = asyncio.run(
         main.run(
             args,
-            settings=Settings(),
+            settings=settings or Settings(),
             price=HAIKU,
             session=session,
             http_client=fake.client(),
+            token_http_client=fake.token_client(),
             stdout=out,
             stderr=err,
             **kwargs,
@@ -103,7 +114,7 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
     assert record["alarm"]["replay"] is True
     assert record["alarm"]["fired_at"] == "2026-10-27T19:05:57.026000+00:00"
-    assert record["model"] == {"provider": "anthropic", "model_id": "claude-haiku-5-5"}
+    assert record["model"] == {"provider": "anthropic", "model_id": "claude-haiku-5-5", "auth": "api_key"}
     assert record["tools_via"] == "local"
     assert record["hypothesis"]["root_cause"] == DIAGNOSIS["root_cause"]
     assert record["tool_calls"] == ["get_metrics", "get_recent_logs", "get_deploy_history"]
@@ -178,6 +189,62 @@ def test_the_api_key_is_sent_and_never_shown(tmp_path: Path, caplog: pytest.LogC
         assert FAKE_KEY[14:40] not in content, f"part of the key is in the {where}"
 
 
+def test_a_federated_replay_signs_in_once_and_never_reads_the_key(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)  # every logger, libraries included, at their most talkative
+    session, fake = replay_session(federated=True), investigating()
+
+    code, out, err = run(REPLAY, session, fake, tmp_path / "run.json", settings=FEDERATED)
+
+    assert code == main.EXIT_OK
+    session.assert_all_called()  # one JWT from STS, and no read of the key's secret
+    assert len(fake.token_requests) == 1, "one exchange covers the run, its count calls included"
+    assert fake.token_requests[0]["body"] == {
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": WEB_IDENTITY_TOKEN,
+        "federation_rule_id": FEDERATION_IDS["SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID"],
+        "organization_id": FEDERATION_IDS["SENTINELOPS_ANTHROPIC_ORGANIZATION_ID"],
+        "service_account_id": FEDERATION_IDS["SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID"],
+    }
+    assert fake.count_requests, "the count requests sign in too"
+    for request in fake.requests + fake.count_requests:
+        assert request["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}"
+        assert "oauth-2025-04-20" in request["headers"]["anthropic-beta"], "the API takes the token only with it"
+        assert "x-api-key" not in request["headers"]
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    assert record["model"]["auth"] == "federation"
+    shown = {
+        "logs": caplog.text + "".join(repr(r.args) for r in caplog.records),
+        "stdout": out,
+        "stderr": err,
+        "transcript": (tmp_path / "run.json").read_text(encoding="utf-8"),
+        "environment": json.dumps(dict(os.environ)),
+        "request bodies": json.dumps([r["body"] for r in fake.requests + fake.count_requests]),
+    }
+    for where, content in shown.items():
+        for name, secret in (("JWT", WEB_IDENTITY_TOKEN), ("access token", ACCESS_TOKEN)):
+            assert secret not in content, f"the {name} is in the {where}"
+            assert secret[20:50] not in content, f"part of the {name} is in the {where}"
+
+
+def test_a_federation_that_fails_stops_the_run_before_any_model_call(tmp_path: Path) -> None:
+    session = FakeSession()
+    session.replay(load(AGENT_FIXTURES / "alarm_bad_deploy.json"))
+    session.fail("get_web_identity_token", "OutboundWebIdentityFederationDisabledException")
+    fake = FakeAnthropic([answer(DIAGNOSIS)])
+
+    code, _, err = run(REPLAY, session, fake, tmp_path / "run.json", settings=FEDERATED)
+
+    assert code == main.EXIT_REFUSED
+    assert err == (
+        "Refused: Could not sign in to the Anthropic API by federation: "
+        "STS returned OutboundWebIdentityFederationDisabledException.\n"
+    )
+    assert fake.requests == [] and fake.token_requests == []
+    session.assert_all_called()  # and nothing fell back to the key
+
+
 def test_a_live_run_refuses_an_alarm_that_is_not_firing(tmp_path: Path) -> None:
     session = FakeSession()
     response = load(AGENT_FIXTURES / "alarm_bad_deploy.json")["calls"][0]["response"]
@@ -223,6 +290,8 @@ def test_a_model_without_a_price_is_refused_before_anything_runs(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("SENTINELOPS_MODEL_ID", "claude-sonnet-5-5")
+    for name in FEDERATION_ENV.values():  # this machine's own, once local runs federate
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(main, "configure_logging", lambda: None)
 
     assert main.main(["--alarm", ERRORS]) == main.EXIT_REFUSED

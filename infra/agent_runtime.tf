@@ -1,7 +1,9 @@
 # The agent on AgentCore Runtime: our own HTTP app (agent/app.py) with its
 # locked dependencies, deployed as direct code from S3. The tools run behind
-# the tools gateway, so the runtime's role reads the alarm, the API key, and
-# nothing the tools read. Only the trigger (Phase 2, step 4) will invoke it.
+# the tools gateway, so the runtime's role reads the alarm and nothing the
+# tools read. It signs in to the Anthropic API by federation once
+# var.anthropic_federation is set, else with the API key. Only the trigger
+# invokes it.
 #
 # agent/build_runtime.py stages the package before any plan: CI runs it in the
 # deploy job, and a local plan needs it run first.
@@ -132,6 +134,38 @@ data "aws_iam_policy_document" "agent_runtime" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [aws_secretsmanager_secret.anthropic_api_key.arn]
   }
+
+  # A JWT naming this role, which Anthropic trades for a token of minutes
+  # under the federation rule that names the role. Only Anthropic's audience,
+  # RS256, and 300 s at most: what providers.py asks for, which
+  # agent/tests/test_providers.py checks against this statement.
+  statement {
+    sid       = "SignInToAnthropic"
+    actions   = ["sts:GetWebIdentityToken"]
+    resources = ["*"]
+
+    # ForAllValues alone would pass a request naming no audience; Null rules it out.
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "sts:IdentityTokenAudience"
+      values   = ["https://api.anthropic.com"]
+    }
+    condition {
+      test     = "Null"
+      variable = "sts:IdentityTokenAudience"
+      values   = ["false"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "sts:SigningAlgorithm"
+      values   = ["RS256"]
+    }
+    condition {
+      test     = "NumericLessThanEquals"
+      variable = "sts:DurationSeconds"
+      values   = ["300"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "agent_runtime" {
@@ -175,9 +209,16 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     max_lifetime                 = 360
   }]
 
-  environment_variables = {
-    SENTINELOPS_GATEWAY_URL = aws_bedrockagentcore_gateway.tools.gateway_url
-  }
+  # With federation's IDs, the app signs in as this role and never reads the
+  # key. Only whether they're set is shown in a plan; the IDs stay hidden.
+  environment_variables = merge(
+    { SENTINELOPS_GATEWAY_URL = aws_bedrockagentcore_gateway.tools.gateway_url },
+    nonsensitive(var.anthropic_federation == null) ? {} : {
+      SENTINELOPS_ANTHROPIC_ORGANIZATION_ID    = var.anthropic_federation.organization_id
+      SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID = var.anthropic_federation.service_account_id
+      SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID = var.anthropic_federation.rule_id
+    },
+  )
 
   # The role must be able to log and call the gateway before a session starts.
   depends_on = [aws_iam_role_policy.agent_runtime]
