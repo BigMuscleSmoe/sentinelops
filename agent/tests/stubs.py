@@ -23,7 +23,11 @@ SERVICE_OF = {
     "query": "dynamodb",
     "get_secret_value": "secretsmanager",
     "get_web_identity_token": "sts",
+    "assume_role": "sts",
 }
+# The local sign-in role, and the keys STS hands out for it.
+LOCAL_ROLE_ARN = "arn:aws:iam::000011112222:role/sentinelops-local"
+ROLE_KEYS = {"AccessKeyId": "ASIATESTONLYROLEKEY1", "SecretAccessKey": "test-only", "SessionToken": "test-only"}
 # Shaped like a JWT from STS, so anything that masks tokens by their look would act on it.
 WEB_IDENTITY_TOKEN = (
     "eyJraWQiOiJSU0FfMCIsInR5cCI6IkpXVCIsImFsZyI6IlJTMjU2In0."
@@ -52,15 +56,20 @@ def client(service: str) -> Any:
 
 
 class FakeSession:
-    """Stands in for boto3.Session: one stubbed client per service, whatever config is asked for."""
+    """Stands in for boto3.Session: one stubbed client per service, whatever config is asked for.
+
+    Each client asked for is noted with any keys it was given, in made.
+    """
 
     def __init__(self) -> None:
         self.clients = {name: client(name) for name in set(SERVICE_OF.values())}
         self.stubbers = {name: Stubber(c) for name, c in self.clients.items()}
         for stubber in self.stubbers.values():
             stubber.activate()
+        self.made: list[tuple[str, str | None]] = []
 
-    def client(self, service: str, **_: Any) -> Any:
+    def client(self, service: str, **kwargs: Any) -> Any:
+        self.made.append((service, kwargs.get("aws_access_key_id")))
         return self.clients[service]
 
     def get_credentials(self) -> Credentials:
@@ -75,6 +84,20 @@ class FakeSession:
             "get_web_identity_token",
             {"Audience": ["https://api.anthropic.com"], "SigningAlgorithm": "RS256", "DurationSeconds": 300},
             {"WebIdentityToken": token, "Expiration": datetime(2026, 10, 27, 19, 11, tzinfo=UTC)},
+        )
+
+    def expect_assume_role(self) -> None:
+        """sentinelops-dev assuming the local sign-in role, as providers.py asks."""
+        self.expect(
+            "assume_role",
+            {"RoleArn": LOCAL_ROLE_ARN, "RoleSessionName": "sentinelops-local", "DurationSeconds": 900},
+            {
+                "Credentials": {**ROLE_KEYS, "Expiration": datetime(2026, 10, 27, 19, 21, tzinfo=UTC)},
+                "AssumedRoleUser": {
+                    "AssumedRoleId": "AROATESTONLYROLEID:sentinelops-local",
+                    "Arn": "arn:aws:sts::000011112222:assumed-role/sentinelops-local/sentinelops-local",
+                },
+            },
         )
 
     def fail(self, operation: str, code: str, message: str = "") -> None:

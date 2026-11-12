@@ -29,3 +29,8 @@ output "agent_runtime_arn" {
 output "trigger_function_name" {
   value = module.trigger.function_name
 }
+
+# The Console rule's subject for local runs, and SENTINELOPS_ANTHROPIC_ROLE_ARN.
+output "local_sign_in_role_arn" {
+  value = aws_iam_role.local_sign_in.arn
+}

@@ -11,6 +11,7 @@ minutes. Nothing then holds a key.
 
 import json
 import os
+import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -32,6 +33,14 @@ FEDERATION_ENV = {
     "rule_id": "SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID",
 }
 FEDERATION_ID_PREFIXES = {"service_account_id": "svac_", "rule_id": "fdrl_"}
+# Anthropic's federation rules name IAM roles only, so a user (sentinelops-dev,
+# on this machine) asks STS for the token as a role it assumes for just that:
+# sentinelops-local (infra/local_sign_in.tf). Unset on the runtime, a role already.
+FEDERATION_ROLE_ENV = "SENTINELOPS_ANTHROPIC_ROLE_ARN"
+ROLE_ARN = re.compile(r"arn:aws:iam::\d{12}:role/[\w+=,.@-]+")
+ROLE_SESSION_NAME = "sentinelops-local"
+# STS's minimum, and longer than a run: each JWT is asked for under fresh keys.
+ROLE_SESSION_SECONDS = 900
 # What the agent asks STS for. The runtime's role may ask for nothing else
 # (infra/agent_runtime.tf, SignInToAnthropic), and the rules match the audience.
 TOKEN_AUDIENCE = "https://api.anthropic.com"
@@ -59,19 +68,27 @@ class Federation:
 
     Not credentials: without a JWT that AWS signed for a principal the rule
     names, they grant nothing. They're account-specific, though, so they come
-    from the environment, never the repo.
+    from the environment, never the repo. role_arn, set only off the runtime,
+    is the role to ask STS as.
     """
 
     organization_id: str
     service_account_id: str
     rule_id: str
+    role_arn: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Federation | None":
         """The IDs, or None when none is set. Half a setup is an error, never a fallback to the key."""
         values = {field: environ.get(name, "").strip() for field, name in FEDERATION_ENV.items()}
+        role_arn = environ.get(FEDERATION_ROLE_ENV, "").strip() or None
         if not any(values.values()):
+            if role_arn is not None:
+                raise SettingsError(f"{FEDERATION_ROLE_ENV} is set, but the federation IDs aren't.")
             return None
+        # Never the value in the message: an ARN names the account.
+        if role_arn is not None and not ROLE_ARN.fullmatch(role_arn):
+            raise SettingsError(f"{FEDERATION_ROLE_ENV} must be an IAM role's ARN.")
         missing = [FEDERATION_ENV[field] for field, value in values.items() if not value]
         if missing:
             raise SettingsError(
@@ -82,7 +99,7 @@ class Federation:
                 raise SettingsError(f"{FEDERATION_ENV[field]} must start with {prefix}.")
         if not _is_uuid(values["organization_id"]):
             raise SettingsError(f"{FEDERATION_ENV['organization_id']} must be the organization's UUID.")
-        return cls(**values)
+        return cls(**values, role_arn=role_arn)
 
 
 def _is_uuid(value: str) -> bool:
@@ -175,9 +192,10 @@ def federated_credentials(
 ) -> "PrimedCredentials":
     """Credentials for the Anthropic API from this process's AWS identity.
 
-    STS signs a JWT naming the caller (the runtime's role, or sentinelops-dev
-    on this machine), and Anthropic's token endpoint trades it, under the
-    federation rule, for a token that lasts minutes. The first token is minted
+    STS signs a JWT naming the caller's role (the runtime's, or on this machine
+    the one federation.role_arn names, assumed afresh for each JWT), and
+    Anthropic's token endpoint trades it, under the federation rule, for a
+    token that lasts minutes. The first token is minted
     here, before the run, so a broken setup is a refusal rather than a failed
     first model call. Raises FederationFailed, which names the AWS error code
     or the HTTP status, never a token or an ARN, and carries no other error.
@@ -191,9 +209,23 @@ def federated_credentials(
     config = Config(connect_timeout=3, read_timeout=10, retries={"mode": "standard", "max_attempts": 3})
     sts = session.client("sts", config=config)
 
+    def token_sts() -> Any:
+        if federation.role_arn is None:
+            return sts
+        keys = sts.assume_role(
+            RoleArn=federation.role_arn, RoleSessionName=ROLE_SESSION_NAME, DurationSeconds=ROLE_SESSION_SECONDS
+        )["Credentials"]
+        return session.client(
+            "sts",
+            config=config,
+            aws_access_key_id=keys["AccessKeyId"],
+            aws_secret_access_key=keys["SecretAccessKey"],
+            aws_session_token=keys["SessionToken"],
+        )
+
     def web_identity_token() -> str:
         # A fresh JWT for every exchange: Anthropic accepts each JWT once.
-        return sts.get_web_identity_token(
+        return token_sts().get_web_identity_token(
             Audience=[TOKEN_AUDIENCE], SigningAlgorithm=TOKEN_SIGNING_ALGORITHM, DurationSeconds=TOKEN_SECONDS
         )["WebIdentityToken"]
 

@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,7 @@ from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic
 from providers import (
     API_KEY_SECRET,
     FEDERATION_ENV,
+    FEDERATION_ROLE_ENV,
     TOKEN_AUDIENCE,
     TOKEN_SECONDS,
     TOKEN_SIGNING_ALGORITHM,
@@ -24,14 +26,17 @@ from providers import (
     federated_credentials,
     read_api_key,
 )
-from stubs import WEB_IDENTITY_TOKEN, FakeSession
+from stubs import LOCAL_ROLE_ARN, ROLE_KEYS, WEB_IDENTITY_TOKEN, FakeSession
 
-AGENT_RUNTIME_TF = Path(__file__).resolve().parents[2] / "infra" / "agent_runtime.tf"
+INFRA = Path(__file__).resolve().parents[2] / "infra"
+AGENT_RUNTIME_TF = INFRA / "agent_runtime.tf"
+LOCAL_SIGN_IN_TF = INFRA / "local_sign_in.tf"
 FEDERATION = Federation(
     organization_id=FEDERATION_IDS["SENTINELOPS_ANTHROPIC_ORGANIZATION_ID"],
     service_account_id=FEDERATION_IDS["SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID"],
     rule_id=FEDERATION_IDS["SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID"],
 )
+LOCAL_FEDERATION = replace(FEDERATION, role_arn=LOCAL_ROLE_ARN)
 
 KEY = "sk-ant-api03-" + "TestOnly0" * 9
 SECRET = {"SecretId": API_KEY_SECRET}
@@ -173,6 +178,23 @@ def test_an_id_in_the_wrong_place_is_refused_before_any_call(name: str, value: s
         Settings.from_env({**FEDERATION_IDS, name: value})
 
 
+def test_a_role_to_sign_in_as_comes_with_the_ids() -> None:
+    assert Settings.from_env(FEDERATION_IDS).federation.role_arn is None, "the runtime asks as itself"
+    assert Settings.from_env({**FEDERATION_IDS, FEDERATION_ROLE_ENV: LOCAL_ROLE_ARN}).federation == LOCAL_FEDERATION
+
+    with pytest.raises(SettingsError, match="the federation IDs aren't"):
+        Settings.from_env({FEDERATION_ROLE_ENV: LOCAL_ROLE_ARN})
+
+
+def test_a_role_arn_that_is_not_a_role_is_refused_without_showing_it() -> None:
+    user = "arn:aws:iam::000011112222:user/sentinelops-dev"
+
+    with pytest.raises(SettingsError, match="must be an IAM role's ARN") as refused:
+        Settings.from_env({**FEDERATION_IDS, FEDERATION_ROLE_ENV: user})
+
+    assert "000011112222" not in str(refused.value)
+
+
 def test_the_first_token_is_minted_before_the_run_and_used_first() -> None:
     session, fake = FakeSession(), FakeAnthropic([])
     session.expect_web_identity_token()
@@ -210,6 +232,34 @@ def test_every_later_token_is_a_new_jwt_and_a_new_exchange(force_refresh: bool) 
 
     session.assert_all_called()
     assert [r["body"]["assertion"] for r in fake.token_requests] == [WEB_IDENTITY_TOKEN, second]
+
+
+def test_a_local_run_asks_sts_for_each_jwt_as_the_role_it_assumes_afresh() -> None:
+    session, fake = FakeSession(), FakeAnthropic([])
+    second = WEB_IDENTITY_TOKEN.replace("N0tA", "Next")
+    for token in (WEB_IDENTITY_TOKEN, second):
+        session.expect_assume_role()
+        session.expect_web_identity_token(token)
+
+    credentials = federated_credentials(LOCAL_FEDERATION, session, http_client=fake.token_client())
+    credentials(force_refresh=True)
+
+    session.assert_all_called()
+    assert [r["body"]["assertion"] for r in fake.token_requests] == [WEB_IDENTITY_TOKEN, second]
+    role_clients = [key for service, key in session.made if service == "sts" and key is not None]
+    assert role_clients == [ROLE_KEYS["AccessKeyId"]] * 2, "each JWT asked for under the role's keys"
+
+
+def test_a_role_that_cannot_be_assumed_is_reported_by_its_code_only() -> None:
+    session, fake = FakeSession(), FakeAnthropic([])
+    session.fail("assume_role", "AccessDenied", f"User is not authorized to perform sts:AssumeRole on {LOCAL_ROLE_ARN}")
+
+    with pytest.raises(FederationFailed) as refused:
+        federated_credentials(LOCAL_FEDERATION, session, http_client=fake.token_client())
+
+    assert str(refused.value) == "Could not sign in to the Anthropic API by federation: STS returned AccessDenied."
+    assert refused.value.__cause__ is None and refused.value.__context__ is None, "it carries nothing else"
+    assert fake.token_requests == []
 
 
 @pytest.mark.parametrize(
@@ -301,8 +351,9 @@ def test_a_key_and_credentials_together_are_refused() -> None:
         build_model(Settings(), KEY, credentials=object())
 
 
-def test_the_runtime_role_may_ask_sts_for_exactly_the_token_the_agent_asks_for() -> None:
-    statements = AGENT_RUNTIME_TF.read_text(encoding="utf-8").split("statement {")
+@pytest.mark.parametrize("tf", [AGENT_RUNTIME_TF, LOCAL_SIGN_IN_TF], ids=["runtime", "local"])
+def test_each_sign_in_role_may_ask_sts_for_exactly_the_token_the_agent_asks_for(tf: Path) -> None:
+    statements = tf.read_text(encoding="utf-8").split("statement {")
     (sign_in,) = [s for s in statements if '"SignInToAnthropic"' in s]
 
     assert '"sts:GetWebIdentityToken"' in sign_in
@@ -313,3 +364,12 @@ def test_the_runtime_role_may_ask_sts_for_exactly_the_token_the_agent_asks_for()
     ):
         pattern = rf'variable\s*=\s*"{re.escape(variable)}"\s*values\s*=\s*\["{re.escape(value)}"\]'
         assert re.search(pattern, sign_in), f"{variable} isn't pinned to {value}"
+
+
+def test_only_sentinelops_dev_may_assume_the_local_role_and_it_may_only_sign_in() -> None:
+    text = LOCAL_SIGN_IN_TF.read_text(encoding="utf-8")
+
+    assert re.findall(r'actions\s*=\s*\[([^\]]*)\]', text) == ['"sts:AssumeRole"', '"sts:GetWebIdentityToken"']
+    assert re.findall(r"identifiers\s*=\s*\[([^\]]*)\]", text) == [
+        '"arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/sentinelops-dev"'
+    ]
