@@ -1,0 +1,3 @@
+#!/bin/sh
+# The same scan over the commit message, which is published with the files.
+exec python -I "$(dirname "$0")/commit_scan.py" message "$1"

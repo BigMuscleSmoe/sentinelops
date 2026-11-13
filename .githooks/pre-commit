@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refuses a commit whose staged files would publish the account ID, an email,
+# a home path, a public IP, a key, or a state file (commit_scan.py). It fails
+# closed: without Python or the account ID configured, nothing commits.
+exec python -I "$(dirname "$0")/commit_scan.py" staged

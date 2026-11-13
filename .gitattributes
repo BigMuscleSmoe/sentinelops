@@ -1,0 +1,3 @@
+# The hooks run under sh, which a CR at a line's end breaks, so they stay LF
+# in any checkout, core.autocrlf or not.
+.githooks/* text eol=lf
