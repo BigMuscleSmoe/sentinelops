@@ -5,6 +5,8 @@ written after the alarm, stay out of view.
 """
 
 import json
+import re
+from dataclasses import dataclass
 from typing import Any
 
 from sentinelops_tools.env import ToolEnv, aws_errors_as_text, iso_ms
@@ -76,3 +78,36 @@ def _value(attribute: dict[str, Any]) -> Any:
         case "M":
             return {k: _value(v) for k, v in value.items()}
     return str(value)
+
+
+# Reading the text back into data, for the eval grader. It lives beside the
+# renderer so a change to one is a change to both: the round-trip tests read
+# every recorded window through both.
+
+_HEAD = re.compile(r"The (\d+) most recent deploys and config changes to (\S+) up to (\S+), newest first\.$")
+_NONE = re.compile(r"No deploys or config changes to (\S+) recorded up to (\S+)\.$")
+
+
+@dataclass(frozen=True)
+class DeployPage:
+    """One `history` result: the records it showed, newest first, up to its `up_to` time."""
+
+    up_to: str  # ISO 8601 UTC to the millisecond
+    records: list[dict[str, Any]]
+    older_exist: bool
+
+
+def parse_history(text: str) -> DeployPage | None:
+    """A `history` result as data, or None if the text isn't one."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    none = _NONE.match(lines[0])
+    if none:
+        return DeployPage(none[2], [], False)
+    head = _HEAD.match(lines[0])
+    if not head:
+        return None
+    records = [json.loads(line) for line in lines[1:] if line.startswith("{")]
+    older = any(line.startswith("Older records exist") for line in lines[1:])
+    return DeployPage(head[3], records, older)

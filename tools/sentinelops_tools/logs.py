@@ -7,6 +7,8 @@ newest lines may be missing, and their absence proves nothing on its own.
 """
 
 import json
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -144,3 +146,80 @@ def _ms(moment: datetime) -> int:
 
 def _dt(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, UTC)
+
+
+# Reading the text back into data, for the eval grader. It lives beside the
+# renderer so a change to one is a change to both: the round-trip tests read
+# every recorded window through both.
+
+_HEAD = re.compile(
+    r"(\d+) checkout-api (error|request) lines(?: on (.+?))?, oldest first, newest \d+ s old\. "
+    r"Searched (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d) UTC\."
+    r"(?: Only the newest (\d+) of (\d+) found are shown\.)?$"
+)
+_NONE = re.compile(
+    r"No checkout-api (error|request) lines(?: on (.+?))? from (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d) UTC\.$"
+)
+_LEFT_OUT = re.compile(r"The oldest (\d+) lines were left out")
+_CUT_MARK = " ...[cut]"
+
+
+@dataclass(frozen=True)
+class LogsPage:
+    """One `recent_lines` result: what it searched, and the lines it showed, oldest first."""
+
+    errors_only: bool
+    route: str | None
+    searched_from: str  # HH:MM:SS UTC
+    searched_to: str
+    found: int  # a floor: FilterLogEvents can return fewer than exist
+    lines: list[dict[str, Any] | str]  # each JSON line as a dict; a cut or non-JSON line as text
+    notes: list[str]
+
+    @property
+    def cut(self) -> bool:
+        """Whether older matching lines in the searched window were found but not shown."""
+        return self.found > len(self.lines)
+
+    @property
+    def complete(self) -> bool:
+        """Whether the search covered its whole window."""
+        return not any(n.startswith(("The search ran out", "The search stopped")) for n in self.notes)
+
+
+def parse_lines(text: str) -> LogsPage | None:
+    """A `recent_lines` result as data, or None if the text isn't one."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    none = _NONE.match(lines[0])
+    if none:
+        return LogsPage(none[1] == "error", none[2], none[3], none[4], 0, [], _notes(lines[1:]))
+    head = _HEAD.match(lines[0])
+    if not head:
+        return None
+    shown = int(head[1])
+    parsed: list[dict[str, Any] | str] = []
+    for line in lines[1:]:
+        if not line.startswith("{"):
+            continue
+        if line.endswith(_CUT_MARK):
+            parsed.append(line)
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            parsed.append(line)
+        else:
+            parsed.append(record if isinstance(record, dict) else line)
+    notes = _notes(lines[1:])
+    left_out = sum(int(m[1]) for m in map(_LEFT_OUT.match, notes) if m)
+    found = int(head[7]) if head[7] else shown
+    if left_out:
+        # The page shows `shown` lines but found at least as many as it kept plus those left out.
+        found = max(found, shown + left_out)
+    return LogsPage(head[2] == "error", head[3], head[4], head[5], found, parsed, notes)
+
+
+def _notes(lines: list[str]) -> list[str]:
+    return [line for line in lines if line.strip() and not line.startswith("{")]

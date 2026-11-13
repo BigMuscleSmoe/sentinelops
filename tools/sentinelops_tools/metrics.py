@@ -5,6 +5,7 @@ within seconds, while Logs Insights and log search can trail by minutes under
 load. So the agent reads these first and treats them as the primary source.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -158,3 +159,56 @@ def _cell(column: Column, value: float | None) -> str:
     if column.stat in ("SampleCount", "Sum", "Maximum"):
         return f"{value:.0f}"
     return f"{value:.0f}" if value >= 100 else f"{value:.1f}"
+
+
+# Reading the text back into data, for the eval grader. It lives beside the
+# renderer so a change to one is a change to both: the round-trip tests read
+# every recorded window through both.
+
+HEADERS = [c.header for c in COLUMNS]
+_HEAD = re.compile(
+    r"checkout-api metrics, (\d+) s periods, (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d) UTC, oldest first\."
+)
+_EMPTY = re.compile(r"No checkout-api metrics for (\d\d:\d\d:\d\d) to (\d\d:\d\d:\d\d) UTC")
+
+
+@dataclass(frozen=True)
+class MetricsRow:
+    time: str  # HH:MM:SS UTC, the period's start
+    unsettled: bool
+    cells: dict[str, float | None]  # by header; None where the table shows "-"
+
+
+@dataclass(frozen=True)
+class MetricsPage:
+    """One `metrics_table` result: the window it covered and its rows, oldest first."""
+
+    period_s: int | None  # None when no metrics came back
+    start: str
+    end: str
+    rows: list[MetricsRow]
+    notes: list[str]
+
+
+def parse_table(text: str) -> MetricsPage | None:
+    """A `metrics_table` result as data, or None if the text isn't one."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    empty = _EMPTY.match(lines[0])
+    if empty:
+        return MetricsPage(None, empty[1], empty[2], [], [])
+    head = _HEAD.match(lines[0])
+    if not head:
+        return None
+    rows, notes = [], []
+    for line in lines[1:]:
+        fields = line.split()
+        if fields == ["time", *HEADERS]:
+            continue
+        if fields and re.fullmatch(r"\d\d:\d\d:\d\d\*?", fields[0]) and len(fields) == len(HEADERS) + 1:
+            cells = {h: None if f == "-" else float(f) for h, f in zip(HEADERS, fields[1:])}
+            rows.append(MetricsRow(fields[0].rstrip("*"), fields[0].endswith("*"), cells))
+        elif line.strip():
+            notes.append(line)
+    return MetricsPage(int(head[1]), head[2], head[3], rows, notes)
