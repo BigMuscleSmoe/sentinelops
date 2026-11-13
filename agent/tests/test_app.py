@@ -17,7 +17,7 @@ from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, answer
 from fake_gateway import URL, FakeGateway
 from sentinelops_tools.env import ToolEnv
 from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
-from test_main import DIAGNOSIS, ERRORS, FAKE_KEY, TOOL_FIXTURE_NAMES, investigating, replay_session
+from test_main import DIAGNOSIS, ERRORS, TOOL_FIXTURE_NAMES, investigating, replay_session
 
 REPLAY = {"alarm": ERRORS, "as_of": "2026-10-27T19:06:00Z"}
 
@@ -54,9 +54,10 @@ def test_a_replay_runs_through_the_gateway_and_answers_with_its_transcript(
     gateway = FakeGateway(ToolEnv.from_session(session))
     regions = []
     app = create_app(
-        environ={GATEWAY_URL: URL},
+        environ={GATEWAY_URL: URL, **FEDERATION_IDS},
         session_factory=lambda region: regions.append(region) or session,
         http_client=fake.client(),
+        token_http_client=fake.token_client(),
         gateway_transport=gateway.transport(),
     )
 
@@ -65,17 +66,19 @@ def test_a_replay_runs_through_the_gateway_and_answers_with_its_transcript(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["outcome"] == "done"
+    assert body["outcome"] == "done" and body["model"]["auth"] == "federation"
     assert body["hypothesis"]["root_cause"] == DIAGNOSIS["root_cause"]
     assert body["tools_via"] == "gateway" and body["alarm"]["replay"] is True
     assert body["alarm"]["fired_at"] == "2026-10-27T19:05:57.026000+00:00"
     assert len(body["model_calls"]) == 4 and body["cost_usd"] > 0
     assert regions == ["us-east-1"]
-    session.assert_all_called()  # the alarm's history, the key, and each tool's recorded calls
+    session.assert_all_called()  # the alarm's history, one JWT from STS, and each tool's recorded calls
     for result, name in zip(fake.tool_results(3), TOOL_FIXTURE_NAMES, strict=True):
         assert result.rsplit("\n", 1)[0] == load(TOOL_FIXTURES / f"{name}.json")["text"]
     assert [arguments["as_of"] for _, arguments in gateway.calls] == ["2026-10-27T19:05:57.026Z"] * 3
-    assert FAKE_KEY not in response.text
+    assert len(fake.token_requests) == 1
+    assert all(r["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}" for r in fake.requests)
+    assert ACCESS_TOKEN not in response.text and WEB_IDENTITY_TOKEN not in response.text
     logged = [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.app"]
     assert logged == [
         {
@@ -88,27 +91,6 @@ def test_a_replay_runs_through_the_gateway_and_answers_with_its_transcript(
         }
     ]
     assert logged[0]["summary"].startswith("tool calls: get_metrics x1, get_recent_logs x1, get_deploy_history x1")
-
-
-def test_the_runtime_signs_in_by_federation_once_terraform_sets_the_ids() -> None:
-    session, fake = replay_session(federated=True), investigating()
-    app = create_app(
-        environ={GATEWAY_URL: URL, **FEDERATION_IDS},
-        session_factory=lambda region: session,
-        http_client=fake.client(),
-        token_http_client=fake.token_client(),
-        gateway_transport=FakeGateway(ToolEnv.from_session(session)).transport(),
-    )
-
-    response = call(app, "POST", "/invocations", json.dumps(REPLAY).encode(), **{SESSION_HEADER: "s-2"})
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["outcome"] == "done" and body["model"]["auth"] == "federation"
-    session.assert_all_called()  # the alarm, one JWT from STS, and the tools: no key
-    assert len(fake.token_requests) == 1
-    assert all(r["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}" for r in fake.requests)
-    assert ACCESS_TOKEN not in response.text and WEB_IDENTITY_TOKEN not in response.text
 
 
 def test_without_the_gateway_nothing_runs() -> None:
@@ -131,7 +113,9 @@ def test_an_alarm_that_is_not_firing_is_refused() -> None:
     alarm["MetricAlarms"][0]["StateValue"] = "OK"
     session.expect("describe_alarms", None, alarm)
     fake = FakeAnthropic([answer(DIAGNOSIS)])
-    app = create_app(environ={GATEWAY_URL: URL}, session_factory=lambda region: session, http_client=fake.client())
+    app = create_app(
+        environ={GATEWAY_URL: URL, **FEDERATION_IDS}, session_factory=lambda region: session, http_client=fake.client()
+    )
 
     response = call(app, "POST", "/invocations", json.dumps({"alarm": ERRORS}).encode())
 
@@ -139,9 +123,21 @@ def test_an_alarm_that_is_not_firing_is_refused() -> None:
     assert fake.requests == []
 
 
+def test_without_the_federation_ids_nothing_runs() -> None:
+    fake = FakeAnthropic([answer(DIAGNOSIS)])
+    app = create_app(environ={GATEWAY_URL: URL}, session_factory=unused_session, http_client=fake.client())
+
+    response = call(app, "POST", "/invocations", json.dumps(REPLAY).encode())
+
+    assert response.json()["outcome"] == "refused"
+    assert response.json()["reason"].startswith("The Anthropic API is signed in to by federation only: set ")
+    assert fake.requests == []
+
+
 def test_a_model_without_a_price_is_refused_before_anything_runs() -> None:
     app = create_app(
-        environ={GATEWAY_URL: URL, "SENTINELOPS_MODEL_ID": "claude-sonnet-5-5"}, session_factory=unused_session
+        environ={GATEWAY_URL: URL, **FEDERATION_IDS, "SENTINELOPS_MODEL_ID": "claude-sonnet-5-5"},
+        session_factory=unused_session,
     )
 
     response = call(app, "POST", "/invocations", json.dumps(REPLAY).encode())

@@ -1,6 +1,5 @@
-"""The provider setting, the key read from Secrets Manager, federation, and the model built from them."""
+"""The provider setting, federation, and the model built from them."""
 
-import json
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -9,9 +8,8 @@ import httpx
 import pytest
 from botocore.exceptions import EndpointConnectionError
 
-from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic
+from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, signed_in
 from providers import (
-    API_KEY_SECRET,
     FEDERATION_ENV,
     FEDERATION_ROLE_ENV,
     TOKEN_AUDIENCE,
@@ -19,12 +17,10 @@ from providers import (
     TOKEN_SIGNING_ALGORITHM,
     Federation,
     FederationFailed,
-    KeyUnavailable,
     Settings,
     SettingsError,
     build_model,
     federated_credentials,
-    read_api_key,
 )
 from stubs import LOCAL_ROLE_ARN, ROLE_KEYS, WEB_IDENTITY_TOKEN, FakeSession
 
@@ -38,26 +34,23 @@ FEDERATION = Federation(
 )
 LOCAL_FEDERATION = replace(FEDERATION, role_arn=LOCAL_ROLE_ARN)
 
-KEY = "sk-ant-api03-" + "TestOnly0" * 9
-SECRET = {"SecretId": API_KEY_SECRET}
-
-
-def secrets_returning(value: str) -> object:
-    session = FakeSession()
-    session.expect("get_secret_value", SECRET, {"Name": API_KEY_SECRET, "SecretString": value})
-    return session.client("secretsmanager")
-
 
 def test_the_defaults_are_haiku_on_the_anthropic_api() -> None:
-    settings = Settings.from_env({})
+    settings = Settings.from_env(FEDERATION_IDS)
 
     assert settings == Settings(
-        provider="anthropic", model_id="claude-haiku-5-5", max_output_tokens=16_000, region="us-east-1"
+        provider="anthropic",
+        model_id="claude-haiku-5-5",
+        max_output_tokens=16_000,
+        region="us-east-1",
+        federation=FEDERATION,
     )
 
 
 def test_the_model_and_region_come_from_the_environment() -> None:
-    settings = Settings.from_env({"SENTINELOPS_MODEL_ID": "claude-sonnet-5-5", "AWS_REGION": "us-west-2"})
+    settings = Settings.from_env(
+        {**FEDERATION_IDS, "SENTINELOPS_MODEL_ID": "claude-sonnet-5-5", "AWS_REGION": "us-west-2"}
+    )
 
     assert (settings.model_id, settings.region) == ("claude-sonnet-5-5", "us-west-2")
 
@@ -78,77 +71,26 @@ def test_bedrock_needs_a_model_id_and_is_not_wired_yet() -> None:
         build_model(settings)
 
 
-@pytest.mark.parametrize(
-    "stored",
-    [KEY, f"  {KEY}\n", json.dumps({"ANTHROPIC_API_KEY": KEY}), json.dumps({"key": KEY, "rotated": 3})],
-    ids=["plain", "padded", "json", "json-with-a-number"],
-)
-def test_the_key_is_read_as_the_console_stores_it(stored: str) -> None:
-    assert read_api_key(secrets_returning(stored)) == KEY
+def test_the_model_gets_the_settings_and_the_credentials_directly() -> None:
+    credentials = signed_in()
 
+    model = build_model(Settings(federation=FEDERATION), credentials=credentials)
 
-@pytest.mark.parametrize(
-    ("stored", "reason"),
-    [
-        ("not-a-key-at-all", "doesn't hold an Anthropic API key"),
-        (json.dumps({"a": KEY, "b": KEY}), "without exactly one string value"),
-        ("{" + KEY, "doesn't parse"),
-        ("   ", "doesn't hold an Anthropic API key"),
-    ],
-    ids=["wrong-value", "two-values", "broken-json", "blank"],
-)
-def test_a_secret_that_is_not_one_key_is_refused_without_showing_it(stored: str, reason: str) -> None:
-    with pytest.raises(KeyUnavailable, match=reason) as refused:
-        read_api_key(secrets_returning(stored))
-
-    assert KEY not in str(refused.value) and "not-a-key" not in str(refused.value)
-    assert refused.value.__cause__ is None and refused.value.__context__ is None, "it carries nothing else"
-
-
-def test_an_aws_error_is_reported_by_its_code_only() -> None:
-    session = FakeSession()
-    arn = "arn:aws:iam::000011112222:user/someone"
-    session.fail("get_secret_value", "AccessDeniedException", f"User: {arn} is not authorized")
-
-    with pytest.raises(KeyUnavailable) as refused:
-        read_api_key(session.client("secretsmanager"))
-
-    assert str(refused.value) == f"Could not read {API_KEY_SECRET}: AWS returned AccessDeniedException."
-    assert refused.value.__cause__ is None and refused.value.__context__ is None, "it carries nothing else"
-
-
-def test_a_network_error_is_reported_by_its_type_only() -> None:
-    class Unreachable:
-        def get_secret_value(self, **_: object) -> dict:
-            raise EndpointConnectionError(endpoint_url="https://secretsmanager.us-east-1.amazonaws.com/")
-
-    with pytest.raises(KeyUnavailable, match="^Could not read .*: EndpointConnectionError.$"):
-        read_api_key(Unreachable())
-
-
-def test_the_model_gets_the_key_directly_and_the_environment_never_does(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-    model = build_model(Settings(), KEY)
-
-    assert model.client.api_key == KEY
+    assert model.client.credentials is credentials
     assert model.client.max_retries == 2
     assert model.config["model_id"] == "claude-haiku-5-5"
     assert model.config["max_tokens"] == 16_000
     assert model.config["params"] == {"thinking": {"type": "adaptive", "display": "summarized"}}
-    assert "ANTHROPIC_API_KEY" not in __import__("os").environ
 
 
-def test_no_key_no_model() -> None:
-    with pytest.raises(KeyUnavailable):
-        build_model(Settings(), None)
+def test_no_credentials_no_model() -> None:
+    with pytest.raises(SettingsError, match="needs federated credentials"):
+        build_model(Settings(federation=FEDERATION))
 
 
-def test_federation_is_off_until_its_ids_are_set() -> None:
-    assert Settings.from_env({}).federation is None
-    assert Settings.from_env({}).auth == "api_key"
+def test_the_anthropic_api_needs_the_federation_ids() -> None:
+    with pytest.raises(SettingsError, match="by federation only: set SENTINELOPS_ANTHROPIC_ORGANIZATION_ID"):
+        Settings.from_env({})
 
     settings = Settings.from_env({**FEDERATION_IDS, "AWS_REGION": "us-east-1"})
 
@@ -157,7 +99,7 @@ def test_federation_is_off_until_its_ids_are_set() -> None:
 
 
 @pytest.mark.parametrize("unset", sorted(FEDERATION_ENV.values()))
-def test_half_a_federation_is_refused_never_a_fallback_to_the_key(unset: str) -> None:
+def test_half_a_federation_is_refused(unset: str) -> None:
     ids = {name: value for name, value in FEDERATION_IDS.items() if name != unset}
 
     with pytest.raises(SettingsError, match=f"half set up: set {unset} as well"):
@@ -344,11 +286,6 @@ def test_the_model_signs_in_with_the_credentials_and_reads_no_key(monkeypatch: p
 
     assert model.client.credentials is credentials
     assert model.client.api_key is None, "a key in the environment never shadows federation"
-
-
-def test_a_key_and_credentials_together_are_refused() -> None:
-    with pytest.raises(SettingsError, match="not both"):
-        build_model(Settings(), KEY, credentials=object())
 
 
 @pytest.mark.parametrize("tf", [AGENT_RUNTIME_TF, LOCAL_SIGN_IN_TF], ids=["runtime", "local"])

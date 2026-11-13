@@ -9,7 +9,7 @@ from typing import Literal
 import pytest
 from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
-from fake_anthropic import FakeAnthropic, Reply, answer, text, thinking, tool_use
+from fake_anthropic import ACCESS_TOKEN, FakeAnthropic, Reply, answer, signed_in, text, thinking, tool_use
 from guards import Limits
 from hooks import COUNTED_FIELDS
 from models import StopReason
@@ -61,7 +61,7 @@ class Tools:
 
 
 def run(fake: FakeAnthropic, tools: Tools | None = None, **kwargs) -> RunReport:
-    model = build_model(SETTINGS, "sk-ant-test-0000", http_client=fake.client())
+    model = build_model(SETTINGS, http_client=fake.client(), credentials=signed_in())
     return asyncio.run(
         investigate(
             "An alarm fired on checkout-api.",
@@ -102,7 +102,7 @@ def test_the_model_gets_the_settings_and_the_prompt() -> None:
     request = fake.requests[0]
     body = request["body"]
     assert request["path"] == "/v1/messages"
-    assert request["headers"]["x-api-key"] == "sk-ant-test-0000"
+    assert request["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}"
     assert body["model"] == "claude-haiku-5-5"
     assert body["max_tokens"] == 16_000
     assert body["thinking"] == {"type": "adaptive", "display": "summarized"}

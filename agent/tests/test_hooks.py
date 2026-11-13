@@ -9,7 +9,7 @@ import httpx
 import pytest
 from strands.types.exceptions import ModelThrottledException
 
-from fake_anthropic import FakeAnthropic
+from fake_anthropic import FakeAnthropic, signed_in
 from guards import CostLimitExceeded, Limits, RunGuard, WallClockExceeded
 from hooks import (
     COUNT_MARGIN_TOKENS,
@@ -126,7 +126,7 @@ def send(
     """
     fake = fake if fake is not None else FakeAnthropic([])
     if model is None:
-        model = build_model(Settings(), "sk-ant-test-0000", http_client=fake.client())
+        model = build_model(Settings(), http_client=fake.client(), credentials=signed_in())
         model.update_config(params={"thinking": THINKING, **params})
     a = agent(*messages)
     context = SimpleNamespace(

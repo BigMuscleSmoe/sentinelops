@@ -1,8 +1,8 @@
 """One investigation of one alarm, for both ways to start one: main.py from this
 machine, and app.py on AgentCore Runtime.
 
-It reads the alarm, live or as of a past moment, signs in to the model (by
-federation once its IDs are set, else with the API key), picks the tools
+It reads the alarm, live or as of a past moment, signs in to the model by
+federation, picks the tools
 (through the Gateway when a URL is given, else run in this process), and runs
 the guarded investigation. A refusal comes back as a Refused, never an
 exception, so each entry point reports it its own way.
@@ -14,15 +14,7 @@ from typing import Any
 
 from alarm import AlarmEvent, AlarmNotFiring
 from pricing import ModelPrice
-from providers import (
-    FederationFailed,
-    KeyUnavailable,
-    Settings,
-    SettingsError,
-    build_model,
-    federated_credentials,
-    read_api_key,
-)
+from providers import FederationFailed, Settings, SettingsError, build_model, federated_credentials
 from runner import RunReport, investigate
 from sentinelops_tools.env import ToolEnv, utc_now
 from sentinelops_tools.toolset import make_tools
@@ -107,7 +99,7 @@ async def investigate_alarm(
 
     try:
         model = _signed_in_model(settings, session, http_client, token_http_client)
-    except (FederationFailed, KeyUnavailable, SettingsError) as e:
+    except (FederationFailed, SettingsError) as e:
         return Refused(str(e))
 
     fired_at = alarm.fired_at
@@ -137,15 +129,10 @@ async def investigate_alarm(
 
 
 def _signed_in_model(settings: Settings, session: Any, http_client: Any, token_http_client: Any) -> Any:
-    """The model, signed in by federation when its IDs are set, else with the key.
-
-    With federation set, the key is never read: half a setup was refused with
-    the settings, and a failed sign-in is a refusal, not a fallback.
-    """
+    """The model, signed in by federation. A failed sign-in is a refusal."""
     if settings.provider != "anthropic":
         return build_model(settings, http_client=http_client)
-    if settings.federation is not None:
-        credentials = federated_credentials(settings.federation, session, http_client=token_http_client)
-        return build_model(settings, http_client=http_client, credentials=credentials)
-    # The key goes straight to the model client, never bound to a name here.
-    return build_model(settings, read_api_key(session.client("secretsmanager")), http_client=http_client)
+    if settings.federation is None:
+        raise SettingsError("The Anthropic API is signed in to by federation only, and its IDs aren't set.")
+    credentials = federated_credentials(settings.federation, session, http_client=token_http_client)
+    return build_model(settings, http_client=http_client, credentials=credentials)

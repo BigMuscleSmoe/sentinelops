@@ -3,13 +3,11 @@
 The provider is a setting: the Anthropic API until Bedrock's quota is granted,
 then Bedrock. Either way the model must have a price in pricing.PRICES.
 
-The Anthropic API takes a key from Secrets Manager, or, once the federation
-IDs are set, a token from workload identity federation: STS signs a JWT naming
-this process's AWS identity, and Anthropic trades it for a token that lasts
-minutes. Nothing then holds a key.
+The Anthropic API is signed in to by workload identity federation only: STS
+signs a JWT naming this process's AWS identity, and Anthropic trades it for a
+token that lasts minutes. Nothing holds a key; there is no key to fall back to.
 """
 
-import json
 import os
 import re
 import uuid
@@ -19,14 +17,12 @@ from typing import Any
 
 PROVIDERS = ("anthropic", "bedrock")
 DEFAULT_MODEL_IDS = {"anthropic": "claude-haiku-5-5"}
-API_KEY_SECRET = "sentinelops/anthropic-api-key"
-API_KEY_PREFIX = "sk-ant-"
 MAX_OUTPUT_TOKENS = 16_000
 # Haiku 5.5 only thinks adaptively. Summarized makes the reasoning readable in
 # the transcript and changes nothing about what the call costs.
 THINKING = {"type": "adaptive", "display": "summarized"}
 
-# The Claude Console's IDs for federation, by field. All set, or none.
+# The Claude Console's IDs for federation, by field. The anthropic provider needs all three.
 FEDERATION_ENV = {
     "organization_id": "SENTINELOPS_ANTHROPIC_ORGANIZATION_ID",
     "service_account_id": "SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID",
@@ -54,10 +50,6 @@ class SettingsError(Exception):
     pass
 
 
-class KeyUnavailable(Exception):
-    pass
-
-
 class FederationFailed(Exception):
     pass
 
@@ -79,7 +71,7 @@ class Federation:
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Federation | None":
-        """The IDs, or None when none is set. Half a setup is an error, never a fallback to the key."""
+        """The IDs, or None when none is set. Half a setup is an error."""
         values = {field: environ.get(name, "").strip() for field, name in FEDERATION_ENV.items()}
         role_arn = environ.get(FEDERATION_ROLE_ENV, "").strip() or None
         if not any(values.values()):
@@ -116,12 +108,13 @@ class Settings:
     model_id: str = DEFAULT_MODEL_IDS["anthropic"]
     max_output_tokens: int = MAX_OUTPUT_TOKENS
     region: str = "us-east-1"
-    # Set, the Anthropic API is signed in to by federation; None, with the key.
+    # How the Anthropic API is signed in to. from_env refuses the anthropic
+    # provider without it; Bedrock, once wired, will sign with AWS credentials.
     federation: Federation | None = None
 
     @property
-    def auth(self) -> str:
-        return "federation" if self.federation is not None else "api_key"
+    def auth(self) -> str | None:
+        return "federation" if self.federation is not None else None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] = os.environ) -> "Settings":
@@ -133,58 +126,17 @@ class Settings:
         model_id = environ.get("SENTINELOPS_MODEL_ID") or DEFAULT_MODEL_IDS.get(provider)
         if not model_id:
             raise SettingsError(f"Set SENTINELOPS_MODEL_ID: {provider} has no default model.")
+        federation = Federation.from_env(environ)
+        if provider == "anthropic" and federation is None:
+            raise SettingsError(
+                f"The Anthropic API is signed in to by federation only: set {', '.join(FEDERATION_ENV.values())}."
+            )
         return cls(
             provider=provider,
             model_id=model_id,
             region=environ.get("AWS_REGION", "us-east-1"),
-            federation=Federation.from_env(environ),
+            federation=federation,
         )
-
-
-def read_api_key(secrets: Any, secret_id: str = API_KEY_SECRET) -> str:
-    """The Anthropic API key, from Secrets Manager.
-
-    It goes from here straight into the model client: never into the
-    environment, a log line, the transcript, or an error message. Errors name
-    the secret and the AWS error code, never the value, and every raise is
-    outside an except block, so no error carries another one: a JSON error
-    keeps the whole document it parsed.
-    """
-    from botocore.exceptions import BotoCoreError, ClientError
-
-    failure: str | None = None
-    try:
-        value = secrets.get_secret_value(SecretId=secret_id).get("SecretString") or ""
-    except ClientError as e:
-        failure = f"AWS returned {e.response.get('Error', {}).get('Code', 'unknown')}"
-    except BotoCoreError as e:
-        failure = type(e).__name__
-    if failure is not None:
-        raise KeyUnavailable(f"Could not read {secret_id}: {failure}.")
-
-    # The console stores a plain string, or a JSON object of key/value pairs.
-    if value.lstrip().startswith("{"):
-        strings = _string_values(value)
-        if strings is None:
-            raise KeyUnavailable(f"{secret_id} starts like JSON but doesn't parse.")
-        if len(strings) != 1:
-            raise KeyUnavailable(f"{secret_id} is a JSON object without exactly one string value.")
-        value = strings[0]
-    value = value.strip()
-    if not value.startswith(API_KEY_PREFIX):
-        raise KeyUnavailable(f"{secret_id} doesn't hold an Anthropic API key.")
-    return value
-
-
-def _string_values(text: str) -> list[str] | None:
-    """The string values of a JSON object, or None if the text isn't one."""
-    try:
-        pairs = json.loads(text)
-    except ValueError:
-        return None
-    if not isinstance(pairs, dict):
-        return None
-    return [v for v in pairs.values() if isinstance(v, str)]
 
 
 def federated_credentials(
@@ -279,29 +231,21 @@ class PrimedCredentials:
         self._exchange.close()
 
 
-def build_model(
-    settings: Settings, api_key: str | None = None, http_client: Any = None, *, credentials: Any = None
-) -> Any:
-    """The Strands model for these settings, signed in with the key or with federated
-    credentials, never both. http_client is for tests: a fake API."""
+def build_model(settings: Settings, http_client: Any = None, *, credentials: Any = None) -> Any:
+    """The Strands model for these settings, signed in with the federated
+    credentials. http_client is for tests: a fake API."""
     if settings.provider == "bedrock":
         # Waits for the quota: the model ID, its prices, and how thinking is
         # passed get checked then (PROJECT_STATUS, December reminder).
         raise SettingsError("Bedrock isn't wired up yet; its quota is still 0.")
-    if credentials is not None and api_key:
-        raise SettingsError("Sign in with the API key or by federation, not both.")
-    if credentials is None and not api_key:
-        raise KeyUnavailable("The anthropic provider needs an API key or federated credentials.")
+    if credentials is None:
+        raise SettingsError("The anthropic provider signs in by federation: it needs federated credentials.")
 
     from strands.models.anthropic import AnthropicModel
 
-    # Either way, the credential goes to the client as an argument: the client
-    # then never reads ANTHROPIC_API_KEY or the SDK's federation variables.
-    client_args: dict[str, Any] = {"max_retries": 2, "timeout": 60.0}
-    if credentials is not None:
-        client_args["credentials"] = credentials
-    else:
-        client_args["api_key"] = api_key
+    # The credentials go to the client as an argument, so it never reads
+    # ANTHROPIC_API_KEY or the SDK's own federation variables.
+    client_args: dict[str, Any] = {"max_retries": 2, "timeout": 60.0, "credentials": credentials}
     if http_client is not None:
         client_args["http_client"] = http_client
     return AnthropicModel(

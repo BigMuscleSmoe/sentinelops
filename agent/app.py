@@ -9,8 +9,8 @@ its outcome and record: "done" or "failed" with the transcript main.py writes,
 "refused" with the reason nothing ran, or "invalid" (400) for a body it can't
 use. The tools always run through the Gateway at SENTINELOPS_GATEWAY_URL: the
 runtime's role may call the Gateway and read none of what the tools read.
-The model is signed in to by federation as the runtime's role once Terraform
-sets the SENTINELOPS_ANTHROPIC_* IDs, else with the API key.
+The model is signed in to by federation as the runtime's role, with the
+SENTINELOPS_ANTHROPIC_* IDs Terraform sets; without them, every run is refused.
 Only the trigger invokes this, one run at a time; the global limits live
 there.
 

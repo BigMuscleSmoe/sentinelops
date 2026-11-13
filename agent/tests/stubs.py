@@ -21,7 +21,6 @@ SERVICE_OF = {
     "get_metric_data": "cloudwatch",
     "filter_log_events": "logs",
     "query": "dynamodb",
-    "get_secret_value": "secretsmanager",
     "get_web_identity_token": "sts",
     "assume_role": "sts",
 }

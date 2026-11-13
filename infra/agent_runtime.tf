@@ -1,8 +1,8 @@
 # The agent on AgentCore Runtime: our own HTTP app (agent/app.py) with its
 # locked dependencies, deployed as direct code from S3. The tools run behind
 # the tools gateway, so the runtime's role reads the alarm and nothing the
-# tools read. It signs in to the Anthropic API by federation once
-# var.anthropic_federation is set, else with the API key. Only the trigger
+# tools read. It signs in to the Anthropic API by federation, under the rule
+# var.anthropic_federation names; there is no API key. Only the trigger
 # invokes it.
 #
 # agent/build_runtime.py stages the package before any plan: CI runs it in the
@@ -129,12 +129,6 @@ data "aws_iam_policy_document" "agent_runtime" {
     resources = ["arn:aws:cloudwatch:${var.region}:${data.aws_caller_identity.current.account_id}:alarm:sentinelops-*"]
   }
 
-  statement {
-    sid       = "ReadTheApiKey"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.anthropic_api_key.arn]
-  }
-
   # A JWT naming this role, which Anthropic trades for a token of minutes
   # under the federation rule that names the role. Only Anthropic's audience,
   # RS256, and 300 s at most: what providers.py asks for, which
@@ -209,16 +203,14 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
     max_lifetime                 = 360
   }]
 
-  # With federation's IDs, the app signs in as this role and never reads the
-  # key. Only whether they're set is shown in a plan; the IDs stay hidden.
-  environment_variables = merge(
-    { SENTINELOPS_GATEWAY_URL = aws_bedrockagentcore_gateway.tools.gateway_url },
-    nonsensitive(var.anthropic_federation == null) ? {} : {
-      SENTINELOPS_ANTHROPIC_ORGANIZATION_ID    = var.anthropic_federation.organization_id
-      SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID = var.anthropic_federation.service_account_id
-      SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID = var.anthropic_federation.rule_id
-    },
-  )
+  # Federation's IDs, for the app to sign in as this role. They're sensitive,
+  # so a plan never shows them.
+  environment_variables = {
+    SENTINELOPS_GATEWAY_URL                  = aws_bedrockagentcore_gateway.tools.gateway_url
+    SENTINELOPS_ANTHROPIC_ORGANIZATION_ID    = var.anthropic_federation.organization_id
+    SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID = var.anthropic_federation.service_account_id
+    SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID = var.anthropic_federation.rule_id
+  }
 
   # The role must be able to log and call the gateway before a session starts.
   depends_on = [aws_iam_role_policy.agent_runtime]

@@ -24,10 +24,16 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from anthropic.lib.credentials import StaticToken
 
 Count = int | httpx.Response | Exception | None
 # Shaped like the real thing, so anything that masks tokens by their look would act on it.
 ACCESS_TOKEN = "sk-ant-oat01-" + "N0tARealToken5w" * 6 + "-AA"
+
+
+def signed_in() -> StaticToken:
+    """Credentials that hold ACCESS_TOKEN, for a model built without an exchange."""
+    return StaticToken(ACCESS_TOKEN)
 # The Claude Console's IDs for federation, as the environment carries them.
 FEDERATION_IDS = {
     "SENTINELOPS_ANTHROPIC_ORGANIZATION_ID": "7d3c3a5e-1f2b-4c8d-9e0a-5b6c7d8e9f01",
@@ -106,7 +112,7 @@ class FakeAnthropic:
                     "access_token": ACCESS_TOKEN,
                     "token_type": "Bearer",
                     "expires_in": 600,
-                    "scope": "workspace:inference",
+                    "scope": "workspace:developer",
                 },
             )
         self.requests.append(kept)

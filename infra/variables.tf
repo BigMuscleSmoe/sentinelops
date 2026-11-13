@@ -20,18 +20,19 @@ variable "traffic_enabled" {
 # the public CI logs: CI passes them from the ANTHROPIC_FEDERATION secret, and
 # a local plan from a gitignored infra/anthropic.auto.tfvars.
 variable "anthropic_federation" {
-  description = "The Claude Console's IDs for the runtime's federation rule. Null: the agent reads the API key."
+  description = "The Claude Console's IDs for the runtime's federation rule, the agent's only way to sign in."
   type = object({
     organization_id    = string
     service_account_id = string
     rule_id            = string
   })
-  default   = null
+  nullable  = false
   sensitive = true
 
-  # A typo fails the plan, so the runtime that works keeps running.
+  # Required, so a missing secret fails the plan, and a typo too: either way
+  # the runtime that works keeps running.
   validation {
-    condition = var.anthropic_federation == null ? true : (
+    condition = (
       can(regex("^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.anthropic_federation.organization_id))
       && startswith(var.anthropic_federation.service_account_id, "svac_")
       && startswith(var.anthropic_federation.rule_id, "fdrl_")
