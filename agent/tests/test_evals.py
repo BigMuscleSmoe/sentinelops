@@ -192,6 +192,37 @@ def test_the_witness_notes_the_answering_model_and_passes_the_stream_unchanged()
     seen, expected, models = asyncio.run(go())
     assert seen == expected
     assert models == ["claude-haiku-5-5"]
+    assert fake.requests[0]["headers"]["accept-encoding"] == "identity"
+
+
+def _encoded(encoding: str, body: bytes) -> httpx.MockTransport:
+    """An API that sends its stream compressed whatever it's asked for."""
+    return httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, headers={"content-type": "text/event-stream", "content-encoding": encoding}, content=body
+        )
+    )
+
+
+def _through(witness: ModelWitness) -> bytes:
+    async def go() -> bytes:
+        async with httpx.AsyncClient(transport=witness) as client:
+            return (await client.post("https://api.anthropic.com/v1/messages", json={})).content
+
+    return asyncio.run(go())
+
+
+def test_the_witness_reads_a_gzipped_stream_and_the_client_still_gets_it_whole() -> None:
+    stream = b'event: message_start\ndata: {"type": "message_start", "message": {"model": "claude-haiku-5-5"}}\n\n'
+    witness = ModelWitness(_encoded("gzip", gzip.compress(stream)))
+    assert _through(witness) == stream  # httpx decodes it as it always does
+    assert (witness.models, witness.responses) == (["claude-haiku-5-5"], ["200 gzip"])
+
+
+def test_an_encoding_the_witness_cant_read_leaves_the_model_unseen_and_says_so() -> None:
+    witness = ModelWitness(_encoded("br", b"\x8b\x02\x80"))
+    _through(witness)
+    assert (witness.models, witness.responses) == ([], ["200 br"])
 
 
 # --- the sweep, with a scripted model on the real windows -------------------------

@@ -186,8 +186,8 @@ async def run_one(
         record.detail = _short("read outside the recording: " + "; ".join(session.gaps))
     elif wrong:
         record.detail = _short(f"answered by {', '.join(sorted(set(wrong)))}, asked for {settings.model_id}")
-    elif report.model_calls and not witness.models:
-        record.detail = "no response said which model answered"
+    elif report.model_calls and len(witness.models) < sum(r.startswith("200 ") for r in witness.responses):
+        record.detail = _short(f"not every response said which model answered ({', '.join(witness.responses)})")
     elif report.hypothesis is not None:
         stop = report.hypothesis.model_dump(mode="json").get("halted_by")
         record.status = "halted" if stop else "answered"
