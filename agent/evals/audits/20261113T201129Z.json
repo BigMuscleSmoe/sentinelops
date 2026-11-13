@@ -1,0 +1,811 @@
+{
+ "about": "Hand audit of sweep 20261113T201129Z (27 runs: 9 recorded alarms x 3, Haiku 5.5), by Claude, blind: written from each run's alarm prompt, tool output, and Hypothesis, before the grader or the rubrics ran on this sweep. diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer (the run halted). slips are claims past the run's own tool output. strict = the output contradicts it or never showed it (a value outside the rows or lines read, a wrong count or sum, a first or only event claimed from a read that left older lines out, a value given the wrong time or source, a share with the wrong denominator). loose = roughly true but past the data (an 'about' that hides a wider range, a scope left vague, a span rounded beyond the read). where is the Hypothesis field; quote is the claim, ASCII-normalized; check is the kind of claim. Inferences the run marks as unchecked are not slips.",
+ "sweep": "20261113T201129Z",
+ "runs": {
+  "pool-1027-1856-r1": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "With 5 to 11 concurrent requests",
+     "kind": "strict",
+     "check": "range",
+     "note": "the log lines it cites show concurrent_requests 2-11; metrics concurrent_max is 1-11 over its rows"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "every line shows pool_max_size 2 and pool_active_connections 2",
+     "kind": "strict",
+     "check": "universal",
+     "note": "the 18:56:44.850 POST /checkout line has pool_active_connections 1"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "Concurrency was 5 to 11",
+     "kind": "strict",
+     "check": "range",
+     "note": "the shown lines run 2-11"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "Pool waits were 12 to 664 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "the shown lines run 0.0-664.0, several at 0.0-0.5"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "db_query_p50_ms was 60 to 67 ms from 18:41 through 18:56",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8-67.9"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "Many sampled lines had db_query under 50 ms while total latency was 300 to 700 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "8 lines have db_query under 50 ms; their latency runs 31.1-712.2, and 3 fall in 300-700"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "the pool was healthy after the 14:09 and 14:19 changes",
+     "kind": "loose",
+     "check": "past-data",
+     "note": "its metrics start at 18:41; nothing between 14:19 and 18:41 was read"
+    }
+   ]
+  },
+  "pool-1027-1900-r1": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits become latency, 1,500 ms waits fail; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "the service ran normally after the 03:06 rollback and after the 14:xx changes",
+     "kind": "loose",
+     "check": "past-data",
+     "note": "its metrics start at 18:45; nothing between 03:06 and 18:45 was read"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "pool_wait_p99 0.4-0.5 ms from 18:45 to 18:55",
+     "kind": "strict",
+     "check": "range",
+     "note": "18:55 is 0.3"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "db_query_p50_ms stayed 60-66 ms across the whole window",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8 (18:46) to 66.7 (18:56)"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "payments_p99_ms 200-280 ms and 0 payments_timeouts throughout",
+     "kind": "loose",
+     "check": "range",
+     "note": "252-277 from 18:56 on; the whole window runs 77.0-384"
+    }
+   ]
+  },
+  "pool-1027-1901-r1": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; 1,500 ms pool-acquisition timeouts are the 500s; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[6]",
+     "quote": "db_query_p50 stayed 60",
+     "kind": "strict",
+     "check": "range",
+     "note": "claims 60-66 ms from 18:41 to 19:01; its rows run 49.8 (18:46) to 67.9 (18:42)"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "payments_p99 stayed 258",
+     "kind": "loose",
+     "check": "range",
+     "note": "claims 258-277 during the incident; 18:56, its own onset, is 252; true from 18:57"
+    },
+    {
+     "where": "evidence[8]",
+     "quote": "about 4.5 h before onset",
+     "kind": "loose",
+     "check": "arithmetic",
+     "note": "14:19 and 14:09 to 18:56 are 4.6 and 4.8 h"
+    },
+    {
+     "where": "evidence[8]",
+     "quote": "error rate clean afterward",
+     "kind": "loose",
+     "check": "past-data",
+     "note": "its metrics start at 18:41; nothing between 03:06 and 18:41 was read"
+    }
+   ]
+  },
+  "deploy-1027-1905-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 19:05:22; TypeError in apply_promo on carts without a promo; the earlier pool incident set apart as resolved.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "about 10% of checkout traffic fails",
+     "kind": "loose",
+     "check": "denominator",
+     "note": "10.1% is the share of all checkout-api requests in the partial 19:05 row; of the POST /checkout lines it read, 8 of 12 failed"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "about 30 lines",
+     "kind": "loose",
+     "check": "count",
+     "note": "26 of the 30 error lines shown are 1.43.0 failures; the other 4 are 1.42.0 pool timeouts"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "return 200/201",
+     "kind": "loose",
+     "check": "universal",
+     "note": "one GET /products/{id} at 19:05:55.354 returned 404, error 0"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "whose log lines show pool_wait 0",
+     "kind": "strict",
+     "check": "absent-field",
+     "note": "the TypeError lines have no pool fields at all"
+    }
+   ]
+  },
+  "deploy-1029-0156-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 01:55:28; TypeError in apply_promo without a promo; payments, pool, and load ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "which is why the error rate is about 15% and not 100%",
+     "kind": "strict",
+     "check": "denominator",
+     "note": "err% is the share of all requests; GET /products/{id} and POST /cart/items succeed too, so it could never be 100% from checkouts alone"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "about 30 s before the first failing minute",
+     "kind": "strict",
+     "check": "time",
+     "note": "the deploy at 01:55:28 falls inside the first failing minute (01:55); the first failing datapoint is 01:55:30, 2 s later"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "pool_wait_p99 was 0.4 to 0.5 ms throughout",
+     "kind": "strict",
+     "check": "range",
+     "note": "01:43 is 0.3"
+    }
+   ]
+  },
+  "deploy-1112-0747-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 07:46:29; TypeError in apply_promo without a promo; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[6]",
+     "quote": "are 2+ weeks earlier",
+     "kind": "strict",
+     "check": "arithmetic",
+     "note": "the 10-30 records are 12.4-12.6 days before 11-12 07:46; only the 10-29 rollback is past 14 days"
+    }
+   ]
+  },
+  "deploy-1112-0803-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 08:03:11; TypeError in apply_promo without a promo; pool and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[1]",
+     "quote": "First error at 08:03:17.897",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "the read shows the newest 30 of 31 error lines and starts at 08:03:15, so an earlier error exists that it never saw"
+    },
+    {
+     "where": "evidence[3]",
+     "quote": "latency 350-500 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "the four successes run 354.6-502.9"
+    },
+    {
+     "where": "evidence[3]",
+     "quote": "This is a sample of 37 lines",
+     "kind": "strict",
+     "check": "count",
+     "note": "it read 30 lines; 37 is the number found"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "rolled back after about 8 minutes",
+     "kind": "loose",
+     "check": "arithmetic",
+     "note": "21:54:56 to 22:02:21 is 7.4 minutes"
+    }
+   ]
+  },
+  "deploy-1112-2000-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 20:00:15; TypeError in apply_promo without a promo; payments, db, and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+     "kind": "strict",
+     "check": "attribution",
+     "note": "the times are swapped: 0.1739 at 20:00:10, 0.1774 at 20:00:20"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "pool wait is 0.4 ms",
+     "kind": "loose",
+     "check": "value",
+     "note": "the 20:00 row's p99 is 0.5 (its own evidence[5] says so); 0.4 is the highest wait in the log lines"
+    },
+    {
+     "where": "evidence[3]",
+     "quote": "latency about 0.2 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "18 of the 20 are 0.2; two are 4.6 and 3.5"
+    }
+   ]
+  },
+  "deploy-1113-0257-r1": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 02:57:16; TypeError in apply_promo without a promo; payments, db, pool, and config ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "which is why the error rate is about 17",
+     "kind": "strict",
+     "check": "denominator",
+     "note": "err% is the share of all requests; other routes succeed, so it could never be 100% from checkouts alone"
+    },
+    {
+     "where": "evidence[0]",
+     "quote": "First error log at 02:57:19.584",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "the read shows the newest 30 of 33 error lines from 02:57:15, so earlier errors exist that it never saw"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "pool_wait_p99 ~0.5 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "02:37-02:56 run 0.3-0.5"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "payments_p99 stayed 37",
+     "kind": "strict",
+     "check": "range",
+     "note": "claims 37-300 ms across 02:37-02:57; 02:41 is 30.5"
+    },
+    {
+     "where": "evidence[6]",
+     "quote": "All are over 6 hours before the alarm",
+     "kind": "loose",
+     "check": "arithmetic",
+     "note": "LOG_SAMPLE_RATE at 20:58:11 is 5 h 59.6 min before 02:57:45"
+    }
+   ]
+  },
+  "pool-1027-1856-r2": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "query p50 unchanged at about 60 to 67 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8-67.9"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "same as 18:41 to 18:55",
+     "kind": "strict",
+     "check": "range",
+     "note": "claims db_query_p50 60-67 ms; 18:41-18:55 run 49.8-67.9"
+    }
+   ]
+  },
+  "pool-1027-1900-r2": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits become latency and timeouts; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[2]",
+     "quote": "DB query p50 is flat at 60-66 ms throughout",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8 (18:46) to 66.7 (18:56)"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "pool_wait_time_ms 750-770 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "the five lines run 744.2-771.7"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "payments-api p99 is 157-384 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 77.0 (18:55) to 384; 18:46 is 134"
+    }
+   ]
+  },
+  "pool-1027-1901-r2": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool-acquisition timeouts are the 500s; db and payments ruled out. Its root_cause ends with leaked tool-call markup (</root_cause> and a <parameter> tag), a formatting defect, not a claim.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "it is the only record after 03:06 on 27 Oct",
+     "kind": "strict",
+     "check": "record",
+     "note": "the 14:09 and 14:19 config records are after 03:06 on 27 Oct, and its own evidence[6] lists them"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "~0.5 ms (18:55)",
+     "kind": "loose",
+     "check": "value",
+     "note": "18:55 is 0.3"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "db_query_p50 stayed at 60",
+     "kind": "strict",
+     "check": "range",
+     "note": "claims 60-66 ms throughout; its rows run 49.8-67.9"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "payments_p99 stayed at 190",
+     "kind": "loose",
+     "check": "range",
+     "note": "claims 190-280 ms; true from 18:56 on (252-277), the whole window runs 77.0-384"
+    }
+   ]
+  },
+  "deploy-1027-1905-r2": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 19:05:22; TypeError in apply_promo without a promo; the earlier pool incident set apart as reverted.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "returns 500 in about 0.2 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "most are 0.2; two are 6.8 and 5.0"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "Error onset at 19:05:33.125Z",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "it read the newest 20 of 25 error lines from 19:05:27, and the 0.085 datapoint at 19:05:20 it cites shows errors before 19:05:30"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "(and the 25 found in the window)",
+     "kind": "strict",
+     "check": "unseen",
+     "note": "it saw 20 of the 25; the other 5 were never shown"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "pool_wait_p99 of 585-1,495 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "18:56-19:02 run 455 (18:57) to 1498"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "19-21% errors at 18:59-19:02",
+     "kind": "strict",
+     "check": "range",
+     "note": "18:59 is 0.5% and 19:00 8.1%; only 19:01-19:02 are 19.5-21.1%"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "The current failures show pool_wait 0.2-0.5 ms and sub-millisecond latency",
+     "kind": "strict",
+     "check": "absent-field",
+     "note": "the TypeError lines have no pool fields, and two of them took 6.8 and 5.0 ms (its own evidence[2] says 0.2-6.8)"
+    },
+    {
+     "where": "evidence[6]",
+     "quote": "payments_p99_ms was 186-277 ms with 0 timeouts across 18:45-19:05",
+     "kind": "strict",
+     "check": "range",
+     "note": "18:45-19:05 run 77.0 (18:55) to 384 (18:54)"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "db_query_p50_ms was 60-66 ms throughout",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 41.1 (19:04) to 97.0 (19:03)"
+    }
+   ]
+  },
+  "deploy-1029-0156-r2": {
+   "diagnosis": "none",
+   "note": "Halted by the token limit (200,416 of 200,000) with no diagnosis. Its 7 Hypothesis calls were all rejected: each closed root_cause with </root_cause> and wrote confidence (and later evidence, affected_component) as <parameter> markup inside the root_cause string, so the required fields never arrived. The Hypothesis is the guard's, with no claims of the model's.",
+   "slips": []
+  },
+  "deploy-1112-0747-r2": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 07:46:29; TypeError in apply_promo without a promo; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[1]",
+     "quote": "the service ran clean afterward",
+     "kind": "loose",
+     "check": "past-data",
+     "note": "its metrics start at 07:27; nothing between 04:04 and 07:27 was read"
+    }
+   ]
+  },
+  "deploy-1112-0803-r2": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 08:03:11; TypeError in apply_promo without a promo; a 1.42.0 no-promo success after the deploy shown as the contrast; pool and payments ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "the error rate tracks the share of no-promo carts (about 12",
+     "kind": "strict",
+     "check": "denominator",
+     "note": "err% is the share of all requests; in its own POST /checkout read, 33 of 39 1.43.0 checkouts had no promo"
+    },
+    {
+     "where": "root_cause",
+     "quote": "Rolling back to 1.42.0 at 07:47 had cleared the same fault",
+     "kind": "loose",
+     "check": "past-data",
+     "note": "the 07:46 rollout's errors were never read (its evidence[6] says so); the same commit makes it likely"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "first 500 logged at 08:03:14.450Z",
+     "kind": "loose",
+     "check": "first-seen",
+     "note": "its route read shows the newest 40 of 43 lines from 08:02:15; the 3 unseen are older, most likely 1.42.0"
+    }
+   ]
+  },
+  "deploy-1112-2000-r2": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 20:00:15; TypeError in apply_promo without a promo; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+     "kind": "strict",
+     "check": "attribution",
+     "note": "the times are swapped, as in run 1: 0.1739 at 20:00:10, 0.1774 at 20:00:20"
+    }
+   ]
+  },
+  "deploy-1113-0257-r2": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 02:57:16; TypeError in apply_promo without a promo; payments, db, and pool ruled out; says the no-promo share was not reconciled.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "returns 500 within about 0.2 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "most are 0.1-0.2; several run 3.4-8.2"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "The first error is at 02:57:19.584",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "the read shows the newest 30 of 33 error lines from 02:57:15, so earlier errors exist that it never saw"
+    },
+    {
+     "where": "evidence[3]",
+     "quote": "sampled 9 lines",
+     "kind": "strict",
+     "check": "count",
+     "note": "its route read holds 7 successful checkouts from 02:57:39 to 02:57:44"
+    }
+   ]
+  },
+  "pool-1027-1856-r3": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "concurrent requests (3 to 11)",
+     "kind": "strict",
+     "check": "range",
+     "note": "the log lines run 2-11; four show 2"
+    },
+    {
+     "where": "root_cause",
+     "quote": "pool_wait_time_ms rises to 100 to 660 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "the highest is 664.0, and 8 of the 30 lines waited under 100 ms"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "every line shows pool_max_size 2 and pool_active_connections 2",
+     "kind": "strict",
+     "check": "universal",
+     "note": "the 18:56:44.850 POST /checkout line has pool_active_connections 1"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "with concurrency 3 to 11",
+     "kind": "strict",
+     "check": "range",
+     "note": "the lines run 2-11"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "db_query_ms stays 30 to 180 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "the lines run 30.5-1011.8; every POST /checkout is 330.9 or more"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "in line with 60 to 66 ms before",
+     "kind": "strict",
+     "check": "range",
+     "note": "db_query_p50 before 18:56 runs 49.8-67.9"
+    }
+   ]
+  },
+  "pool-1027-1900-r3": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; pool waits become latency and 1,500 ms timeouts; db, payments, deploys, and load ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "With 30 to 40 concurrent requests",
+     "kind": "loose",
+     "check": "range",
+     "note": "its error lines run 29-38; concurrent_max reaches 43 at 19:00"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "db_query_p50_ms 60 to 66 ms throughout the window",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8 (18:46) to 66.7 (18:56)"
+    },
+    {
+     "where": "evidence[6]",
+     "quote": "The last code deploy (1.42.0, 2026-10-14) is weeks earlier",
+     "kind": "strict",
+     "check": "record",
+     "note": "its deploy history has later deploys: 1.43.0 at 03:01 and the rollback to 1.42.0 at 03:06 on 10-27"
+    }
+   ]
+  },
+  "pool-1027-1901-r3": {
+   "diagnosis": "right",
+   "note": "POOL_MAX_SIZE 20 -> 2 at 18:56:06; 1,500 ms pool-acquisition timeouts are the 500s, with the burst raising concurrency; db and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[6]",
+     "quote": "payments_p99 stayed at 191-277 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "claims it for the whole window; 18:41-19:01 run 77.0 (18:55) to 384 (18:54)"
+    },
+    {
+     "where": "evidence[6]",
+     "quote": "db_query_p50 stayed at 60-66 ms throughout",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 49.8-67.9"
+    }
+   ]
+  },
+  "deploy-1027-1905-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 19:05:22; TypeError in apply_promo without a promo; the earlier pool incident set apart as reverted.",
+   "slips": [
+    {
+     "where": "evidence[3]",
+     "quote": "which matches the log count of 25",
+     "kind": "loose",
+     "check": "comparison",
+     "note": "about 28 failures in 19:05:00-19:05:57 against 25 found in 19:05:27-19:05:57: different spans"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "Payments p99 186-269 ms with 0 timeouts across 19:03-19:05",
+     "kind": "loose",
+     "check": "range",
+     "note": "19:03-19:05 run 186-237; 269 is from 18:51-18:52"
+    }
+   ]
+  },
+  "deploy-1029-0156-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 01:55:28; TypeError in apply_promo without a promo, every success has a promo; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "with pool wait p99 about 0.5 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "01:41-01:54 run 0.3-0.5"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "first failing line at 01:55:32.466Z",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "its route read shows the newest 60 of 68 lines from 01:54:37; the 8 unseen are older, and the deploy was at 01:55:28.5, so failures before 01:55:32.466 were likely never seen"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "plus 60 POST /checkout lines from 01:54:37 to 01:56:07",
+     "kind": "loose",
+     "check": "count",
+     "note": "counted among failing lines; 20 of the 60 are 200s"
+    },
+    {
+     "where": "evidence[4]",
+     "quote": "Payments p99 stayed about 100 to 220 ms through 01:56",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 58.4 (01:52) to 217, with 83.4 at 01:48"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "pool_wait_time_ms about 0.5 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "its log lines show 0.0-0.5, mostly 0.0"
+    }
+   ]
+  },
+  "deploy-1112-0747-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 07:46:29; TypeError in apply_promo without a promo, every 200 has a promo; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "evidence[0]",
+     "quote": "Latency p50 ~57-58 ms and pool_wait_p99 ~0.5 ms throughout",
+     "kind": "loose",
+     "check": "range",
+     "note": "true of 07:46-07:47; across 07:17-07:47 p50 runs 52.2-80.2 and pool wait 0.2-0.5"
+    },
+    {
+     "where": "evidence[1]",
+     "quote": "Config changes at 04:04:36 (...) and 02:33:48 (...) are ~3 h before the alarm",
+     "kind": "strict",
+     "check": "arithmetic",
+     "note": "3 h 42 min and 5 h 13 min before 07:47:05"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "(07:46:44 to 07:47:04)",
+     "kind": "loose",
+     "check": "attribution",
+     "note": "the 20 error lines run 07:46:46.138 to 07:47:04.730; 07:46:44 is the route read's first line"
+    },
+    {
+     "where": "evidence[3]",
+     "quote": "In a 3-minute sample of POST /checkout (36 lines, 30 shown)",
+     "kind": "strict",
+     "check": "span",
+     "note": "the read's header says it searched 07:46:35 to 07:47:05, 30 s"
+    }
+   ]
+  },
+  "deploy-1112-0803-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 08:03:11; TypeError in apply_promo; the 07:46 deploy and its rollback read as the same defect; says the promo split was not proven.",
+   "slips": [
+    {
+     "where": "evidence[3]",
+     "quote": "Deploy 07:46:29.556 1.43.0: errors start at 07:47:04.73",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "the 30-minute read left out its oldest 32 lines, all before 07:47:04.730, as its header says"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "db query p50 about 55-60 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "claimed throughout; 07:48-08:03 run 54.8-84.1, and 07:59-08:03 alone 54.8-76.4"
+    },
+    {
+     "where": "evidence[7]",
+     "quote": "pool wait p99 0.5 ms throughout",
+     "kind": "loose",
+     "check": "range",
+     "note": "0.5 in 07:59-08:03; 07:53-07:58 include 0.3 and 0.4"
+    }
+   ]
+  },
+  "deploy-1112-2000-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 20:00:15; TypeError in apply_promo without a promo; 1.42.0 served no-promo carts before it; payments and pool ruled out.",
+   "slips": [
+    {
+     "where": "root_cause",
+     "quote": "Roughly 18% of checkout traffic has no promo, which matches the observed error rate",
+     "kind": "strict",
+     "check": "denominator",
+     "note": "18.5% is the share of all 324 requests; in its route read 37 of 53 checkouts on 1.43.0 had no promo"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "Latency is 0.2-5.5 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "5.5 comes from its route read, which also holds a 126.0 ms failure at 20:00:18.759; the 20 error lines run 0.2-4.6"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "db_query_p50 stayed 45-80 ms",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 45.3-97.0 (19:42)"
+    },
+    {
+     "where": "evidence[6]",
+     "quote": "were each rolled back within about a minute",
+     "kind": "loose",
+     "check": "arithmetic",
+     "note": "67 s for 07:46, 104 s for 08:03"
+    }
+   ]
+  },
+  "deploy-1113-0257-r3": {
+   "diagnosis": "right",
+   "note": "1.43.0 at 02:57:16; TypeError in apply_promo without a promo, every 200 has a promo; pool, load, and payments ruled out.",
+   "slips": [
+    {
+     "where": "evidence[1]",
+     "quote": "pool_wait_p99 about 0.5 ms",
+     "kind": "loose",
+     "check": "range",
+     "note": "02:37-02:57 run 0.3-0.5"
+    },
+    {
+     "where": "evidence[2]",
+     "quote": "First 500 logged at 02:57:19.584",
+     "kind": "strict",
+     "check": "first-seen",
+     "note": "the read shows the newest 30 of 33 error lines from 02:57:15, so earlier errors exist that it never saw"
+    },
+    {
+     "where": "evidence[5]",
+     "quote": "payments_p99 stayed between 96 and 300 ms over the 20-minute window",
+     "kind": "strict",
+     "check": "range",
+     "note": "its rows run 30.5 (02:41) to 300, with 37.1 and 65.8 too"
+    }
+   ]
+  }
+ }
+}
