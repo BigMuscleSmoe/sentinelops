@@ -25,6 +25,7 @@ from typing import Any
 from checkout import VERSION
 from checkout.app import App
 from checkout.config import Config
+from controller.faults import DURATION_S as FAULT_S
 from sim import releases
 from sim.backend import Backend
 from sim.pool import MAX_ATTEMPTS, PoolState, Reservation, applied, holds, plan_reservation, reserved
@@ -44,6 +45,7 @@ class Scenario:
     burst: bool
     horizon_s: int  # how long to run after the break
     release: str = VERSION  # the code that runs from the break on
+    fault_s: int = FAULT_S  # how long the fault lasts: the controller's lifetime, uncleared
 
 
 POOL_FAULT = Scenario(pool_max_size=2, burst=True, horizon_s=480)
@@ -171,7 +173,7 @@ def run(
     )
     try:
         for n, at in enumerate(arrivals(scenario, rng)):
-            current = broken if at >= 0 else healthy
+            current = broken if 0 <= at < scenario.fault_s else healthy
             releases.deploy(current.version)
             clock.now = BREAK_AT + at
             app.handle(request_event(rng), request_id=f"sim-{n:06d}", cold_start=False)

@@ -19,7 +19,9 @@ BAD_RELEASE = "1.43.0"
 BAD_RELEASE_COMMIT = "9c41e7b"
 POOL_MAX_SIZE = 20
 SMALL_POOL_MAX_SIZE = 2
-DURATION_S = 600  # how long a fault lasts unless it's cleared
+# How long a fault lasts unless it's cleared: the burst's 360 s plus 30, so the
+# fault ends with its traffic and nothing is left to re-fire (Phase 3, decision 3).
+DURATION_S = 390
 
 
 @dataclass(frozen=True)

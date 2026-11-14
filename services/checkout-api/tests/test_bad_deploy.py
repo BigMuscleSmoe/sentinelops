@@ -6,10 +6,12 @@ once, latency and pool wait stay flat, and every failure is the same TypeError
 on /checkout.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from checkout import VERSION
-from sim.pool_sim import BAD_DEPLOY, first_alarms, run
+from sim.pool_sim import ALARMS, BAD_DEPLOY, BREAK_AT, FAULT_S, first_alarm, first_alarms, run
 
 SEEDS = (1, 2, 3)
 
@@ -43,3 +45,16 @@ def test_about_one_request_in_seven_fails_all_the_same_way_and_fast(deploy_runs,
 def test_nothing_fails_before_the_deploy(deploy_runs):
     before = [line for line in deploy_runs[1] if line["version"] == VERSION]
     assert before and not any(line["error"] for line in before)
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_the_error_alarm_does_not_re_fire_once_the_fault_ends(seed):
+    """Phase 3, decision 3: held past the burst, steady traffic re-fired the alarm
+    (420 to 680 s in these seeds); ending the fault at 390 s leaves nothing to fire."""
+    errors = next(alarm for alarm in ALARMS if alarm.name == "errors")
+    lines = run(replace(BAD_DEPLOY, horizon_s=900), seed)
+    after = [line for line in lines if line["_aws"]["Timestamp"] / 1000 - BREAK_AT >= FAULT_S]
+    assert after and not any(line["error"] for line in after)
+    assert first_alarm(lines, errors, FAULT_S + 10, 900) is None
+    held = run(replace(BAD_DEPLOY, horizon_s=900, fault_s=900), seed)
+    assert first_alarm(held, errors, FAULT_S + 10, 900) is not None

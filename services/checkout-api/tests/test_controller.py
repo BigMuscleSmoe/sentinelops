@@ -16,9 +16,10 @@ from controller.actions import FLAG_KEY, FaultController, timestamp
 from sim import releases
 from sim.flags import parse
 from sim.pool_sim import VirtualClock
+from traffic import burst
 
 NOW = 1_800_000_000.25
-EXPIRES_AT = 1_800_000_601  # the next whole second, plus 600
+EXPIRES_AT = 1_800_000_391  # the next whole second, plus the fault's 390 s
 FLAGS = "sentinelops-checkout-flags"
 HISTORY = "sentinelops-deploy-history"
 REPO = Path(__file__).resolve().parents[3]
@@ -243,10 +244,16 @@ def test_status_shows_the_fault_until_it_expires(controller, clock):
         "mode": "db_pool_exhaustion",
         "set_at": timestamp(NOW),
         "expires_at": timestamp(EXPIRES_AT),
-        "remaining_s": 501,
+        "remaining_s": 291,
     }
     clock.now = EXPIRES_AT
     assert controller.handle({"action": "status"}) == {"ok": True, "active": False}
+
+
+def test_a_fault_ends_30_s_after_its_burst():
+    """Phase 3, decision 3: the fault ends with its traffic, so nothing is left to re-fire."""
+    assert faults.DURATION_S == burst.DURATION_S + 30
+    assert EXPIRES_AT == int(NOW) + 1 + faults.DURATION_S
 
 
 def test_timestamps_sort_as_text_in_time_order():

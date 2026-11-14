@@ -28,7 +28,7 @@ A fault mode calls the controller's `break`, which also starts the 6-minute burs
 2. sends `clear` for a fault;
 3. leaves `t0_<mode>.txt`, the run's start time, for `analyze.py`.
 
-It stops without clearing if the break is refused, for example because another fault is active. If you stop it early, the fault expires 10 minutes after the break, or clear it now:
+It stops without clearing if the break is refused, for example because another fault is active. If you stop it early, the fault expires 390 s after the break (the burst's 6 minutes and 30 s), or clear it now:
 
 ```bash
 echo '{"action": "clear"}' > ctl.json
