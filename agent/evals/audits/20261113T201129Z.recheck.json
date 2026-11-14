@@ -1,0 +1,410 @@
+{
+ "about": "Hand re-check of the 46 grader flags that matched no label in the one grading pass of sweep 20261113T201129Z (grader frozen at 57455ab; audit 6e029ce, unchanged). Each flag was checked against the run's own tool output. call: false_flag = the flagged claim is supported, or isn't the model's claim; audit_miss = a real slip the audit didn't label. cause: pairing = a value checked against the wrong time, row, column, or source; range-read = a listed or example value read as a range claim; partial-row = the last, still-filling row counted as unread; scope = the claim's own scope ignored; context = a number read out of its phrase; not-a-claim = leaked markup or the guard's halt text.",
+ "sweep": "20261113T201129Z",
+ "runs": {
+  "pool-1027-1856-r1": [
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "pool_wait_p99 0.3 to 0.5 ms (span start 18:41)",
+    "check": "range",
+    "cause": "pairing",
+    "note": "0.3-0.5 is right: 18:41-18:54 are 0.4-0.5 and 18:55 is 0.3 in its first metrics read"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "pool_wait 664.0 ms (rows 18:56:45.787)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "a log line: 18:56:45.787 GET /products/{id} has pool_wait_time_ms 664.0; checked against metric rows"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "db_query 43.7 ms (rows 18:56:45.787)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "a log line: 18:56:45.787 has db_query_ms 43.7"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "pool_wait 630.8 ms (rows 18:56:45.826)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "a log line: 18:56:45.826 POST /cart/items has pool_wait_time_ms 630.8"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "db_query 181.9 ms (rows 18:56:45.826)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "a log line: 18:56:45.826 has db_query_ms 181.9"
+   }
+  ],
+  "pool-1027-1900-r1": [
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "latency p99 1469 ms (rows 18:56)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "1469 is the 18:58 row's p99, as written; pinned to 18:56"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "latency p99 1648 ms (rows 18:56)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "1648 is the 18:59 row's p99, as written"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "latency p99 1938 ms (rows 18:56)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "1938 is the 19:00 row's p99, as written"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "latency 1086.6 ms",
+    "check": "range",
+    "cause": "range-read",
+    "note": "an example: the 19:00:26.258 POST /cart/items line has latency 1086.6"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "pool wait 1006.9 ms",
+    "check": "range",
+    "cause": "pairing",
+    "note": "the same line has pool_wait_time_ms 1006.9; checked against metric rows"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "db_query 74.5 ms",
+    "check": "range",
+    "cause": "pairing",
+    "note": "the same line has db_query_ms 74.5"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[7]",
+    "text": "pool wait 1086.7 ms",
+    "check": "range",
+    "cause": "pairing",
+    "note": "the 19:00:26.535 POST /checkout line has pool wait 1086.7 of 1584.1 ms"
+   }
+  ],
+  "deploy-1027-1905-r1": [
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "pool_wait_p99 1498 ms (rows 18:56:06)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "1498 is the 19:01 and 19:02 rows' pool wait, 'up to'; pinned to the 18:56:06 change time"
+   }
+  ],
+  "deploy-1112-0747-r1": [
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "pool_wait_p99 0.5 ms (span 07:46 07:47)",
+    "check": "coverage",
+    "cause": "partial-row",
+    "note": "07:46 and 07:47* both show 0.5, as read; 07:47 is the partial last row"
+   }
+  ],
+  "deploy-1112-2000-r1": [
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "p50 45-80 ms",
+    "check": "range",
+    "cause": "pairing",
+    "note": "DB p50: its rows (19:45-20:00) run 45.3-80.2; read as latency p50"
+   }
+  ],
+  "deploy-1113-0257-r1": [
+   {
+    "call": "false_flag",
+    "where": "root_cause",
+    "text": "err% 100%",
+    "check": "range",
+    "cause": "context",
+    "note": "'not 100%' read as a claimed 100%; the sentence's real slip, the denominator, is a strict label the matcher missed (its quote stops at '17')"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "pool_active_max 20",
+    "check": "range",
+    "cause": "context",
+    "note": "'4 of 20': 4 is pool_active_max, 20 the pool size"
+   }
+  ],
+  "pool-1027-1856-r2": [
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "db_query_p50 60 to 67 ms (rows 18:56)",
+    "check": "range",
+    "cause": "context",
+    "note": "a range read for the 18:56 row alone, where 66.7 lies inside it; the sentence's real slip, the 18:41-18:55 baseline, is a strict label with no shared token"
+   }
+  ],
+  "pool-1027-1901-r2": [
+   {
+    "call": "false_flag",
+    "where": "root_cause",
+    "text": "root_cause",
+    "check": "literal",
+    "cause": "not-a-claim",
+    "note": "the leaked markup '</root_cause> <parameter name=\"runbook_cited\">' (the run's note), not a claim about the data"
+   },
+   {
+    "call": "false_flag",
+    "where": "root_cause",
+    "text": "runbook_cited",
+    "check": "literal",
+    "cause": "not-a-claim",
+    "note": "the same leaked markup"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "concurrent_max 43 (span 19:00 19:01)",
+    "check": "coverage",
+    "cause": "partial-row",
+    "note": "19:00 shows 43, as read; 19:01* is the partial last row"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "concurrent_max 51 (span 19:00 19:01)",
+    "check": "coverage",
+    "cause": "partial-row",
+    "note": "19:01* shows 51, as read"
+   }
+  ],
+  "deploy-1029-0156-r2": [
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "get_metrics",
+    "check": "literal",
+    "cause": "not-a-claim",
+    "note": "the halted run's evidence is written by the guard's code, not the model; it made those 5 calls"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "get_deploy_history",
+    "check": "literal",
+    "cause": "not-a-claim",
+    "note": "the same guard-written line"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "get_recent_logs",
+    "check": "literal",
+    "cause": "not-a-claim",
+    "note": "the same guard-written line"
+   }
+  ],
+  "deploy-1112-0747-r2": [
+   {
+    "call": "false_flag",
+    "where": "evidence[4]",
+    "text": "p99 233 ms",
+    "check": "range",
+    "cause": "pairing",
+    "note": "233 is payments_p99 in 07:46 and 07:47, the failing minutes; read as latency p99"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[7]",
+    "text": "req 548 (incident)",
+    "check": "range",
+    "cause": "range-read",
+    "note": "a sequence, 12 then 219 then 548, matching the rows"
+   }
+  ],
+  "deploy-1112-0803-r2": [
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "error rate 0% (whole)",
+    "check": "range",
+    "cause": "scope",
+    "note": "'stayed 0% after that' means until the 08:03 deploy; its rows 07:48-08:02 are all 0.0 (07:47:36-07:48 is unread, 24 s)"
+   }
+  ],
+  "deploy-1113-0257-r2": [
+   {
+    "call": "false_flag",
+    "where": "evidence[6]",
+    "text": "error rate 16.6-23.5%",
+    "check": "range",
+    "cause": "range-read",
+    "note": "16.6 is the 02:57 row and 23.5 the 02:57:10 datapoint; both in its output"
+   }
+  ],
+  "pool-1027-1900-r3": [
+   {
+    "call": "false_flag",
+    "where": "evidence[5]",
+    "text": "payments_p99_ms 220 to 280 ms (rows 18:55)",
+    "check": "range",
+    "cause": "range-read",
+    "note": "an envelope: the incident rows run 252-277, inside 220-280"
+   }
+  ],
+  "pool-1027-1901-r3": [
+   {
+    "call": "false_flag",
+    "where": "root_cause",
+    "text": "Pool wait p99 0.5 ms (rows 18:56)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "0.5 is the pre-change level; 585 at 18:56 is in the same phrase"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[4]",
+    "text": "concurrent_max 35 (rows 18:58)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "35 is the 18:59 row; pinned to 18:58"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[4]",
+    "text": "concurrent_max 43 (rows 18:58)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "43 is the 19:00 row"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[4]",
+    "text": "concurrent_max 51 (rows 18:58)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "51 is the 19:01 row"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[7]",
+    "text": "no errors or pool pressure",
+    "check": "absence",
+    "cause": "scope",
+    "note": "scoped to 18:41-18:55, which shows err 0.0 and pool wait 0.3-0.5; the 18:59 error is outside it"
+   }
+  ],
+  "deploy-1027-1905-r3": [
+   {
+    "call": "false_flag",
+    "where": "evidence[6]",
+    "text": "error rate 8.1% (span 19:00 19:02)",
+    "check": "range",
+    "cause": "range-read",
+    "note": "a per-minute list: 8.1 at 19:00, 19.5 at 19:01, 21.1 at 19:02, as read"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[6]",
+    "text": "error rate 19.5% (span 19:00 19:02)",
+    "check": "range",
+    "cause": "range-read",
+    "note": "the same list"
+   }
+  ],
+  "deploy-1112-0747-r3": [
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "upstream_latency_ms 80.2",
+    "check": "range",
+    "cause": "range-read",
+    "note": "an example: the 07:46:47.817 line has upstream_latency_ms 80.2"
+   }
+  ],
+  "deploy-1112-0803-r3": [
+   {
+    "call": "false_flag",
+    "where": "root_cause",
+    "text": "err% 17.6% (rows 08:03:14)",
+    "check": "value",
+    "cause": "pairing",
+    "note": "17.6% is the 08:03 row; pinned to 08:03:14"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[2]",
+    "text": "first 500 at 08:03:14",
+    "check": "truncation",
+    "cause": "scope",
+    "note": "the first 500 after the 08:03:11 deploy; its 30-minute read shows every line after 07:47:04, none between 07:47:34.795 and 08:03:14.450"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "07:47:34.80",
+    "check": "literal",
+    "cause": "context",
+    "note": "07:47:34.795 rounded to 07:47:34.80"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[3]",
+    "text": "no errors until 08:03:14",
+    "check": "absence",
+    "cause": "scope",
+    "note": "the same full read: no error line from 07:47:34.795 to 08:03:14.450; the 08:03 row's errors start inside that minute"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[6]",
+    "text": "payments p99 158-232 ms (span 08:02 08:03)",
+    "check": "coverage",
+    "cause": "partial-row",
+    "note": "08:02 is 158 and 08:03* 232, as read"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[6]",
+    "text": "timeouts 0 (span 08:02 08:03)",
+    "check": "coverage",
+    "cause": "partial-row",
+    "note": "timeouts 0 in 08:02 and 08:03*, as read"
+   },
+   {
+    "call": "false_flag",
+    "where": "evidence[8]",
+    "text": "no matching deploy or config change",
+    "check": "absence",
+    "cause": "scope",
+    "note": "the traffic drop at 07:53: no record between 07:47:36 and 08:03:11"
+   }
+  ],
+  "deploy-1113-0257-r3": [
+   {
+    "call": "false_flag",
+    "where": "evidence[1]",
+    "text": "pool active max 20",
+    "check": "range",
+    "cause": "context",
+    "note": "'4 of 20': 4 is pool_active_max, 20 the pool size"
+   }
+  ]
+ }
+}
