@@ -1,10 +1,11 @@
+import copy
 import math
 
 import pytest
 from pydantic import ValidationError
 
 from answers import UPSTREAM_EVIDENCE, item
-from models import FaultLocation, Hypothesis, StopReason
+from models import FaultLocation, Hypothesis, StopReason, trimmed_answer
 
 VALID = {
     "root_cause": "Upstream payments-api p99 rose from 120ms to 4.8s at 14:02; checkout-api times out waiting on it.",
@@ -225,3 +226,75 @@ def test_tool_call_markup_in_any_prose_field_is_rejected_by_name(answer: dict) -
 @pytest.mark.parametrize("prose", ["p99 < 100 ms, then > 1,400 ms", "1.42.0 -> 1.43.0", "<none>", "a <b> tag"])
 def test_ordinary_angle_brackets_are_kept(prose: str) -> None:
     assert Hypothesis.model_validate({**VALID, "root_cause": prose}).root_cause == prose
+
+
+# --- a leaked tail on root_cause, cut instead of sent back ----------------------------------
+
+CAUSE = VALID["root_cause"]
+TAIL = '</root_cause>\n<parameter name="confidence">0.82'
+LEAKED = {**VALID, "root_cause": CAUSE + TAIL}
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # As Haiku 5.5 wrote them under strict tool use (sweep 20261114T183031Z, the check replay).
+        '</root_cause>\n<parameter name="confidence">0.93',
+        '</root_cause>\n<parameter name="confidence">0.9',
+        # Before strict tool use, opening the fields they swallowed.
+        '</root_cause>\n<parameter name="affected_component">payments-api',
+        '</root_cause>\n<parameter name="runbook_cited">null',
+        # Everything after the opener goes, more markup included.
+        '</root_cause>\n<parameter name="confidence">0.82</parameter>\n<parameter name="fault_location">upstream',
+        # A bare closing tag at the very end.
+        "</root_cause>",
+        "</root_cause>\n",
+        # Whitespace before the tag goes with it.
+        " \n</root_cause>\n<parameter name=\"confidence\">0.82",
+    ],
+)
+def test_a_leaked_tail_at_the_end_of_root_cause_is_cut_from_the_tag_on(tail: str) -> None:
+    answer = {**VALID, "root_cause": CAUSE + tail}
+    before = copy.deepcopy(answer)
+
+    cut, removed = trimmed_answer(answer)
+
+    assert cut == VALID  # root_cause as it was before the tag, every other field as written
+    assert removed == tail
+    assert answer == before
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        # Another fault besides the tail: the normal rejection names them all.
+        {k: v for k, v in LEAKED.items() if k != "confidence"},  # the tail swallowed it, as before strict
+        {**LEAKED, "confidence": 1.5},
+        {**LEAKED, "affected_component": ""},
+        {**LEAKED, "evidence": [item("value", column="err%", at="19:05:00", value="10.1")]},  # no source
+        {**LEAKED, "inferences": [{"claim": "Payments-api is the cause.", "rests_on": ["e9"]}]},
+        # Markup anywhere else.
+        {**LEAKED, "affected_component": "payments-api</affected_component>"},
+        {**LEAKED, "runbook_cited": "db-pool-exhaustion.md</runbook_cited>"},
+        {**LEAKED, "not_checked": ["the replica's limit</not_checked>"]},
+        {**LEAKED, "evidence": [item("count", source="l1", count=2, note="two lines</note>")]},
+        {**LEAKED, "inferences": [{"claim": '<invoke name="Hypothesis">', "rests_on": ["e1"]}]},
+        {**VALID, "root_cause": 'Pool <invoke name="Hypothesis"> exhausted.' + TAIL},
+        {**VALID, "root_cause": "Pool exhausted.</root_cause> Then more." + TAIL},
+        # Not the tail: another tag, an opener naming no field, an opener alone, the tag not at the end.
+        {**VALID, "root_cause": CAUSE + '</parameter>\n<parameter name="confidence">0.82'},
+        {**VALID, "root_cause": CAUSE + "</confidence>"},
+        {**VALID, "root_cause": CAUSE + '</root_cause>\n<parameter name="cause">0.82'},
+        {**VALID, "root_cause": CAUSE + '<parameter name="confidence">0.82'},
+        {**VALID, "root_cause": CAUSE + "</root_cause> and then more prose."},
+        # Nothing left once cut.
+        {**VALID, "root_cause": TAIL},
+        {**VALID, "root_cause": " \n</root_cause>"},
+        # Nothing to cut.
+        VALID,
+        {**VALID, "root_cause": None},
+        "not an answer",
+    ],
+)
+def test_anything_else_is_left_for_the_normal_rejection(answer) -> None:
+    assert trimmed_answer(answer) is None

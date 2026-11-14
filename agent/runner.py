@@ -35,6 +35,8 @@ class RunReport:
     cost_usd: float
     seconds: float
     messages: list[Any] = field(repr=False)
+    # The text cut off each answer the guard trimmed, not resent (models.trimmed_answer).
+    trims: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         tools = ", ".join(f"{name} x{n}" for name, n in Counter(self.tool_calls).items()) or "none"
@@ -124,6 +126,7 @@ async def investigate(
         cost_usd=guard.cost_usd,
         seconds=guard.elapsed_s,
         messages=agent.messages,
+        trims=list(guard.trims),
     )
 
 

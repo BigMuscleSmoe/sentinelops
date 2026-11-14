@@ -137,8 +137,13 @@ def test_every_tool_result_is_labeled_as_a_source_and_its_log_lines_numbered() -
     assert again.startswith("[source m2]\n")
 
 
-# A leak like the one that cost deploy-1029-0156-r2 its run: the closing tag inside the string.
-LEAKED = {**DIAGNOSIS, "root_cause": f"{DIAGNOSIS['root_cause']}</root_cause>"}
+# A leak like the one that cost deploy-1029-0156-r2 its run, from before strict tool use: the
+# closing tag inside the string, swallowing the field after it. Cut, it would still lack its
+# confidence, so the trim leaves it, and it's sent back.
+LEAKED = {
+    **{k: v for k, v in DIAGNOSIS.items() if k != "confidence"},
+    "root_cause": DIAGNOSIS["root_cause"] + '</root_cause>\n<parameter name="confidence">0.9',
+}
 
 
 def test_a_malformed_answer_is_sent_back_twice_then_the_run_halts() -> None:
@@ -458,3 +463,56 @@ def test_a_strict_answer_is_still_checked_for_what_the_schema_no_longer_says() -
     rejected = [fake.tool_results(i) for i in (1, 2)]
     assert "less than or equal to 1" in " ".join(rejected[0])
     assert "at least 1 character" in " ".join(rejected[1])
+
+
+LEAKED_TAIL = '</root_cause>\n<parameter name="confidence">0.9'
+
+
+def guard_events(caplog: pytest.LogCaptureFixture, event: str) -> list[dict]:
+    return [
+        e
+        for e in (json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.guards")
+        if e["event"] == event
+    ]
+
+
+def test_an_answer_whose_only_fault_is_a_leaked_tail_is_trimmed_not_sent_back(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    leaked = {**DIAGNOSIS, "root_cause": DIAGNOSIS["root_cause"] + LEAKED_TAIL}
+    fake = FakeAnthropic([answer(leaked)])
+
+    report = run(fake)
+
+    assert len(fake.requests) == 1  # no resend
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+    assert report.trims == [LEAKED_TAIL]
+    assert [e["removed"] for e in guard_events(caplog, "answer_trimmed")] == [LEAKED_TAIL]
+    assert guard_events(caplog, "answer_rejected") == []
+    # The conversation keeps what the model wrote.
+    written = [b["toolUse"]["input"] for m in report.messages for b in m["content"] if "toolUse" in b]
+    assert written == [leaked]
+
+
+def test_a_leaked_tail_with_another_fault_gets_the_normal_rejection(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    leaked = {**DIAGNOSIS, "root_cause": DIAGNOSIS["root_cause"] + LEAKED_TAIL, "confidence": 1.5}
+    fake = FakeAnthropic([answer(leaked), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    rejected = " ".join(fake.tool_results(1))
+    assert "holds tool-call markup" in rejected and "less than or equal to 1" in rejected
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.trims == []
+    assert len(guard_events(caplog, "answer_rejected")) == 1
+
+
+def test_a_resend_ending_in_a_bare_closing_tag_is_trimmed(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    bare = {**DIAGNOSIS, "root_cause": DIAGNOSIS["root_cause"] + "</root_cause>"}
+    fake = FakeAnthropic([answer({**DIAGNOSIS, "confidence": 1.5}), answer(bare)])
+
+    report = run(fake)
+
+    assert len(fake.requests) == 2
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.trims == ["</root_cause>"]
+    assert len(guard_events(caplog, "answer_rejected")) == 1

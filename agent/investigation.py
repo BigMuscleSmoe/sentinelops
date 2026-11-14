@@ -54,6 +54,7 @@ class Investigation:
             "tools_via": "gateway" if self.gateway else "local",
             "hypothesis": report.hypothesis.model_dump(mode="json") if report.hypothesis else None,
             "failure": report.failure,
+            "trims": report.trims,
             "tool_calls": report.tool_calls,
             "model_calls": [asdict(call) for call in report.model_calls],
             "input_tokens": report.input_tokens,

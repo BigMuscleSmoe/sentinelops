@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from checker.__main__ import main as checker_main
-from checker.trial import BASELINE_MEDIAN_USD, rejected_answers, trial
+from checker.trial import BASELINE_MEDIAN_USD, rejected_answers, render, trial
 from test_main import REPLAY, investigating, replay_session, run
 
 SCENARIO = "deploy-1027-1905"  # the replay's alarm
@@ -101,3 +101,14 @@ def test_the_cli_prints_the_marks_and_exits_on_the_verdict(transcript: dict[str,
     bad = sweep(tmp_path / "bad", [("error", 0.0, {})] * 9)
     assert checker_main(["--trial", str(bad)]) == 1
     assert capsys.readouterr().out.rstrip().endswith("trial failed")
+
+
+def test_trims_are_counted_next_to_resends(transcript: dict[str, Any], tmp_path: Path) -> None:
+    trimmed = {**with_rejections(transcript, 1), "trims": ['</root_cause>\n<parameter name="confidence">0.9']}
+    before_trims = {k: v for k, v in transcript.items() if k != "trims"}  # a transcript from before the trim
+    result = trial(sweep(tmp_path, [("answered", 0.0060, trimmed), ("answered", 0.0060, before_trims)] + [("answered", 0.0060, transcript)] * 7))
+
+    assert [(r.resends, r.trims) for r in result.runs[:3]] == [(1, 1), (0, 0), (0, 0)]
+    printed = render(result)
+    assert f"{SCENARIO}-r1: answered, 1 resends, 1 trims, $0.0060" in printed
+    assert "resends: 1, in 1 runs; trims: 1, in 1 runs" in printed

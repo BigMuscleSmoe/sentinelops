@@ -8,6 +8,7 @@ import time
 import pytest
 
 from guards import (
+    TRIM_LOG_CHARS,
     CostLimitExceeded,
     Limits,
     Remaining,
@@ -503,3 +504,18 @@ def test_a_halted_answer_states_nothing_as_evidence(guard: RunGuard) -> None:
     assert halted.fault_location is FaultLocation.UNDETERMINED and not halted.can_open_pr
     assert halted.not_checked[0].startswith("Halted by the resend limit (2 resends of a malformed answer).")
     assert Hypothesis.model_validate_json(halted.model_dump_json()) == halted
+
+
+def test_a_trim_is_logged_with_its_text_and_counts_toward_no_limit(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    guard = RunGuard(Limits(max_answer_resends=0))
+    long = "</root_cause>" + "x" * 2 * TRIM_LOG_CHARS
+
+    guard.record_trimmed_answer("</root_cause>")
+    guard.record_trimmed_answer(long)
+    guard.check()  # no resends allowed, and still nothing trips
+
+    assert guard.trims == ["</root_cause>", long] and guard.rejected_answers == 0 and guard.tripped is None
+    events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.guards"]
+    trimmed = [(e["removed"], e["removed_chars"]) for e in events if e["event"] == "answer_trimmed"]
+    assert trimmed == [("</root_cause>", 13), (long[:TRIM_LOG_CHARS], len(long))]

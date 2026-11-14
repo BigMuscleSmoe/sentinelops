@@ -13,9 +13,9 @@ result shows on its own goes in `inferences`, and what wasn't looked at in
 import re
 from collections.abc import Collection
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 PR_CONFIDENCE_THRESHOLD = 0.7
@@ -290,3 +290,35 @@ class Hypothesis(BaseModel):
             and self.fault_location is FaultLocation.THIS_SERVICE
             and self.confidence >= PR_CONFIDENCE_THRESHOLD
         )
+
+
+# Haiku 5.5's leak under strict tool use (sweep 20261114T183031Z, 6 of 9 first
+# answers): root_cause closed with its own closing tag inside the string, then
+# the next field's tool-call opener, with that field also written as its own
+# value. That tail, or a bare closing tag, at the very end is all that's cut.
+_LEAKED_TAIL = re.compile(
+    r"\s*</root_cause>(?:\s*<parameter name=\"(?:"
+    + "|".join(Hypothesis.model_json_schema()["properties"])
+    + r")\">.*)?\s*\Z",
+    re.DOTALL,
+)
+
+
+def trimmed_answer(answer: Any) -> tuple[dict[str, Any], str] | None:
+    """The answer with a leaked tail cut off root_cause, and the text cut off.
+
+    None unless root_cause ends in that tail and the cut answer then validates
+    in full: every other field, the checks across fields, and the cut root_cause
+    itself, so markup left anywhere still gets the normal rejection and a resend.
+    The answer passed in is left as it was.
+    """
+    root_cause = answer.get("root_cause") if isinstance(answer, dict) else None
+    tail = _LEAKED_TAIL.search(root_cause) if isinstance(root_cause, str) else None
+    if tail is None:
+        return None
+    cut = {**answer, "root_cause": root_cause[: tail.start()]}
+    try:
+        Hypothesis.model_validate(cut)
+    except ValidationError:
+        return None
+    return cut, root_cause[tail.start() :]

@@ -32,6 +32,9 @@ from models import FaultLocation, Hypothesis, StopReason
 
 logger = logging.getLogger("sentinelops.guards")
 
+# A trim's text in its log line, at most this much (the tails seen were under 50 characters).
+TRIM_LOG_CHARS = 1_000
+
 
 @dataclass(frozen=True)
 class Limits:
@@ -97,6 +100,8 @@ class RunGuard:
         self.input_tokens = 0
         self.cost_usd = 0.0
         self.rejected_answers = 0
+        # The text cut off each trimmed answer (models.trimmed_answer), in order.
+        self.trims: list[str] = []
         self.tripped: StopReason | None = None
 
     @property
@@ -177,6 +182,15 @@ class RunGuard:
         self._log("answer_rejected", rejected=self.rejected_answers)
         if self.rejected_answers > self.limits.max_answer_resends:
             self._mark_tripped(StopReason.RESEND_LIMIT)
+
+    def record_trimmed_answer(self, removed: str) -> None:
+        """Record a leaked tail cut off an answer's root_cause, with the text cut.
+
+        A trim isn't a rejection: the cut answer goes on to be accepted, so it
+        counts toward no limit. Never raises.
+        """
+        self.trims.append(removed)
+        self._log("answer_trimmed", removed=removed[:TRIM_LOG_CHARS], removed_chars=len(removed))
 
     def halted_hypothesis(self) -> Hypothesis:
         assert self.tripped is not None, "halted_hypothesis() before any limit tripped"

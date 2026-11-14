@@ -20,6 +20,7 @@ from strands.hooks import (
     AfterModelCallEvent,
     AfterToolCallEvent,
     BeforeModelCallEvent,
+    BeforeToolCallEvent,
     HookProvider,
     HookRegistry,
 )
@@ -29,6 +30,7 @@ from strands.types.content import split_system_prompt
 from strands.types.exceptions import ContextWindowOverflowException, ModelThrottledException
 
 from guards import GuardLimitExceeded, RunGuard
+from models import trimmed_answer
 from pricing import ModelPrice, Usage
 
 logger = logging.getLogger("sentinelops.model")
@@ -94,7 +96,22 @@ class GuardHooks(HookProvider):
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeModelCallEvent, self.before_model_call)
         registry.add_callback(AfterModelCallEvent, self.after_model_call)
+        registry.add_callback(BeforeToolCallEvent, self.before_tool_call)
         registry.add_callback(AfterToolCallEvent, self.after_tool_call)
+
+    def before_tool_call(self, event: BeforeToolCallEvent) -> None:
+        # An answer whose only fault is a leaked tail on root_cause is cut, not
+        # sent back (models.trimmed_answer). Strands validates the tool_use it's
+        # handed here; a new dict leaves the message holding what the model wrote.
+        tool = event.selected_tool
+        if tool is None or tool.tool_type != "structured_output":
+            return
+        trim = trimmed_answer(event.tool_use.get("input"))
+        if trim is None:
+            return
+        answer, removed = trim
+        event.tool_use = {**event.tool_use, "input": answer}
+        self.guard.record_trimmed_answer(removed)
 
     def after_tool_call(self, event: AfterToolCallEvent) -> None:
         # The structured-output tool answers a Hypothesis that fails validation

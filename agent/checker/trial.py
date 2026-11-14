@@ -36,6 +36,7 @@ class TrialRun:
     status: str
     cost_usd: float
     resends: int
+    trims: int  # answers whose leaked root_cause tail was cut, not resent
     check: RunCheck | None
     diagnosis: bool | None  # the rubric's; None without an answer
 
@@ -98,6 +99,7 @@ def trial(folder: Path) -> Trial:
                 record["status"],
                 record["cost_usd"],
                 rejected_answers(transcript),
+                len(transcript.get("trims") or []),
                 check_run(record["run"], transcript) if hypothesis else None,
                 diagnosis,
             )
@@ -136,8 +138,14 @@ def render(result: Trial) -> str:
         diagnosis = {True: "right", False: "wrong by the rubric: read it by hand", None: "-"}[r.diagnosis]
         followed = "-" if r.check is None or r.check.resolved_share is None else f"{r.check.resolved_share:.0%}"
         out.append(
-            f"{r.run}: {r.status}, {r.resends} resends, ${r.cost_usd:.4f}, citations followed {followed}, diagnosis {diagnosis}"
+            f"{r.run}: {r.status}, {r.resends} resends, {r.trims} trims, ${r.cost_usd:.4f}, "
+            f"citations followed {followed}, diagnosis {diagnosis}"
         )
+    resends, trims = sum(r.resends for r in result.runs), sum(r.trims for r in result.runs)
+    out.append(
+        f"resends: {resends}, in {sum(r.resends > 0 for r in result.runs)} runs; "
+        f"trims: {trims}, in {sum(r.trims > 0 for r in result.runs)} runs"
+    )
     out.append("")
     for mark in result.marks:
         out.append(f"{'PASS' if mark.passed else 'FAIL'}  {mark.name}: {mark.value} (bar: {mark.bar})")
