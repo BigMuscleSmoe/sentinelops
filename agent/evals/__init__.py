@@ -7,9 +7,10 @@
 A scenario (`scenarios`) is one alarm in a recorded window. A sweep (`sweep`)
 runs each one through investigation.py, with the window answering every AWS
 read but the sign-in, and keeps every transcript whole. It doesn't grade.
-Grading (`score`) runs the grader frozen at its commit and each scenario's
-rubric (`rubrics`), and scores the grader against a hand audit committed first.
+Checking a run is the checker's (`python -m checker`), and each scenario's
+rubric (`rubrics`) reads its verdicts. Scoring the checker against a hand audit
+committed first (`score`) is rebuilt in the grader redesign's step 5.
 
-Local tooling, like grader/: the Runtime ships only the agent's top-level
+Local tooling, like checker/: the Runtime ships only the agent's top-level
 modules, so none of this ships.
 """

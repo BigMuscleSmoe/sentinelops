@@ -1,8 +1,9 @@
 """The scenarios: every alarm in the recorded windows, with what caused it.
 
 The cause of each is known because the fault controller made it. `seen` marks
-the alarms whose runs the grader's rules were written on (the 12 saved runs of
-step 1): scores there are in-sample, and are reported apart from the others.
+the alarms whose runs the first grader's rules were written on (the 12 saved
+runs of step 1, kept at 57455ab): scores there are in-sample, and are reported
+apart from the others.
 """
 
 import importlib.util

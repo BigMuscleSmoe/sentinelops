@@ -66,17 +66,18 @@ def test_one_run_without_an_answer_passes_and_two_fail(transcript: dict[str, Any
     assert marks(result)["diagnoses right, by the rubric"] is False  # 7 of 9
 
 
-def test_citations_that_cant_be_followed_and_sentences_fail_their_marks(transcript: dict[str, Any], tmp_path: Path) -> None:
+def test_citations_that_cant_be_followed_and_inferences_fail_their_marks(transcript: dict[str, Any], tmp_path: Path) -> None:
     unfollowed = copy.deepcopy(transcript)
     for item in unfollowed["hypothesis"]["evidence"]:
         item["source"] = "m7"
     result = trial(sweep(tmp_path, [("answered", 0.0060, unfollowed)] * 2 + [("answered", 0.0060, transcript)] * 7))
     assert marks(result)["citations followed"] is False  # 14 of 18
-    # An answer from before typed evidence: sentences, and no fault location.
-    old = {k: v for k, v in transcript["hypothesis"].items() if k != "fault_location"}
-    sentences = {**transcript, "hypothesis": {**old, "evidence": ["err% 10.1 at 19:05"]}}
-    result = trial(sweep(tmp_path, [("answered", 0.0060, sentences)] * 9))
+    # Claims left as inferences: 2 typed items beside 2 inferences is half, under two-thirds.
+    inferences = [{"claim": f"inferred {i}", "rests_on": ["e1"]} for i in range(2)]
+    untyped = {**transcript, "hypothesis": {**transcript["hypothesis"], "inferences": inferences}}
+    result = trial(sweep(tmp_path, [("answered", 0.0060, untyped)] * 9))
     assert marks(result)["claims typed, not inferences"] is False
+    assert [m.value for m in result.marks][2] == "18 of 36 (50%)"
 
 
 def test_a_run_that_costs_past_one_and_a_half_times_the_baseline_fails(transcript: dict[str, Any], tmp_path: Path) -> None:

@@ -9,7 +9,6 @@ import copy
 import dataclasses
 import gzip
 import json
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,16 +22,15 @@ from evals import rubrics, score, sweep
 from evals.__main__ import main as evals_main
 from evals.scenarios import BY_ID, SCENARIOS, Fault, load_window
 from evals.witness import ModelWitness, same_model
+from checked_runs import RUNS
+from checker.__main__ import check_run
 from fake_anthropic import FEDERATION_IDS, FakeAnthropic, Reply, answer, tool_use
-from grader.checks import Verdict
 from pricing import price_for
 from providers import Settings
 from stubs import FakeSession
 
-FIXTURES = Path(__file__).parent / "fixtures" / "grader"
-SAVED = json.loads(gzip.decompress((FIXTURES / "runs.json.gz").read_bytes()).decode("utf-8"))
-SLIPS = json.loads((FIXTURES / "slips.json").read_text(encoding="utf-8"))["slips"]
-SAVED_SCENARIO = {"2026-10-27T19:05:57": "deploy-1027-1905", "2026-10-29T01:56:07": "deploy-1029-0156", "2026-11-12T20:00:45": "deploy-1112-2000"}
+# The alarms of step 1's 12 saved runs, which the first grader's rules were written on (kept at 57455ab).
+SEEN = {"deploy-1027-1905", "deploy-1029-0156", "deploy-1112-2000"}
 FEDERATED = Settings.from_env(FEDERATION_IDS)
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 
@@ -89,92 +87,117 @@ def test_each_scenario_replays_offline_and_its_culprit_is_in_deploy_history(scen
         assert (change["key"]["S"], change["old"]["S"], change["new"]["S"]) == ("POOL_MAX_SIZE", "20", "2")
 
 
-def test_seen_marks_exactly_the_alarms_the_grader_was_written_on() -> None:
-    assert {s.id for s in SCENARIOS if s.seen} == set(SAVED_SCENARIO.values())
-    assert {SAVED_SCENARIO[r["alarm"]["fired_at"][:19]] for r in SAVED.values()} == set(SAVED_SCENARIO.values())
+def test_seen_marks_exactly_the_alarms_the_first_grader_was_written_on() -> None:
+    assert {s.id for s in SCENARIOS if s.seen} == SEEN
 
 
 # --- rubrics ----------------------------------------------------------------------
 
+DEPLOY_RUN = "20261114T190302Z/deploy-1113-0257-r1"
+POOL_RUN = "20261114T190302Z/pool-1027-1856-r1"
+# The trial runs whose evidence leaves a rubric item unmet, each read by hand:
+# the change is cited only through the old 'changed key' column (unresolved) or
+# kind config, which doesn't show the change; the latency alarm's only p99 item
+# is contradicted (757 at 18:57, below its low); the other states no p99 at all.
+THIN = {
+    "20261114T055051Z/pool-1027-1900-r1": {"evidence_change", "evidence_symptom"},
+    "20261114T055051Z/pool-1027-1901-r1": {"evidence_change"},
+    "20261114T190302Z/pool-1027-1900-r1": {"evidence_symptom"},
+}
 
-@pytest.mark.parametrize("name", sorted(SAVED))
-def test_each_saved_diagnosis_passes_its_rubric(name: str) -> None:
-    run = SAVED[name]
-    result = rubrics.score(BY_ID[SAVED_SCENARIO[run["alarm"]["fired_at"][:19]]], run["hypothesis"])
-    assert result.passed(), {k: v for k, v in result.items.items() if not v}
+
+def _rubric(name: str, **changes: Any) -> rubrics.RubricResult:
+    """A fixture run's answer, changed, scored with the checker's checks of its evidence."""
+    transcript = copy.deepcopy(RUNS[name])
+    transcript["hypothesis"].update(changes)
+    check = check_run(name, transcript)
+    return rubrics.score(BY_ID[transcript["eval"]["scenario"]], transcript["hypothesis"], check.checks)
+
+
+def _failed(result: rubrics.RubricResult) -> set[str]:
+    return {k for k, v in result.items.items() if not v and k != "pr_gate_value"}
+
+
+@pytest.mark.parametrize("name", sorted(RUNS))
+def test_each_trial_diagnosis_passes_its_rubric(name: str) -> None:
+    result = _rubric(name)
     assert result.diagnosis and not result.confidently_wrong
-
-
-def _with(answer_: dict[str, Any], **changes: Any) -> dict[str, Any]:
-    out = copy.deepcopy(answer_)
-    out.update(changes)
-    return out
+    assert _failed(result) == THIN.get(name, set())
 
 
 def test_a_right_pool_diagnosis_passes_even_naming_the_old_deploy_to_rule_it_out() -> None:
-    result = rubrics.score(BY_ID["pool-1027-1856"], POOL_ANSWER)
+    cause = RUNS[POOL_RUN]["hypothesis"]["root_cause"]
+    result = _rubric(POOL_RUN, root_cause=f"{cause} The 1.43.0 deploy at 03:01 was rolled back hours earlier and is not the cause.")
     assert result.passed(), result.items
 
 
 @pytest.mark.parametrize(
-    "scenario, hypothesis, failed",
+    "sentence",
     [
-        # The bad deploy blamed on the pool change that came before it.
-        (
-            "deploy-1113-0257",
-            _with(DEPLOY_ANSWER, root_cause="The config change set POOL_MAX_SIZE to 2, so the pool is exhausted and checkouts fail."),
-            {"names_culprit", "names_mechanism", "blames_no_other"},
-        ),
-        # The pool fault blamed on the old 1.43.0 deploy.
-        (
-            "pool-1027-1856",
-            _with(POOL_ANSWER, root_cause="Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError."),
-            {"names_culprit", "names_mechanism", "blames_no_other"},
-        ),
-        # Both changes blamed together.
-        (
-            "deploy-1113-0257",
-            _with(DEPLOY_ANSWER, root_cause="Deploy 1.43.0 broke apply_promo on None promos, and the CART_TTL_HOURS change made it worse."),
-            {"blames_no_other"},
-        ),
-        # The symptom, not the mechanism.
-        ("deploy-1113-0257", _with(DEPLOY_ANSWER, root_cause="Checkout requests started failing with 500s at 02:57."), {"names_culprit", "names_mechanism"}),
-        # The upstream blamed, by name or by location; by location, no PR either.
-        ("deploy-1113-0257", _with(DEPLOY_ANSWER, affected_component="payments-api"), {"location"}),
-        ("deploy-1113-0257", _with(DEPLOY_ANSWER, fault_location="upstream"), {"location", "pr_gate"}),
-        # Not confident enough to open a PR, a citation with no search, and thin evidence.
-        ("deploy-1113-0257", _with(DEPLOY_ANSWER, confidence=0.5), {"pr_gate"}),
-        ("deploy-1113-0257", _with(DEPLOY_ANSWER, runbook_cited="bad-deploy.md"), {"runbook"}),
-        (
-            "deploy-1113-0257",
-            _with(DEPLOY_ANSWER, evidence=[item("count", source="d1", count=1, note="a deploy happened"), item("count", source="m1", count=2, note="errors went up")]),
-            {"evidence_change", "evidence_failure", "evidence_symptom"},
-        ),
-        # The right change at the wrong time: the 07:46 deploy for the 08:03 alarm.
-        (
-            "deploy-1112-0803",
-            _with(
-                DEPLOY_ANSWER,
-                evidence=[
-                    item("value", source="d1", column="version", at="2026-11-12T07:46:29.556Z", value="1.43.0", note="Simplify promo pricing"),
-                    *DEPLOY_ANSWER["evidence"][1:],
-                ],
-            ),
-            {"evidence_change"},
-        ),
+        # Sweep 20261113T201129Z's two right answers the old words counted as blaming payments-api.
+        "Database query time and payments-api were unchanged, and no requests failed.",
+        "The database and payments-api are healthy, and no code changed.",
     ],
 )
-def test_a_wrong_or_thin_answer_fails_the_items_it_should(scenario: str, hypothesis: dict[str, Any], failed: set[str]) -> None:
-    result = rubrics.score(BY_ID[scenario], hypothesis)
-    assert {k for k, v in result.items.items() if not v and k != "pr_gate_value"} == failed
+def test_unchanged_and_healthy_rule_a_suspect_out(sentence: str) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION].wrong_suspects) == []
+    cause = RUNS[POOL_RUN]["hypothesis"]["root_cause"]
+    assert _rubric(POOL_RUN, root_cause=f"{cause} {sentence}").items["blames_no_other"]
+
+
+def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
+    return [i for i, e in enumerate(evidence) if (e.get("source") or "").startswith("d") and minute in str(e.get("at"))]
+
+
+@pytest.mark.parametrize(
+    "name, changes, failed",
+    [
+        # The bad deploy blamed on the pool change that came before it.
+        (DEPLOY_RUN, {"root_cause": "The config change set POOL_MAX_SIZE to 2, so the pool is exhausted and checkouts fail."}, {"names_culprit", "names_mechanism", "blames_no_other"}),
+        # The pool fault blamed on the old 1.43.0 deploy.
+        (POOL_RUN, {"root_cause": "Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError."}, {"names_culprit", "names_mechanism", "blames_no_other"}),
+        # Both changes blamed together.
+        (DEPLOY_RUN, {"root_cause": "Deploy 1.43.0 broke apply_promo on None promos, and the CART_TTL_HOURS change made it worse."}, {"blames_no_other"}),
+        # The symptom, not the mechanism.
+        (DEPLOY_RUN, {"root_cause": "Checkout requests started failing with 500s at 02:57."}, {"names_culprit", "names_mechanism"}),
+        # The upstream blamed, by name or by location; by location, no PR either.
+        (DEPLOY_RUN, {"affected_component": "payments-api"}, {"location"}),
+        (DEPLOY_RUN, {"fault_location": "upstream"}, {"location", "pr_gate"}),
+        # Not confident enough to open a PR, and a citation with no search.
+        (DEPLOY_RUN, {"confidence": 0.5}, {"pr_gate"}),
+        (DEPLOY_RUN, {"runbook_cited": "bad-deploy.md"}, {"runbook"}),
+        # Thin evidence: counts that hold show no change, failure, or metric.
+        (DEPLOY_RUN, {"evidence": [item("count", source="d1", count=10, note="ten records"), item("count", source="l1", count=30, note="thirty lines")], "inferences": []}, {"evidence_change", "evidence_failure", "evidence_symptom"}),
+    ],
+)
+def test_a_wrong_or_thin_answer_fails_the_items_it_should(name: str, changes: dict[str, Any], failed: set[str]) -> None:
+    assert _failed(_rubric(name, **changes)) == failed
+
+
+def test_evidence_that_doesnt_hold_carries_nothing() -> None:
+    evidence = copy.deepcopy(RUNS[DEPLOY_RUN]["hypothesis"]["evidence"])
+    cited = _culprit_cited_by(evidence, "02:57:16")
+    assert cited and _failed(_rubric(DEPLOY_RUN, evidence=evidence)) == set()
+    for i in cited:  # each item on the culprit's record now states the version it replaced
+        evidence[i] = {**evidence[i], "column": "version", "value": "1.41.0"}
+    result = _rubric(DEPLOY_RUN, evidence=evidence)
+    assert _failed(result) == {"evidence_change"}
+
+
+def test_the_right_change_at_the_wrong_time_isnt_the_culprit() -> None:
+    """The 07:46 1.43.0 deploy for the 08:03 alarm: the same version, but not the record that caused this one."""
+    name = "20261114T190302Z/deploy-1112-0803-r1"
+    evidence = copy.deepcopy(RUNS[name]["hypothesis"]["evidence"])
+    evidence = [e for i, e in enumerate(evidence) if i not in _culprit_cited_by(evidence, "08:03:")]
+    evidence.append(item("value", source="d1", column="version", at="2026-11-12T07:46:29.556Z", value="1.43.0", note="Simplify promo pricing"))
+    assert _failed(_rubric(name, evidence=evidence, inferences=[])) == {"evidence_change"}
 
 
 def test_a_confident_wrong_diagnosis_is_confidently_wrong() -> None:
-    wrong = _with(POOL_ANSWER, root_cause="Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError.")
-    result = rubrics.score(BY_ID["pool-1027-1901"], wrong)
+    wrong = {"root_cause": "Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError."}
+    result = _rubric(POOL_RUN, **wrong)
     assert not result.diagnosis and result.confidently_wrong
-    halted = _with(wrong, halted_by="step_limit")
-    assert not rubrics.score(BY_ID["pool-1027-1901"], halted).confidently_wrong
+    assert not _rubric(POOL_RUN, **wrong, halted_by="step_limit").confidently_wrong
 
 
 # --- which model answered ---------------------------------------------------------
@@ -379,62 +402,6 @@ def test_without_go_the_sweep_command_only_plans(capsys: pytest.CaptureFixture[s
 # --- the scorer -------------------------------------------------------------------
 
 
-def _saved_as_eval(name: str) -> dict[str, Any]:
-    run = dict(SAVED[name])
-    run["eval"] = {"run": name, "scenario": SAVED_SCENARIO[run["alarm"]["fired_at"][:19]]}
-    return run
-
-
-def _audit_of(name: str) -> dict[str, Any]:
-    """Step 1's hand-audited slips for one saved run, in the blind audit's form: where, quote, kind."""
-    slips = [
-        {"where": s["where"], "quote": s["quote"], "kind": "loose" if "audited loose" in s["note"] else "strict"}
-        for s in SLIPS
-        if s["run"] == name and s["source"] == "audit"
-    ]
-    return {"diagnosis": "right", "slips": slips}
-
-
-def test_the_matching_rule_scores_step_1s_audits_as_the_labeled_tests_do() -> None:
-    """Scored by quote, as a blind audit would be, the saved runs give step 1's numbers:
-    26 of 29 strict slips caught, 2 of 5 loose ones graded loose, and the flags no audit
-    label matches are exactly the 6 slips the grader found that the audits missed."""
-    scores = [score.score_run(_saved_as_eval(n), _audit_of(n)) for n in sorted(SAVED)]
-    assert sum(s.strict_caught for s in scores) == 26 and sum(s.strict_labels for s in scores) == 29
-    assert sum(s.loose_graded_loose for s in scores) == 2 and sum(s.loose_labels for s in scores) == 5
-    unmatched = sorted((s.run, f["where"]) for s in scores for f in s.unmatched_flags)
-    new = sorted((s["run"], s["where"]) for s in SLIPS if s["source"] == "new" and s["expect"] == "flagged")
-    assert unmatched == new
-
-
-def test_the_summary_splits_unseen_from_seen_and_waits_for_the_recheck() -> None:
-    scores = [score.score_run(_saved_as_eval(n), _audit_of(n)) for n in sorted(SAVED)]
-    without = score.summarize(scores, None)
-    assert without["unseen"] == {"runs": 0} and without["seen"]["runs"] == 12
-    assert "false_flags" not in without["all"]
-    recheck = {s.run: [{"call": "audit_miss"} for _ in s.unmatched_flags] for s in scores}
-    done = score.summarize(scores, recheck)["all"]
-    assert (done["false_flags"], done["audit_misses"], done["recheck_missing"]) == (0, 6, 0)
-    assert done["diagnosis_right"] == 12 and done["rubric_agrees_with_audit"] == 12
-
-
-def test_distinctive_tokens() -> None:
-    assert score.distinctive("db_query_p50_ms stays at 61 to 65 ms") == {"db_query_p50_ms", "61", "65"}
-    assert score.distinctive("the first failing log is at 19:05:33") == {"19:05:33"}
-    assert score.distinctive("0.5 s, 1.04 s, 5% and 1,500 ms") == {"0.5", "1.04", "1500"}
-
-
-def _has_commit(commit: str) -> bool:
-    return subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=score.REPO, capture_output=True).returncode == 0
-
-
-@pytest.mark.skipif(not _has_commit(score.FROZEN_GRADER), reason="a shallow clone lacks the frozen commit")
-def test_grading_refuses_a_changed_grader(tmp_path: Path) -> None:
-    score.check_frozen()  # unchanged since the commit it was frozen at
-    with pytest.raises(score.Refusal, match="differs from"):
-        score.check_frozen("de44c42")  # before the grader existed
-
-
 def test_grading_refuses_an_audit_that_isnt_committed(tmp_path: Path) -> None:
     loose = score.REPO / "agent" / "scratch" / "uncommitted-audit.json"
     loose.parent.mkdir(parents=True, exist_ok=True)
@@ -446,5 +413,7 @@ def test_grading_refuses_an_audit_that_isnt_committed(tmp_path: Path) -> None:
         loose.unlink()
 
 
-def test_verdicts_counted_as_flags_are_the_graders() -> None:
-    assert {Verdict.UNSUPPORTED, Verdict.CONTRADICTED} == {v for v in Verdict if v not in (Verdict.SUPPORTED, Verdict.LOOSE)}
+def test_grade_refuses_until_step_5_rebuilds_scoring(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    assert evals_main(["grade", str(tmp_path), "--audit", "evals/audits/20261113T201129Z.json"]) == 1
+    err = capsys.readouterr().err
+    assert "the prose grader is retired" in err and "57455ab" in err and "python -m checker" in err

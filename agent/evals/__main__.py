@@ -6,15 +6,15 @@
 
 plan calls nothing: it replays each scenario's alarm from its window and prints
 the runs and the cost bound. sweep without --go does the same and stops; with
-it, every run is a real model call, billed to Anthropic. grade calls no model.
+it, every run is a real model call, billed to Anthropic. grade refuses until the
+grader redesign's step 5 rebuilds scoring on the checker (`evals.score`); until
+then, `python -m checker` checks a sweep's runs.
 """
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -120,40 +120,10 @@ def sweep(args: argparse.Namespace) -> int:
 
 
 def grade(args: argparse.Namespace) -> int:
-    from evals.score import Refusal, check_committed, check_frozen, score_run, summarize
-    from evals.sweep import load_records
+    from evals.score import RETIRED
 
-    try:
-        check_frozen()
-        audit_commit = check_committed(args.audit)
-    except Refusal as e:
-        print(f"Refused: {e}.", file=sys.stderr)
-        return EXIT_FAILED
-    audit = json.loads(args.audit.read_text(encoding="utf-8"))
-    recheck = json.loads(args.recheck.read_text(encoding="utf-8"))["runs"] if args.recheck else None
-    records = [r for r in load_records(args.sweep) if r.scored]
-    missing = [r.run for r in records if r.run not in audit["runs"]]
-    if missing:
-        print(f"Refused: the audit doesn't cover {', '.join(missing)}.", file=sys.stderr)
-        return EXIT_FAILED
-    scores = []
-    for r in records:
-        assert r.transcript is not None
-        transcript = json.loads((args.sweep / r.transcript).read_text(encoding="utf-8"))
-        scores.append(score_run(transcript, audit["runs"][r.run]))
-    summary = summarize(scores, recheck)
-    out = {
-        "graded_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "audit": args.audit.as_posix(),
-        "audit_commit": audit_commit,
-        "summary": summary,
-        "runs": [asdict(s) for s in scores],
-    }
-    path = args.sweep / ("grade.recheck.json" if recheck is not None else "grade.json")
-    path.write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
-    print(json.dumps(summary, indent=1))
-    print(f"\nwritten to {path}")
-    return EXIT_OK
+    print(f"Refused: {RETIRED}. To check a sweep's runs now: uv run python -m checker {args.sweep}/*.json", file=sys.stderr)
+    return EXIT_FAILED
 
 
 def main(argv: list[str] | None = None) -> int:

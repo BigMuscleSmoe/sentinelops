@@ -12,28 +12,30 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     the scenario expects
   runbook           runbook_cited is what the scenario expects: null, while
                     there's no runbook search
-  evidence_change   an evidence item names the culprit with its time
-  evidence_failure  an evidence item shows the mechanism: the logged error, or
-                    the pool's wait or use, with a value
-  evidence_symptom  an evidence item gives the alarm's own metric with a value
+  evidence_change   an evidence item cites the culprit's own deploy record, by
+                    a field that shows the change (its version, or the changed
+                    key), and holds there
+  evidence_failure  an evidence item that holds shows the mechanism: a logged
+                    error naming it, or the pool's wait or use as a number
+  evidence_symptom  an evidence item that holds gives the alarm's own metric as
+                    a number, from a metrics table or the alarm message
 
-The last three keep a Hypothesis that says less from scoring better. `diagnosis`
-is the first four together; `confidently_wrong` is a wrong diagnosis that
-would still pass the PR gate.
+The last three keep a Hypothesis that says less from scoring better. They read
+the checker's verdicts and what the cited entries show (BUILD_PLAN.md, "The
+grader redesign", step 4), never an item's words: an item that doesn't hold
+carries nothing, and a loose one only what it got right. `diagnosis` is the
+first four together; `confidently_wrong` is a wrong diagnosis that would still
+pass the PR gate.
 
-Rules match words, so they're brittle to phrasing: the hand audit records its
-own verdict on each diagnosis, and the two are compared.
-
-Answers come in two shapes: typed evidence and a fault location (from
-2026-11-14), and before that, evidence as sentences with no location. The
-evidence rules read a typed item as text (`evidence_text`) until they're
-rebuilt on its citations (BUILD_PLAN.md, "The grader redesign", step 4).
+The first four match words, so they're brittle to phrasing: the hand audit
+records its own verdict on each diagnosis, and the two are compared.
 """
 
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from checker.checks import ItemCheck, Verdict, field_of, is_number
 from evals.scenarios import ERRORS, LATENCY, POOL_WAIT, Fault, Scenario
 from models import FaultLocation, Hypothesis
 
@@ -42,11 +44,13 @@ _ASCII = {0x2192: "->", 0x2013: "-", 0x2014: "-", 0x2212: "-", 0x2248: "~", 0x00
 _SENTENCE = re.compile(r"(?<=[.;!?])\s+")
 _RULED_OUT = re.compile(
     r"\bnot\b|n't\b|\bno longer\b|\brule[sd]? out\b|\bunrelated\b|\bseparate\b|\bresolved\b|\bearlier\b"
-    r"|\balready\b|\brather than\b|\binstead of\b|\breverted\b|\bprior\b|\bprevious\b",
+    r"|\balready\b|\brather than\b|\binstead of\b|\breverted\b|\bprior\b|\bprevious\b"
+    r"|\bunchanged\b|\bhealthy\b",
     re.I,
 )
 _DECOY_KEYS = r"LOG_SAMPLE_RATE|CART_TTL|PRODUCT_CACHE_TTL|RECOMMENDATIONS_ENABLED"
-_NUMBER = re.compile(r"\d")
+_SHOWN = (Verdict.HOLDS, Verdict.LOOSE)  # what an item got right; a loose one's extra words aren't
+_STATES_A_NUMBER = ("value", "range", "all")  # a count states how many, a first or last a time
 
 
 @dataclass(frozen=True)
@@ -54,8 +58,10 @@ class FaultRules:
     culprit: re.Pattern[str]
     mechanism: tuple[re.Pattern[str], ...]  # every one must match
     wrong_suspects: re.Pattern[str]
-    failure: re.Pattern[str]
-    failure_needs_value: bool  # a wait or a count needs its number; an error type is itself the observation
+    # The mechanism in the cited data: a logged value that names it (an error type
+    # is itself the observation), or a column whose number shows it (a wait).
+    failure_value: re.Pattern[str] | None
+    failure_column: re.Pattern[str] | None
 
 
 RULES = {
@@ -68,8 +74,8 @@ RULES = {
         wrong_suspects=re.compile(
             rf"POOL_MAX_SIZE|pool[_ ]max|pool size|pool[- ]exhaust|connection pool|{_DECOY_KEYS}", re.I
         ),
-        failure=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
-        failure_needs_value=False,
+        failure_value=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
+        failure_column=None,
     ),
     Fault.DB_POOL_EXHAUSTION: FaultRules(
         culprit=re.compile(
@@ -87,15 +93,12 @@ RULES = {
         wrong_suspects=re.compile(
             rf"1\.43\.0|9c41e7b|promo|TypeError|payments-api|slow quer|database (is |was )?slow|{_DECOY_KEYS}", re.I
         ),
-        failure=re.compile(r"pool[_ ]?wait|pool_active|connections? (in use|active)|in-use connections", re.I),
-        failure_needs_value=True,
+        failure_value=None,
+        failure_column=re.compile(r"^pool_(wait|active)"),
     ),
 }
-_SYMPTOM = {
-    ERRORS: (re.compile(r"err%|error rate|errors?\b|5\d\d", re.I), re.compile(r"\d+(\.\d+)?\s*%|\b0\.\d+")),
-    LATENCY: (re.compile(r"latency|p99", re.I), re.compile(r"\d[\d,]*(\.\d+)?\s*(ms|s)\b")),
-    POOL_WAIT: (re.compile(r"pool[_ ]?wait", re.I), re.compile(r"\d[\d,]*(\.\d+)?\s*ms\b")),
-}
+# Each alarm's own metric, as the metrics table heads it; the alarm message's datapoints are it too.
+_SYMPTOM = {ERRORS: "err%", LATENCY: "p99_ms", POOL_WAIT: "pool_wait_p99_ms"}
 # Every scenario so far is a fault inside this service, plain enough to name with confidence.
 EXPECT_PR = True
 EXPECT_RUNBOOK = None
@@ -131,41 +134,56 @@ def blamed(text: str, suspects: re.Pattern[str]) -> list[str]:
     return [m.group() for s in sentences(text) if not _RULED_OUT.search(s) for m in suspects.finditer(s)]
 
 
-def evidence_text(item: str | dict[str, Any]) -> str:
-    """An evidence item as the evidence rules read it: a sentence as it is, a typed item as its fields in a line.
+def shown(check: ItemCheck) -> list[str]:
+    """What an item's column holds at the entries it cites, as text; a list's elements joined."""
+    out = []
+    for entry in check.entries:
+        value = field_of(entry, check.column)
+        out.append(" ".join(map(str, value)) if isinstance(value, list) else str(value))
+    return out
 
-    A column's unit rides on its values, as a sentence would carry it: err% numbers
-    read as percentages, and an _ms column's as milliseconds.
-    """
-    if isinstance(item, str):
-        return item
-    column = str(item.get("column") or "")
-    unit = "%" if column == "err%" else " ms" if column.endswith("_ms") else ""
-    numbers = [item.get("value"), item.get("low"), item.get("high")]
-    values = [f"{v}{unit}" if _NUMBER.search(str(v)) and unit else str(v) for v in numbers if v is not None]
-    times = [str(item[k]) for k in ("at", "start", "end") if item.get(k)]
-    count = [f"{item['count']} lines"] if item.get("count") is not None else []
-    return " ".join([column, *values, *count, *times, str(item.get("note") or "")]).strip()
+
+def shows_a_number(check: ItemCheck) -> bool:
+    return check.kind in _STATES_A_NUMBER and any(is_number(field_of(e, check.column)) for e in check.entries)
+
+
+def evidence_items(scenario: Scenario, checks: list[ItemCheck]) -> dict[str, bool]:
+    """The three evidence items, from the checker's verdicts and the entries each item cites."""
+    rules = RULES[scenario.fault]
+    right = [c for c in checks if c.verdict in _SHOWN]
+    culprit_minute = f"{scenario.fired_at:%Y-%m-%d}T{scenario.culprit_at}"
+
+    def is_culprit(c: ItemCheck) -> bool:
+        return any(e.time is not None and f"{e.time:%Y-%m-%dT%H:%M}" == culprit_minute for e in c.entries)
+
+    change = any(
+        c.verdict is Verdict.HOLDS and (c.source or "").startswith("d") and is_culprit(c)
+        and any(rules.culprit.search(f"{c.column} {text}") for text in shown(c))
+        for c in right
+    )
+    failure = any(
+        (rules.failure_value is not None and any(rules.failure_value.search(text) for text in shown(c)))
+        or (rules.failure_column is not None and bool(rules.failure_column.search(c.column or "")) and shows_a_number(c))
+        for c in right
+    )
+    metric = _SYMPTOM[scenario.alarm]
+    symptom = any(
+        (c.source == "alarm" or ((c.source or "").startswith("m") and c.column == metric)) and shows_a_number(c)
+        for c in right
+    )
+    return {"evidence_change": change, "evidence_failure": failure, "evidence_symptom": symptom}
 
 
 def pr_gate(hypothesis: dict[str, Any]) -> bool:
-    """Hypothesis.can_open_pr for the answer.
-
-    An answer from before the fault location (no fault_location) is read as that
-    schema decided it: the gate was the confidence and the halt alone, which the
-    property gives with the location in this service. Its evidence doesn't
-    validate any more, and the gate doesn't read it, so it's left as it came.
-    """
-    if "fault_location" in hypothesis:
-        return Hypothesis.model_validate(hypothesis).can_open_pr
-    return Hypothesis.model_construct(**{**hypothesis, "fault_location": FaultLocation.THIS_SERVICE}).can_open_pr
+    """Hypothesis.can_open_pr for the answer, read through the property."""
+    return Hypothesis.model_validate(hypothesis).can_open_pr
 
 
-def score(scenario: Scenario, hypothesis: dict[str, Any]) -> RubricResult:
+def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck]) -> RubricResult:
+    """The rubric for one answer, with the checker's checks of its evidence (`checker.checks`)."""
     rules = RULES[scenario.fault]
     result = RubricResult()
     cause = ascii_text(hypothesis.get("root_cause") or "")
-    evidence = [ascii_text(evidence_text(e)) for e in hypothesis.get("evidence") or []]
     component = ascii_text(hypothesis.get("affected_component") or "")
 
     result.items["names_culprit"] = bool(rules.culprit.search(cause))
@@ -176,7 +194,7 @@ def score(scenario: Scenario, hypothesis: dict[str, Any]) -> RubricResult:
         result.notes["blames_no_other"] = "blames " + ", ".join(sorted(set(wrong)))
     in_service = re.search(r"checkout|pool", component, re.I) is not None
     upstream = re.search(r"payments", component, re.I) is not None
-    located = hypothesis.get("fault_location", FaultLocation.THIS_SERVICE) == FaultLocation.THIS_SERVICE
+    located = hypothesis.get("fault_location") == FaultLocation.THIS_SERVICE
     result.items["location"] = in_service and not upstream and located
 
     gate = pr_gate(hypothesis)
@@ -184,10 +202,5 @@ def score(scenario: Scenario, hypothesis: dict[str, Any]) -> RubricResult:
     result.items["pr_gate"] = gate is EXPECT_PR
     result.items["runbook"] = hypothesis.get("runbook_cited") == EXPECT_RUNBOOK
 
-    result.items["evidence_change"] = any(rules.culprit.search(e) and scenario.culprit_at in e for e in evidence)
-    result.items["evidence_failure"] = any(
-        rules.failure.search(e) and (not rules.failure_needs_value or _NUMBER.search(e)) for e in evidence
-    )
-    what, value = _SYMPTOM[scenario.alarm]
-    result.items["evidence_symptom"] = any(what.search(e) and value.search(e) for e in evidence)
+    result.items.update(evidence_items(scenario, checks))
     return result

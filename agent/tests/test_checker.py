@@ -1,10 +1,11 @@
-"""The checker's first part: a run's labeled results read back, and each typed item resolved against them.
+"""The checker's resolver and run report: a run's labeled results read back, each typed item resolved against them.
 
 The run is a real replay (the agent, its real tools on recorded AWS calls, a
 fake model), so the labels and line numbers are the ones a live run gets.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +13,9 @@ import pytest
 
 from answers import DEPLOY_EVIDENCE, item
 from checker.__main__ import check_run, load as load_transcript, main as checker_main, render
+from checker.checks import Verdict
 from checker.resolve import Status, resolve
 from checker.sources import RunSources, read_sources
-from test_evals import SAVED
 from test_main import REPLAY, investigating, replay_session, run
 
 
@@ -110,12 +111,17 @@ def test_a_tools_error_is_a_source_that_resolves_nothing(transcript: dict[str, A
     assert out.status is Status.UNRESOLVED and "can't read" in out.reason
 
 
-@pytest.mark.parametrize("name", sorted(SAVED))
-def test_an_old_run_is_untyped_and_unlabeled(name: str) -> None:
-    old = SAVED[name]
-    check = check_run(name, old)
-    assert check.items and all(i.status is Status.UNTYPED for i in check.items)
-    assert check.resolved_share is None and read_sources(old).unlabeled
+def test_a_sentence_is_untyped_and_a_result_without_a_label_unlabeled(transcript: dict[str, Any]) -> None:
+    """The shape of a run from before typed evidence: sentences, and results the agent never labeled."""
+    old = json.loads(json.dumps(transcript))
+    old["hypothesis"]["evidence"] = ["Errors started at 19:05, right after the 1.43.0 deploy."]
+    for message in old["messages"]:
+        for block in message["content"]:
+            for part in block.get("toolResult", {}).get("content", []):
+                part["text"] = re.sub(r"\A\[source \w+\]\n", "", part["text"])
+    check = check_run("old", old)
+    assert [i.status for i in check.items] == [Status.UNTYPED] and check.checks[0].verdict is Verdict.UNTYPED
+    assert check.resolved_share is None and len(read_sources(old).unlabeled) == 3
 
 
 def test_a_halted_run_has_nothing_to_check(transcript: dict[str, Any]) -> None:
@@ -126,22 +132,34 @@ def test_a_halted_run_has_nothing_to_check(transcript: dict[str, Any]) -> None:
 
 
 def test_the_cli_prints_each_run_and_a_total(transcript: dict[str, Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    wrong = {**transcript, "hypothesis": {**transcript["hypothesis"], "evidence": [
+    wrong = {**transcript, "trims": ["</root_cause>"], "hypothesis": {**transcript["hypothesis"], "evidence": [
         *DEPLOY_EVIDENCE,
         item("none", source="l1", start="19:05:27", end="19:05:30", note="no errors before the deploy"),
         item("value", source="m2", column="err%", at="19:01", value="19.5"),
-    ], "inferences": [{"claim": "the deploy caused it", "rests_on": ["e1", "e2"]}]}}
+        item("value", source="m1", column="err%", at="19:01", value="19.4"),
+    ], "inferences": [
+        {"claim": "the deploy caused it", "rests_on": ["e1", "e2"]},
+        {"claim": "it started with the deploy", "rests_on": ["e3", "e5", "e9"]},
+    ]}}
     path = tmp_path / "wrong.json"
     path.write_text(json.dumps(wrong), encoding="utf-8")
     assert load_transcript(path) == wrong
 
     assert checker_main([str(path)]) == 0
     printed = capsys.readouterr().out
-    assert "wrong: 4 evidence, 1 inferences (typed 80%); 2 resolved, 1 outside the read, 1 unresolved (citations followed 75%)" in printed
+    assert (
+        "wrong: 5 evidence, 2 inferences (typed 71%, citations followed 80%); 2 hold, 0 loose, 3 flagged "
+        "(1 contradicted, 1 outside the read, 1 unresolved);"
+    ) in printed
+    assert printed.split("\n")[0].endswith("uncited figures in root_cause; 1 trims")
     assert "  e3 none l1: outside_read: 19:05:27 and 19:05:30 outside l1's read" in printed
     assert "  e4 value m2: unresolved: no result labeled m2" in printed
-    assert printed.rstrip().endswith("3 of 4 typed items' citations followed (75%), 1 outside the read")
+    assert "  e5 value m1: contradicted: err% at m1 19:01:00 is 19.5" in printed
+    assert "  i2 rests on e3 (outside_read), e5 (contradicted), e9 (no such item)" in printed
+    assert "4 of 5 typed items' citations followed (80%), 1 outside the read" in printed
+    assert printed.rstrip().split("\n")[-1].startswith("checks: 2 hold, 0 loose, 3 flagged")
 
     assert checker_main([str(path), "--json"]) == 0
     (row,) = json.loads(capsys.readouterr().out)
-    assert row["typed_share"] == 0.8 and [i["status"] for i in row["items"]] == ["resolved", "resolved", "outside_read", "unresolved"]
+    assert row["typed_share"] == 5 / 7 and row["trims"] == 1
+    assert [i["verdict"] for i in row["items"]] == ["holds", "holds", "outside_read", "unresolved", "contradicted"]

@@ -5,8 +5,8 @@ move to fit its result. A fail means rebuilding the format as R1's fallback,
 sources cited beside free text, and running the trial again.
 
 The diagnosis mark uses the rubric, which can count a right answer as wrong
-(its ruling-out words miss "unchanged" and "healthy"): every run it fails is
-listed for a hand read, and the hand read decides.
+(its rules match words): every run it fails is listed for a hand read, and the
+hand read decides.
 """
 
 import json
@@ -90,9 +90,10 @@ def trial(folder: Path) -> Trial:
         transcript = load(path) if path.exists() else {}
         answered = record["status"] == "answered"
         hypothesis = transcript.get("hypothesis") if answered else None
+        check = check_run(record["run"], transcript) if hypothesis else None
         diagnosis = None
-        if hypothesis:
-            diagnosis = rubrics.score(BY_ID[record["scenario"]], hypothesis).diagnosis
+        if hypothesis and check is not None:
+            diagnosis = rubrics.score(BY_ID[record["scenario"]], hypothesis, check.checks).diagnosis
         out.runs.append(
             TrialRun(
                 record["run"],
@@ -100,7 +101,7 @@ def trial(folder: Path) -> Trial:
                 record["cost_usd"],
                 rejected_answers(transcript),
                 len(transcript.get("trims") or []),
-                check_run(record["run"], transcript) if hypothesis else None,
+                check,
                 diagnosis,
             )
         )

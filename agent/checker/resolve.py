@@ -11,7 +11,9 @@ Three outcomes per item:
   doesn't fit the source, a row, line, or record that isn't there, a time that
   doesn't parse). These are what the trial counts as the format failing.
 
-Whether the stated values hold is step 4's; this only finds what they're about.
+A resolved item carries the entries it's about (its scope: the cited lines, the
+rows or lines in its window, or the whole result; a value item's one target),
+so the checks per kind (`checks`) read the cited data, never the item's words.
 """
 
 from dataclasses import dataclass, field
@@ -31,6 +33,16 @@ class Status(StrEnum):
     UNTYPED = "untyped"  # a sentence, from before typed evidence
 
 
+@dataclass(frozen=True)
+class Entry:
+    """One row, line, record, or datapoint of a result, and what it shows."""
+
+    name: str  # m1 19:01:00, l1[3], d1 2026-10-27T18:56:06.039Z, alarm 19:05:30
+    time: datetime | None  # None: a log line cut short or not JSON
+    period: timedelta  # a metric row's period; zero for a point in time
+    fields: dict[str, Any] | None  # by column or field; None where the checker can't read the line
+
+
 @dataclass
 class Resolution:
     id: str  # e1 is the first evidence item
@@ -39,15 +51,24 @@ class Resolution:
     status: Status
     reason: str = ""
     points_at: list[str] = field(default_factory=list)  # the rows, lines, records, or datapoints it names
+    scope: list[Entry] = field(default_factory=list)  # what the item states something about
+    # The window up to its end's instant, where the end is stated coarser than the
+    # entries it bounds ("to 19:05:23" beside a line at 19:05:23.956): None when the same.
+    short_scope: list[Entry] | None = None
+    target: Entry | None = None  # a value item's one row, line, record, or datapoint
+    result: Source | None = None  # the cited result
 
 
-@dataclass
-class _Span:
+@dataclass(frozen=True)
+class Span:
+    """What a result covered: from start, up to but not including end."""
+
     start: datetime | None  # None: open, as a deploy read with no older records
     end: datetime
+    text: str  # as the result states it
 
     def holds(self, moment: datetime, width: timedelta = timedelta(0)) -> bool:
-        return (self.start is None or moment + width > self.start) and moment <= self.end
+        return (self.start is None or moment + width > self.start) and moment < self.end
 
 
 # The kinds each source can state. Deploy records hold no numbers, so no range.
@@ -57,6 +78,8 @@ _FITS = {
     "d": {"value", "all", "count", "first", "last", "none", "gap"},
     ALARM: {"value", "range", "all", "count", "first", "last", "none", "gap"},
 }
+# A read of nothing can still be counted (0) or said to hold nothing.
+_EMPTY_OK = {"count", "none"}
 
 
 def resolve_all(hypothesis: dict[str, Any] | None, run: RunSources) -> list[Resolution]:
@@ -97,39 +120,51 @@ def resolve(item_id: str, item: dict[str, Any] | str, run: RunSources) -> Resolu
         return fail(f"no result labeled {label}")
     if label != ALARM and source.metrics is None and source.logs is None and source.deploys is None:
         return fail(f"{label} is a tool's error or a result the checker can't read")
+    out.result = source
     prefix = ALARM if label == ALARM else label[0]
     if kind not in _FITS.get(prefix, set()):
         return fail(f"a {kind} item doesn't fit a {source.tool} result")
     if kind == "gap":
         return out
     empty = _empty(source)
-    if empty and kind != "none":
+    if empty and kind not in _EMPTY_OK:
         return fail(f"{label} holds no rows, lines, or records")
 
     column = item.get("column")
     if column and not empty and not _has_column(source, column):
         return fail(f"{label} has no column or field {column!r}")
 
-    lines = item.get("lines")
+    every = entries(source, run)
+    span = span_of(source, run)
+    lines = item.get("lines") or None
+    cited: list[Entry] = []
     if lines is not None:
         if source.logs is None:
             return fail("only log results number their lines")
         missing = [n for n in lines if n not in source.line_index]
         if missing:
             return fail(f"{label} has no line {', '.join(map(str, missing))} (it shows {len(source.line_index)})")
-        out.points_at += [f"{label}[{n}]" for n in lines]
+        cited = [every[source.line_index[n]] for n in lines]
+        unreadable = [e.name for e in cited if e.fields is None]
+        if unreadable:
+            return fail(f"{', '.join(unreadable)} is cut short or isn't JSON")
+        out.points_at += [e.name for e in cited]
+        out.scope = cited
 
-    span = _span(source, run)
     if "at" in times:
         moment, width = times["at"]
         if not span.holds(moment, width):
-            return fail(f"{item['at']} is outside {label}'s read ({_show(span)})", Status.OUTSIDE_READ)
-        hits = _at(source, run, moment, width)
-        if not hits:
-            return fail(f"{label} has nothing at {item['at']}")
-        if kind == "value" and len(hits) > 1:
-            return fail(f"{len(hits)} entries at {item['at']} in {label}; cite one")
-        out.points_at += hits
+            return fail(f"{item['at']} is outside {label}'s read ({span.text})", Status.OUTSIDE_READ)
+        hits = _at(every, source, moment, width)
+        if kind == "value" and len(cited) != 1:
+            if not hits:
+                return fail(f"{label} has nothing at {item['at']}")
+            if len(hits) > 1:
+                return fail(f"{len(hits)} entries at {item['at']} in {label}; cite one")
+        out.points_at += [e.name for e in hits if e.name not in out.points_at]
+        if kind == "value":
+            out.target = cited[0] if len(cited) == 1 else hits[0]
+
     if "start" in times or "end" in times:
         start = times.get("start", times.get("end"))
         end = times.get("end", start)
@@ -139,8 +174,19 @@ def resolve(item_id: str, item: dict[str, Any] | str, run: RunSources) -> Resolu
             if key in times and not span.holds(moment, width)
         ]
         if outside:
-            return fail(f"{' and '.join(outside)} outside {label}'s read ({_show(span)})", Status.OUTSIDE_READ)
-        out.points_at += _window(source, run, start[0], end[0] + end[1])
+            return fail(f"{' and '.join(outside)} outside {label}'s read ({span.text})", Status.OUTSIDE_READ)
+        if lines is None:
+            out.scope = [e for e in every if e.time is not None and start[0] <= e.time < end[0] + end[1]]
+            out.points_at += [e.name for e in out.scope]
+            short = [e for e in out.scope if e.time is not None and e.time <= end[0]]
+            if len(short) != len(out.scope):
+                out.short_scope = short
+    elif lines is None:
+        out.scope = every  # the whole result
+    if kind == "value" and out.target is None and len(cited) == 1:
+        out.target = cited[0]
+    if out.target is not None:
+        out.scope, out.short_scope = [out.target], None
     return out
 
 
@@ -167,55 +213,80 @@ def _has_column(source: Source, column: str) -> bool:
     return True  # the alarm's one metric, however it's named
 
 
-def _span(source: Source, run: RunSources) -> _Span:
+def span_of(source: Source, run: RunSources) -> Span:
+    """What the result covered. A time it states to the second covers that whole second.
+
+    The log tool states its window to the second, so a line at 18:56:46.522 is
+    inside a read "to 18:56:46" (trial 20261114T055051Z read it as outside).
+    """
+
+    def through(text: str) -> datetime:
+        moment, width = run.moment(text)
+        return moment + width
+
     if source.metrics is not None:
-        return _Span(run.moment(source.metrics.start)[0], run.moment(source.metrics.end)[0])
+        metrics = source.metrics
+        return Span(run.moment(metrics.start)[0], through(metrics.end), f"{metrics.start} to {metrics.end}")
     if source.logs is not None:
         logs = source.logs
         start = run.moment(logs.searched_from)[0]
+        start_text = logs.searched_from
         if logs.cut:  # older matches were found but not shown: the read starts at the oldest shown
             shown = [t for t in map(line_time, logs.lines) if t]
-            start = min(shown) if shown else start
-        return _Span(start, run.moment(logs.searched_to)[0])
+            if shown:
+                start = min(shown)
+                start_text = f"{start:%H:%M:%S.%f}"[:-3]
+        return Span(start, through(logs.searched_to), f"{start_text} to {logs.searched_to}")
     if source.deploys is not None:
         deploys = source.deploys
         oldest = min(run.moment(r["ts"])[0] for r in deploys.records) if deploys.older_exist else None
-        return _Span(oldest, run.moment(deploys.up_to)[0])
+        start_text = f"{oldest:%Y-%m-%dT%H:%M:%S}" if oldest else "the first record"
+        return Span(oldest, through(deploys.up_to), f"{start_text} to {deploys.up_to}")
     if not source.points:
-        return _Span(None, run.fired_at)
-    return _Span(source.points[0][0], source.points[-1][0])
+        return Span(None, run.fired_at + timedelta(microseconds=1), f"the alarm at {run.fired_at:%H:%M:%S}")
+    first, last = source.points[0][0], source.points[-1][0]
+    return Span(first, last + timedelta(seconds=1), f"{first:%H:%M:%S} to {last:%H:%M:%S}")
 
 
-def _show(span: _Span) -> str:
-    start = span.start.strftime("%H:%M:%S") if span.start else "the first record"
-    return f"{start} to {span.end.strftime('%H:%M:%S')}"
-
-
-def _entries(source: Source, run: RunSources) -> list[tuple[datetime, timedelta, str]]:
-    """Each row, line, record, or datapoint: its time, how long it covers, and its name."""
+def entries(source: Source, run: RunSources) -> list[Entry]:
+    """Each row, line, record, or datapoint, in the result's order. A log line's index is its place in logs.lines."""
+    label = source.label
     if source.metrics is not None:
         period = timedelta(seconds=source.metrics.period_s or 0)
-        return [(run.moment(r.time)[0], period, f"{source.label} {r.time}") for r in source.metrics.rows]
-    if source.logs is not None:
-        by_index = {i: n for n, i in source.line_index.items()}
         return [
-            (t, timedelta(0), f"{source.label}[{by_index.get(i, i + 1)}]")
-            for i, line in enumerate(source.logs.lines)
-            if (t := line_time(line))
+            Entry(f"{label} {r.time}", run.moment(r.time)[0], period, dict(r.cells)) for r in source.metrics.rows
         ]
+    if source.logs is not None:
+        number = {i: n for n, i in source.line_index.items()}
+        out = []
+        for i, line in enumerate(source.logs.lines):
+            readable = isinstance(line, dict)
+            out.append(
+                Entry(
+                    f"{label}[{number.get(i, i + 1)}]",
+                    line_time(line) if readable else None,
+                    timedelta(0),
+                    line if readable else None,
+                )
+            )
+        return out
     if source.deploys is not None:
-        return [(run.moment(r["ts"])[0], timedelta(0), f"{source.label} {r['ts']}") for r in source.deploys.records]
-    return [(t, timedelta(0), f"alarm {t:%H:%M:%S}") for t, _ in source.points]
+        out = []
+        for record in source.deploys.records:
+            changes = record.get("changes") or []
+            # Each changed key is a field of its own, old->new; changes lists them as the result shows them.
+            fields = {k: v for k, v in record.items() if k != "changes"}
+            fields["changes"] = [f"{c['key']} {c['old']}->{c['new']}" for c in changes]
+            for change in changes:
+                fields[change["key"]] = f"{change['old']}->{change['new']}"
+            out.append(Entry(f"{label} {record['ts']}", run.moment(record["ts"])[0], timedelta(0), fields))
+        return out
+    return [Entry(f"alarm {t:%H:%M:%S}", t, timedelta(0), {ALARM: value}) for t, value in source.points]
 
 
-def _at(source: Source, run: RunSources, moment: datetime, width: timedelta) -> list[str]:
-    entries = _entries(source, run)
+def _at(every: list[Entry], source: Source, moment: datetime, width: timedelta) -> list[Entry]:
     if source.metrics is not None:
         # A row by its start, or the one row whose period holds the time.
-        starts = [name for t, _, name in entries if t == moment]
-        return starts or [name for t, period, name in entries if t <= moment < t + period]
-    return [name for t, _, name in entries if moment <= t < moment + width]
-
-
-def _window(source: Source, run: RunSources, start: datetime, end: datetime) -> list[str]:
-    return [name for t, _, name in _entries(source, run) if start <= t < end]
+        starts = [e for e in every if e.time == moment]
+        return starts or [e for e in every if e.time is not None and e.time <= moment < e.time + e.period]
+    return [e for e in every if e.time is not None and moment <= e.time < moment + width]
