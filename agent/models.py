@@ -121,7 +121,8 @@ class Evidence(BaseModel):
         default=None,
         description=(
             "The metric column as the table heads it (err%, pool_wait_p99_ms), the log line's field "
-            "(latency_ms, error_type), or the deploy record's field (version, kind) or changed key."
+            "(latency_ms, error_type), or the deploy record's field (version, kind). For a config change, "
+            "the changed key's own name, as its key shows it: POOL_MAX_SIZE."
         ),
     )
     at: Time = Field(

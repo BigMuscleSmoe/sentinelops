@@ -332,3 +332,129 @@ def test_a_failed_call_ends_the_run_and_is_charged_the_most_it_could_cost() -> N
     assert report.model_calls == []
     counted = fake.count_requests[0]["bytes"]  # the fake's count, unscripted
     assert report.cost_usd == pytest.approx(HAIKU.most_a_call_costs(counted + count_margin(counted), 16_000))
+
+
+# Strict tool use's own limits (platform docs, structured outputs: schema complexity limits).
+STRICT_MAX_OPTIONAL = 24
+STRICT_MAX_UNIONS = 16
+STRICT_REJECTS = {"minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"}
+
+
+def schema_nodes(node, path="$"):
+    """Every subschema in a JSON schema, with its path; property names are never taken for keywords."""
+    if isinstance(node, list):
+        for i, sub in enumerate(node):
+            yield from schema_nodes(sub, f"{path}[{i}]")
+    elif isinstance(node, dict):
+        yield path, node
+        for key, value in node.items():
+            if key in ("properties", "$defs") and isinstance(value, dict):
+                for name, sub in value.items():
+                    yield from schema_nodes(sub, f"{path}.{key}.{name}")
+            else:
+                yield from schema_nodes(value, f"{path}.{key}")
+
+
+def test_the_answer_tool_alone_goes_out_strict_on_every_call() -> None:
+    fake = FakeAnthropic([Reply([tool_use("get_metrics")]), Reply([text("Done.")], stop_reason="end_turn"), answer(DIAGNOSIS)])
+
+    run(fake)
+
+    for sent in fake.requests + fake.count_requests:
+        strict = {tool["name"]: tool.get("strict") for tool in sent["body"]["tools"]}
+        assert strict == {"get_metrics": None, "get_recent_logs": None, "Hypothesis": True}
+
+
+def test_the_strict_schema_is_one_the_api_takes() -> None:
+    fake = FakeAnthropic([answer(DIAGNOSIS)])
+
+    run(fake)
+
+    schema = next(tool for tool in fake.requests[0]["body"]["tools"] if tool["name"] == "Hypothesis")["input_schema"]
+    nodes = list(schema_nodes(schema))
+    assert [(path, sorted(STRICT_REJECTS & set(node))) for path, node in nodes if STRICT_REJECTS & set(node)] == []
+    objects = [(path, node) for path, node in nodes if node.get("type") == "object"]
+    assert [path for path, node in objects] == ["$", "$.properties.evidence.items", "$.properties.inferences.items"]
+    assert all(node["additionalProperties"] is False for _, node in objects)
+    # Every field required: with 14 optional ones the API refused the schema as too complex to compile.
+    assert [(path, node["required"]) for path, node in objects] == [(path, list(node["properties"])) for path, node in objects]
+    # The limits are over the whole request; this is its only strict tool.
+    optional = sum(len(set(node["properties"]) - set(node.get("required", []))) for _, node in objects)
+    unions = sum(
+        "anyOf" in prop or isinstance(prop.get("type"), list)
+        for _, node in objects
+        for prop in node["properties"].values()
+    )
+    assert optional <= STRICT_MAX_OPTIONAL and unions <= STRICT_MAX_UNIONS
+    # The fields the answer may leave unset go out nullable (a type array), each a union: 11 of
+    # Evidence's and runbook_cited. inferences and not_checked go out as plain lists.
+    assert (optional, unions) == (0, 12), "pinned: a field added or made nullable moves these on purpose"
+
+
+def test_the_strict_schema_is_only_what_the_api_needs_changed() -> None:
+    # What the model reads is the same: the fields and their descriptions. What changes is what strict
+    # tool use needs: no rejected keyword, closed objects, every field required, and no null where
+    # Pydantic takes none. (The tool's own description is Strands', untouched: format_request sets only
+    # input_schema and strict.)
+    from strands.tools.structured_output.structured_output_utils import convert_pydantic_to_tool_spec
+
+    from models import Hypothesis
+
+    fake = FakeAnthropic([answer(DIAGNOSIS)])
+
+    run(fake)
+
+    sent = next(tool for tool in fake.requests[0]["body"]["tools"] if tool["name"] == "Hypothesis")
+    strands = convert_pydantic_to_tool_spec(Hypothesis)
+    original = dict(schema_nodes(strands["inputSchema"]["json"]))
+    no_null = {"$.properties.inferences", "$.properties.not_checked"}
+    changed = {"additionalProperties", "required", "type"}
+    for path, node in schema_nodes(sent["input_schema"]):
+        dropped = set(original[path]) - set(node)
+        added = set(node) - set(original[path])
+        assert dropped <= STRICT_REJECTS, path
+        assert added <= {"additionalProperties"}, path
+        assert {k: v for k, v in node.items() if k not in changed and not isinstance(v, (dict, list))} == {
+            k: v
+            for k, v in original[path].items()
+            if k not in STRICT_REJECTS | changed and not isinstance(v, (dict, list))
+        }, path
+        if path in no_null:
+            assert (original[path]["type"], node["type"]) == (["array", "null"], "array"), path
+        else:
+            assert node.get("type") == original[path].get("type"), path
+        if "required" in node:
+            assert node["required"] == list(node["properties"]), path
+
+
+def test_an_answer_written_out_in_full_is_the_answer_it_was() -> None:
+    # Under strict tool use the answer writes every field: null where it used to leave one out, and []
+    # for no inferences. Pydantic reads it as the same answer, accepted first time.
+    from models import Evidence, Hypothesis
+
+    full = {
+        **DIAGNOSIS,
+        "evidence": [{**dict.fromkeys(Evidence.model_fields), **one} for one in DIAGNOSIS["evidence"]],
+        "inferences": [],
+        "not_checked": [],
+        "runbook_cited": None,
+    }
+    written_out, left_out = FakeAnthropic([answer(full)]), FakeAnthropic([answer(DIAGNOSIS)])
+
+    assert run(written_out).hypothesis == run(left_out).hypothesis
+    assert len(written_out.requests) == len(left_out.requests) == 1
+    # Strands' schema would have let inferences be null, which Pydantic refuses: the strict schema doesn't.
+    with pytest.raises(ValueError, match="valid list"):
+        Hypothesis.model_validate({**DIAGNOSIS, "inferences": None})
+
+
+def test_a_strict_answer_is_still_checked_for_what_the_schema_no_longer_says() -> None:
+    # minLength and the 0-1 bound left the sent schema; Pydantic still holds the answer to them.
+    fake = FakeAnthropic([answer({**DIAGNOSIS, "confidence": 1.5}), answer({**DIAGNOSIS, "root_cause": ""}), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.confidence == DIAGNOSIS["confidence"]
+    rejected = [fake.tool_results(i) for i in (1, 2)]
+    assert "less than or equal to 1" in " ".join(rejected[0])
+    assert "at least 1 character" in " ".join(rejected[1])

@@ -19,8 +19,10 @@ from providers import (
     FederationFailed,
     Settings,
     SettingsError,
+    StrictAnswerModel,
     build_model,
     federated_credentials,
+    strict_schema,
 )
 from stubs import LOCAL_ROLE_ARN, ROLE_KEYS, WEB_IDENTITY_TOKEN, FakeSession
 
@@ -310,3 +312,101 @@ def test_only_sentinelops_dev_may_assume_the_local_role_and_it_may_only_sign_in(
     assert re.findall(r"identifiers\s*=\s*\[([^\]]*)\]", text) == [
         '"arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/sentinelops-dev"'
     ]
+
+
+def test_the_model_sends_the_answer_tool_strict() -> None:
+    model = build_model(Settings(federation=FEDERATION), credentials=signed_in())
+
+    assert isinstance(model, StrictAnswerModel)
+
+
+def test_the_strict_schema_drops_what_strict_tool_use_rejects_and_requires_every_field_at_any_depth() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "How sure."},
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "object", "properties": {"note": {"type": "string", "minLength": 1}}},
+            },
+            "count": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        },
+        "required": ["confidence"],
+    }
+
+    assert strict_schema(schema) == {
+        "type": "object",
+        "properties": {
+            "confidence": {"type": "number", "description": "How sure."},
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {"note": {"type": "string"}},
+                    "additionalProperties": False,
+                    "required": ["note"],
+                },
+            },
+            "count": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        },
+        "required": ["confidence", "items", "count"],
+        "additionalProperties": False,
+    }
+
+
+def test_the_strict_schema_leaves_null_only_where_the_model_takes_it() -> None:
+    # As Strands sends it: every optional field nullable, the nested model inlined.
+    sent = {
+        "type": "object",
+        "properties": {
+            "notes": {"type": ["array", "null"], "items": {"type": "string"}},
+            "runbook": {"type": ["string", "null"]},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"at": {"type": ["string", "null"]}, "tags": {"type": ["array", "null"]}},
+                    "required": [],
+                },
+            },
+        },
+        "required": ["items"],
+    }
+    # As Pydantic writes it: a list defaulting to empty takes no null; an optional string does.
+    model = {
+        "$defs": {
+            "Item": {
+                "type": "object",
+                "properties": {
+                    "at": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+            }
+        },
+        "type": "object",
+        "properties": {
+            "notes": {"type": "array", "items": {"type": "string"}},
+            "runbook": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+            "items": {"type": "array", "items": {"$ref": "#/$defs/Item"}},
+        },
+        "required": ["items"],
+    }
+
+    out = strict_schema(sent, model)
+
+    assert out["required"] == ["notes", "runbook", "items"]
+    assert out["properties"]["notes"] == {"type": "array", "items": {"type": "string"}}
+    assert out["properties"]["runbook"] == {"type": ["string", "null"]}
+    item = out["properties"]["items"]["items"]
+    assert item["required"] == ["at", "tags"]
+    assert item["properties"] == {"at": {"type": ["string", "null"]}, "tags": {"type": "array"}}
+
+
+def test_the_strict_schema_keeps_a_property_named_like_a_keyword_and_leaves_its_input_alone() -> None:
+    schema = {"type": "object", "properties": {"minimum": {"type": "number"}}, "additionalProperties": False}
+    before = repr(schema)
+
+    assert strict_schema(schema)["properties"] == {"minimum": {"type": "number"}}
+    assert repr(schema) == before

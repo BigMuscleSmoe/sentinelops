@@ -15,12 +15,33 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from strands.models.anthropic import AnthropicModel
+
+from models import Hypothesis
+
 PROVIDERS = ("anthropic", "bedrock")
 DEFAULT_MODEL_IDS = {"anthropic": "claude-haiku-5-5"}
 MAX_OUTPUT_TOKENS = 16_000
 # Haiku 5.5 only thinks adaptively. Summarized makes the reasoning readable in
 # the transcript and changes nothing about what the call costs.
 THINKING = {"type": "adaptive", "display": "summarized"}
+
+# The answer tool goes out strict, so the API samples its input from the
+# schema: every required field, the right types, no other keys. Without it
+# Haiku 5.5 closed root_cause with </root_cause> in 15 answers over two
+# sweeps, losing the field after it (BUILD_LOG, 2026-11-14). Strict schemas
+# can't use these keywords (a 400); Pydantic still checks them on our side.
+# And every field goes out required: with 14 optional ones the API refused the
+# schema as too complex to compile, since each optional field multiplies the
+# grammar. A field the answer may leave unset is written as null instead.
+ANSWER_TOOL = Hypothesis.__name__
+# The answer's schema as Pydantic writes it: which fields take null.
+ANSWER_SCHEMA = Hypothesis.model_json_schema()
+STRICT_UNSUPPORTED = frozenset(
+    {"minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"}
+)
+# Where a schema maps names to subschemas: the names are never keywords.
+SCHEMA_MAPS = ("properties", "$defs")
 
 # The Claude Console's IDs for federation, by field. The anthropic provider needs all three.
 FEDERATION_ENV = {
@@ -231,6 +252,94 @@ class PrimedCredentials:
         self._exchange.close()
 
 
+def strict_schema(node: Any, model: Any = None) -> Any:
+    """A copy of a JSON schema as strict tool use takes it and can compile.
+
+    It drops the keywords strict tool use rejects, and puts additionalProperties
+    false on every object, which it requires (Strands leaves that off the top
+    level; the models forbid extra keys). And it makes every property required,
+    so the answer writes each one, as null where it would have left it out.
+    model is the same schema as Pydantic writes it, if given: Strands makes every
+    optional field nullable, so where the model takes no null (a list that
+    defaults to empty, which Pydantic would refuse as null), the null is dropped
+    and the answer writes [] instead.
+    """
+    return _strict(node, model, (model or {}).get("$defs", {}))
+
+
+def _strict(node: Any, model: Any, defs: dict[str, Any]) -> Any:
+    if isinstance(node, list):
+        return [_strict(item, None, defs) for item in node]
+    if not isinstance(node, dict):
+        return node
+    model = _resolved(model, defs) if isinstance(model, dict) else {}
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in SCHEMA_MAPS and isinstance(value, dict):
+            subs = model.get(key) if isinstance(model.get(key), dict) else {}
+            out[key] = {name: _strict(sub, subs.get(name), defs) for name, sub in value.items()}
+        elif key == "items":
+            out[key] = _strict(value, model.get("items"), defs)
+        elif key not in STRICT_UNSUPPORTED:
+            out[key] = _strict(value, None, defs)
+    if out.get("type") == "object":
+        out.setdefault("additionalProperties", False)
+        if "properties" in out:
+            props = out["properties"]
+            known = model.get("properties", {})
+            for name in [name for name in props if name not in out.get("required", [])]:
+                if name in known and not _takes_null(known[name], defs):
+                    props[name] = _without_null(props[name])
+            out["required"] = list(props)
+    return out
+
+
+def _resolved(node: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]:
+    while "$ref" in node:
+        node = defs[node["$ref"].rsplit("/", 1)[-1]]
+    return node
+
+
+def _takes_null(node: dict[str, Any], defs: dict[str, Any]) -> bool:
+    node = _resolved(node, defs)
+    kind = node.get("type")
+    return (
+        kind == "null"
+        or (isinstance(kind, list) and "null" in kind)
+        or any(_takes_null(branch, defs) for branch in node.get("anyOf", []))
+    )
+
+
+def _without_null(node: dict[str, Any]) -> dict[str, Any]:
+    out = dict(node)
+    kind = out.get("type")
+    if isinstance(kind, list):
+        kinds = [k for k in kind if k != "null"]
+        out["type"] = kinds[0] if len(kinds) == 1 else kinds
+    if "anyOf" in out:
+        branches = [branch for branch in out.pop("anyOf") if branch != {"type": "null"}]
+        if len(branches) == 1:
+            out.update(branches[0])
+        else:
+            out["anyOf"] = branches
+    return out
+
+
+class StrictAnswerModel(AnthropicModel):
+    """Strands' Anthropic model, sending the answer tool with strict: true and
+    every other tool as it was. Strands 1.62.0 sends a tool's name, description,
+    and schema only. hooks.count_request calls format_request too, so the count
+    covers the same request."""
+
+    def format_request(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        request = super().format_request(*args, **kwargs)
+        for tool in request["tools"]:
+            if tool.get("name") == ANSWER_TOOL:
+                tool["input_schema"] = strict_schema(tool["input_schema"], ANSWER_SCHEMA)
+                tool["strict"] = True
+        return request
+
+
 def build_model(settings: Settings, http_client: Any = None, *, credentials: Any = None) -> Any:
     """The Strands model for these settings, signed in with the federated
     credentials. http_client is for tests: a fake API."""
@@ -241,14 +350,12 @@ def build_model(settings: Settings, http_client: Any = None, *, credentials: Any
     if credentials is None:
         raise SettingsError("The anthropic provider signs in by federation: it needs federated credentials.")
 
-    from strands.models.anthropic import AnthropicModel
-
     # The credentials go to the client as an argument, so it never reads
     # ANTHROPIC_API_KEY or the SDK's own federation variables.
     client_args: dict[str, Any] = {"max_retries": 2, "timeout": 60.0, "credentials": credentials}
     if http_client is not None:
         client_args["http_client"] = http_client
-    return AnthropicModel(
+    return StrictAnswerModel(
         client_args=client_args,
         model_id=settings.model_id,
         max_tokens=settings.max_output_tokens,
