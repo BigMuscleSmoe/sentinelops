@@ -24,6 +24,7 @@ POOL_WAIT = "sentinelops-checkout-pool-wait"
 class Fault(StrEnum):
     BAD_DEPLOY = "bad_deploy"
     DB_POOL_EXHAUSTION = "db_pool_exhaustion"
+    DOWNSTREAM_TIMEOUT = "downstream_timeout"
 
 
 @dataclass(frozen=True)
@@ -33,9 +34,12 @@ class Scenario:
     alarm: str
     fired_at: datetime
     fault: Fault
-    # When the change that caused it was recorded, HH:MM in UTC, as deploy history shows it.
-    culprit_at: str
+    # When the change that caused it was recorded, HH:MM in UTC, as deploy history
+    # shows it; None for a fault outside this service, which records no change.
+    culprit_at: str | None
     seen: bool
+    # When the fault began (the break), for a fault with no culprit record.
+    onset: datetime | None = None
 
 
 def _at(value: str) -> datetime:

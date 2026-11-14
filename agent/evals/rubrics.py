@@ -4,21 +4,35 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
   names_culprit     root_cause names the change that caused it
   names_mechanism   root_cause says how that change produces the symptom
   blames_no_other   root_cause blames no other change: a suspect named in a
-                    sentence that rules it out ("not", "separate", "already
-                    reverted") is accounted for, not blamed
-  location          affected_component is this service, not the upstream, and
-                    so is fault_location where the answer has one
+                    clause that rules it out ("not", "separate", "already
+                    reverted") is accounted for, not blamed, and so is one
+                    named only as never reached ("before any payments-api
+                    call"). A ruling-out covers its own clause, not the
+                    sentence: "pool exhaustion caused the timeouts, while
+                    database time was normal" blames the pool
+  location          affected_component and fault_location are where the fault
+                    is: this service for a pool fault or a bad deploy, and
+                    payments-api, upstream, for a downstream timeout
   pr_gate           Hypothesis.can_open_pr, read through the property, is what
                     the scenario expects
   runbook           runbook_cited is what the scenario expects: null, while
                     there's no runbook search
   evidence_change   an evidence item cites the culprit's own deploy record, by
                     a field that shows the change (its version, or the changed
-                    key), and holds there
+                    key), and holds there; for a downstream timeout, which has
+                    no culprit record, `none` items on deploy history that
+                    hold and together rule out every kind of record (one with
+                    no column, or one for deploys and one for config changes),
+                    each over a window containing the 5 minutes before the
+                    onset
   evidence_failure  an evidence item that holds shows the mechanism: a logged
-                    error naming it, or the pool's wait or use as a number
+                    error naming it, or the pool's wait or use, or payments-api's
+                    latency or timeouts, as a number
   evidence_symptom  an evidence item that holds gives the alarm's own metric as
                     a number, from a metrics table or the alarm message
+  evidence_health   a downstream timeout's only: an item that holds gives one of
+                    this service's own signals (pool wait, database time, or
+                    err%) as a number
 
 The last three keep a Hypothesis that says less from scoring better. They read
 the checker's verdicts and what the cited entries show (BUILD_PLAN.md, "The
@@ -33,9 +47,11 @@ records its own verdict on each diagnosis, and the two are compared.
 
 import re
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from checker.checks import ItemCheck, Verdict, field_of, is_number
+from checker.sources import RunSources
 from evals.scenarios import ERRORS, LATENCY, POOL_WAIT, Fault, Scenario
 from models import FaultLocation, Hypothesis
 
@@ -52,9 +68,25 @@ _RULED_OUT = re.compile(
     r"|\b(?:is|are|was|were|holds|hold|held|stays|stay|stayed|remains|remain|remained) steady\b",
     re.I,
 )
+# A ruling-out covers its clause. Clauses end at a semicolon or a colon, before a
+# contrast or a consequence (while, whereas, but, although, though, yet, so), and
+# before ", not".
+_CLAUSE = re.compile(r"\s*[;:]\s+|,?\s+(?=(?:while|whereas|but|although|though|yet|so)\b)|,\s+(?=not\b)", re.I)
+# A suspect named only as never reached, read from the words before it: "before
+# any payments-api call", "before any database or payments-api work", "before the
+# request reaches payments-api", "never reached payments-api". It excuses the
+# suspect it names and nothing else in the clause.
+_NOT_REACHED = re.compile(
+    r"\bbefore any\b[^,;:]{0,40}$"
+    r"|\bbefore\b[^,;:]{0,30}\breach(?:es|ing)?\s+(?:the\s+)?$"
+    r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$",
+    re.I,
+)
 _DECOY_KEYS = r"LOG_SAMPLE_RATE|CART_TTL|PRODUCT_CACHE_TTL|RECOMMENDATIONS_ENABLED"
 _SHOWN = (Verdict.HOLDS, Verdict.LOOSE)  # what an item got right; a loose one's extra words aren't
 _STATES_A_NUMBER = ("value", "range", "all")  # a count states how many, a first or last a time
+_QUIET_BEFORE_ONSET = timedelta(minutes=5)  # what a none must cover when nothing changed
+RECORD_KINDS = frozenset({"deploy", "config"})  # every kind of record deploy history holds
 
 
 @dataclass(frozen=True)
@@ -66,7 +98,17 @@ class FaultRules:
     # is itself the observation), or a column whose number shows it (a wait).
     failure_value: re.Pattern[str] | None
     failure_column: re.Pattern[str] | None
+    # Where the fault is, and what affected_component must name.
+    location: FaultLocation = FaultLocation.THIS_SERVICE
+    component: re.Pattern[str] = re.compile(r"checkout|pool", re.I)
+    expect_pr: bool = True  # what Hypothesis.can_open_pr should say
+    # A fault with no culprit record: its evidence_change is the history's
+    # silence before the onset, and evidence_health one of this service's signals.
+    no_culprit_record: bool = False
+    health_column: re.Pattern[str] | None = None
 
+
+_POOL_BLAME = r"POOL_MAX_SIZE|pool[_ ]max|pool size|pool[- ]exhaust|exhausted pool|connection pool"
 
 RULES = {
     Fault.BAD_DEPLOY: FaultRules(
@@ -76,7 +118,7 @@ RULES = {
             re.compile(r"\bNone\b|NoneType|(?i:null|TypeError|subscript|dereferenc)"),
         ),
         wrong_suspects=re.compile(
-            rf"POOL_MAX_SIZE|pool[_ ]max|pool size|pool[- ]exhaust|connection pool|{_DECOY_KEYS}", re.I
+            rf"POOL_MAX_SIZE|pool[_ ]max|pool size|pool[- ]exhaust|connection pool|payments-api|{_DECOY_KEYS}", re.I
         ),
         failure_value=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
         failure_column=None,
@@ -100,11 +142,27 @@ RULES = {
         failure_value=None,
         failure_column=re.compile(r"^pool_(wait|active)"),
     ),
+    Fault.DOWNSTREAM_TIMEOUT: FaultRules(
+        culprit=re.compile(r"payments?[-_ ]?api|payment provider", re.I),
+        mechanism=(re.compile(r"time[sd]?[- ]?out|slow|latenc|degrad|\b504\b|did not respond|didn't respond", re.I),),
+        # Naming the timeout setting is part of a right answer; blaming a change to it isn't.
+        # "promo" alone isn't a suspect: the 504s come with and without one.
+        wrong_suspects=re.compile(
+            rf"{_POOL_BLAME}|slow quer|database (is |was )?slow|slow database|1\.43\.0|9c41e7b|TypeError|apply_promo"
+            rf"|promo pricing|PAYMENTS_TIMEOUT_MS (was )?(change|lower|reduc|cut)\w*|{_DECOY_KEYS}",
+            re.I,
+        ),
+        failure_value=re.compile(r"UpstreamTimeout|did not respond|payment provider timed out|\b504\b"),
+        failure_column=re.compile(r"^payments_"),
+        location=FaultLocation.UPSTREAM,
+        component=re.compile(r"payments", re.I),
+        expect_pr=False,
+        no_culprit_record=True,
+        health_column=re.compile(r"^(pool_wait_p99_ms|db_query_p50_ms|err%)$"),
+    ),
 }
 # Each alarm's own metric, as the metrics table heads it; the alarm message's datapoints are it too.
 _SYMPTOM = {ERRORS: "err%", LATENCY: "p99_ms", POOL_WAIT: "pool_wait_p99_ms"}
-# Every scenario so far is a fault inside this service, plain enough to name with confidence.
-EXPECT_PR = True
 EXPECT_RUNBOOK = None
 
 
@@ -133,9 +191,20 @@ def sentences(text: str) -> list[str]:
     return [s for s in _SENTENCE.split(text.strip()) if s]
 
 
+def clauses(sentence: str) -> list[str]:
+    return [c for c in _CLAUSE.split(sentence) if c.strip()]
+
+
 def blamed(text: str, suspects: re.Pattern[str]) -> list[str]:
-    """The suspects named in a sentence that doesn't rule them out."""
-    return [m.group() for s in sentences(text) if not _RULED_OUT.search(s) for m in suspects.finditer(s)]
+    """The suspects named in a clause that doesn't rule them out, and not only as never reached."""
+    return [
+        m.group()
+        for s in sentences(text)
+        for c in clauses(s)
+        if not _RULED_OUT.search(c)
+        for m in suspects.finditer(c)
+        if not _NOT_REACHED.search(c[: m.start()])
+    ]
 
 
 def shown(check: ItemCheck) -> list[str]:
@@ -151,20 +220,58 @@ def shows_a_number(check: ItemCheck) -> bool:
     return check.kind in _STATES_A_NUMBER and any(is_number(field_of(e, check.column)) for e in check.entries)
 
 
-def evidence_items(scenario: Scenario, checks: list[ItemCheck]) -> dict[str, bool]:
-    """The three evidence items, from the checker's verdicts and the entries each item cites."""
+def kinds_ruled_out(scenario: Scenario, check: ItemCheck, item: Any) -> frozenset[str]:
+    """The kinds of record a none on deploy history rules out as the fault began.
+
+    It must hold, over a window containing the 5 minutes before the onset. With
+    no column it says the window holds no record at all, and so does `kind` with
+    no value: every kind. `kind = deploy` or `kind = config` rules out that one.
+    Any other column says less than that no record of a kind exists: no kind.
+    """
+    if not (check.verdict is Verdict.HOLDS and check.kind == "none" and (check.source or "").startswith("d")):
+        return frozenset()
+    if not isinstance(item, dict) or scenario.onset is None:
+        return frozenset()
+    times = RunSources(scenario.fired_at)
+    try:  # the schema requires both on a none
+        start, _ = times.moment(str(item["start"]))
+        end, end_width = times.moment(str(item["end"]))
+    except (KeyError, ValueError):
+        return frozenset()
+    if not (start <= scenario.onset - _QUIET_BEFORE_ONSET and end + end_width >= scenario.onset):
+        return frozenset()
+    column, value = item.get("column"), item.get("value")
+    if not column:
+        return RECORD_KINDS
+    if column != "kind":
+        return frozenset()
+    if value in (None, ""):
+        return RECORD_KINDS
+    return RECORD_KINDS & {str(value).strip().strip("'\"").casefold()}
+
+
+def evidence_items(scenario: Scenario, checks: list[ItemCheck], evidence: list[Any] | None = None) -> dict[str, bool]:
+    """The evidence items, from the checker's verdicts, the entries each item cites,
+    and, for a none's window, what the item states."""
     rules = RULES[scenario.fault]
     right = [c for c in checks if c.verdict in _SHOWN]
-    culprit_minute = f"{scenario.fired_at:%Y-%m-%d}T{scenario.culprit_at}"
+    items = {f"e{n}": item for n, item in enumerate(evidence or [], 1)}
 
-    def is_culprit(c: ItemCheck) -> bool:
-        return any(e.time is not None and f"{e.time:%Y-%m-%dT%H:%M}" == culprit_minute for e in c.entries)
+    if rules.no_culprit_record:
+        # Nothing changed: one none for every kind of record, or several that cover them between them.
+        ruled_out = frozenset().union(*(kinds_ruled_out(scenario, c, items.get(c.id)) for c in checks))
+        change = ruled_out == RECORD_KINDS
+    else:
+        culprit_minute = f"{scenario.fired_at:%Y-%m-%d}T{scenario.culprit_at}"
 
-    change = any(
-        c.verdict is Verdict.HOLDS and (c.source or "").startswith("d") and is_culprit(c)
-        and any(rules.culprit.search(f"{c.column} {text}") for text in shown(c))
-        for c in right
-    )
+        def is_culprit(c: ItemCheck) -> bool:
+            return any(e.time is not None and f"{e.time:%Y-%m-%dT%H:%M}" == culprit_minute for e in c.entries)
+
+        change = any(
+            c.verdict is Verdict.HOLDS and (c.source or "").startswith("d") and is_culprit(c)
+            and any(rules.culprit.search(f"{c.column} {text}") for text in shown(c))
+            for c in right
+        )
     failure = any(
         (rules.failure_value is not None and any(rules.failure_value.search(text) for text in shown(c)))
         or (rules.failure_column is not None and bool(rules.failure_column.search(c.column or "")) and shows_a_number(c))
@@ -175,7 +282,13 @@ def evidence_items(scenario: Scenario, checks: list[ItemCheck]) -> dict[str, boo
         (c.source == "alarm" or ((c.source or "").startswith("m") and c.column == metric)) and shows_a_number(c)
         for c in right
     )
-    return {"evidence_change": change, "evidence_failure": failure, "evidence_symptom": symptom}
+    out = {"evidence_change": change, "evidence_failure": failure, "evidence_symptom": symptom}
+    if rules.health_column is not None:
+        health = rules.health_column
+        out["evidence_health"] = any(
+            (c.source or "").startswith("m") and bool(health.search(c.column or "")) and shows_a_number(c) for c in right
+        )
+    return out
 
 
 def pr_gate(hypothesis: dict[str, Any]) -> bool:
@@ -196,15 +309,18 @@ def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck
     result.items["blames_no_other"] = not wrong
     if wrong:
         result.notes["blames_no_other"] = "blames " + ", ".join(sorted(set(wrong)))
-    in_service = re.search(r"checkout|pool", component, re.I) is not None
-    upstream = re.search(r"payments", component, re.I) is not None
-    located = hypothesis.get("fault_location") == FaultLocation.THIS_SERVICE
-    result.items["location"] = in_service and not upstream and located
+    named = rules.component.search(component) is not None
+    located = hypothesis.get("fault_location") == rules.location
+    if rules.location is FaultLocation.THIS_SERVICE:
+        result.items["location"] = named and re.search(r"payments", component, re.I) is None and located
+    else:
+        result.items["location"] = named and located
 
     gate = pr_gate(hypothesis)
     result.items["pr_gate_value"] = gate
-    result.items["pr_gate"] = gate is EXPECT_PR
+    result.items["pr_gate"] = gate is rules.expect_pr
     result.items["runbook"] = hypothesis.get("runbook_cited") == EXPECT_RUNBOOK
 
-    result.items.update(evidence_items(scenario, checks))
+    evidence = hypothesis.get("evidence")
+    result.items.update(evidence_items(scenario, checks, evidence if isinstance(evidence, list) else None))
     return result

@@ -196,12 +196,80 @@ def test_normal_and_steady_rule_out_only_as_a_state(sentence: str, blamed: list[
     "sentence, blamed",
     [
         # The false pass a bare "normal" allowed: the pool blamed beside "above normal".
-        ("Payments-api latency rose above normal, so the connection pool backed up.", ["connection pool"]),
+        ("Payments-api latency rose above normal, so the connection pool backed up.", ["Payments-api", "connection pool"]),
         ("A steady climb in pool wait followed the POOL_MAX_SIZE change.", ["POOL_MAX_SIZE"]),
     ],
 )
 def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[str]) -> None:
     assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == blamed
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # payments-api named only to place the failure before it: not blamed.
+        "The TypeError fires in apply_promo before any payments-api call.",
+        "The request never reached payments-api.",
+        # The five saved bad-deploy sentences that say so of "payment" or "payments", rewritten to name it.
+        "Every checkout without a promo raises TypeError and returns 500 before any payments-api call, so the error rate jumped from 0% to about 17% of requests.",
+        "The unhandled exception returns HTTP 500 within a few milliseconds, before any payments-api or database work.",
+        "When a cart has no promo (has_promo=false), it subscripts a None value and raises TypeError, so POST /checkout returns 500 before any payments-api call.",
+        "This happens on the request path before any database or payments-api call.",
+        "Its pricing path calls apply_promo on carts that have no promo, dereferences a None promo object, and raises TypeError before the request reaches payments-api.",
+    ],
+)
+def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == []
+    cause = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
+    result = _rubric(DEPLOY_RUN, root_cause=f"{cause} {sentence}")
+    assert result.items["blames_no_other"] and result.diagnosis
+
+
+@pytest.mark.parametrize(
+    "sentence, blamed",
+    [
+        # Never reached excuses the suspect it names, and nothing else in the clause.
+        ("The connection pool was exhausted before any payments-api call.", ["connection pool"]),
+        ("Payments-api timed out before any database work.", ["Payments-api"]),
+        ("Checkouts failed once requests reached payments-api.", ["payments-api"]),
+        # "before it reached" says it did reach it.
+        ("The outage began before it reached payments-api, which then timed out.", ["payments-api"]),
+    ],
+)
+def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: list[str]) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == blamed
+
+
+@pytest.mark.parametrize(
+    "fault, sentence, blamed",
+    [
+        # A ruling-out covers its own clause: the suspect blamed in the other one is still blamed.
+        (Fault.DB_POOL_EXHAUSTION, "Release 1.43.0 broke checkout, while database time was normal.", ["1.43.0"]),
+        (Fault.DB_POOL_EXHAUSTION, "Database time was normal, but payments-api timed out.", ["payments-api"]),
+        (Fault.BAD_DEPLOY, "The cause is not the release: the connection pool was exhausted.", ["connection pool"]),
+        (Fault.BAD_DEPLOY, "The connection pool caused the errors, not the deploy.", ["connection pool"]),
+        (Fault.BAD_DEPLOY, "Pool wait stayed at 0, yet the POOL_MAX_SIZE change failed checkouts.", ["POOL_MAX_SIZE"]),
+        # And a ruling-out in the suspect's own clause still rules it out.
+        (Fault.DB_POOL_EXHAUSTION, "The 1.43.0 deploy at 03:01 was rolled back hours earlier and is not the cause.", []),
+        (Fault.DB_POOL_EXHAUSTION, "Query time stayed normal, so the wait comes from the pool size, not the database.", []),
+        (Fault.DB_POOL_EXHAUSTION, "The 1.43.0 deploy, which was rolled back hours earlier, is unrelated.", []),
+        (Fault.BAD_DEPLOY, "1.43.0, not the connection pool, caused the errors.", []),
+        (Fault.BAD_DEPLOY, "Pool wait stayed at 0, so the connection pool is not the cause.", []),
+        (Fault.BAD_DEPLOY, "Not the pool: POOL_MAX_SIZE is unchanged at 20, while 1.43.0 fails every checkout without a promo.", []),
+    ],
+)
+def test_a_ruling_out_covers_its_own_clause_not_the_sentence(fault: Fault, sentence: str, blamed: list[str]) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[fault].wrong_suspects) == blamed
+
+
+def test_the_rubric_s_record_kinds_are_the_recorded_history_s() -> None:
+    """A split "nothing changed" must rule out every kind deploy history holds."""
+    kinds = {
+        item["kind"]["S"]
+        for name in {scenario.window for scenario in SCENARIOS}
+        for item in load_window(name).meta["deploys"]["items"]
+    }
+    assert kinds == rubrics.RECORD_KINDS
 
 
 def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
