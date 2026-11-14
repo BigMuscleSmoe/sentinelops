@@ -45,7 +45,11 @@ _SENTENCE = re.compile(r"(?<=[.;!?])\s+")
 _RULED_OUT = re.compile(
     r"\bnot\b|n't\b|\bno longer\b|\brule[sd]? out\b|\bunrelated\b|\bseparate\b|\bresolved\b|\bearlier\b"
     r"|\balready\b|\brather than\b|\binstead of\b|\breverted\b|\bprior\b|\bprevious\b"
-    r"|\bunchanged\b|\bhealthy\b",
+    r"|\bunchanged\b|\bhealthy\b"
+    r"|\bstayed flat\b|\bunaffected\b|\bno changes?\b"
+    # A state, not an adjective: "a steady climb" or "above normal" rules nothing out.
+    r"|\b(?:is|are|was|were|stays|stay|stayed|remains|remain|remained|looks|look|looked) normal\b|\bnormal range\b"
+    r"|\b(?:is|are|was|were|holds|hold|held|stays|stay|stayed|remains|remain|remained) steady\b",
     re.I,
 )
 _DECOY_KEYS = r"LOG_SAMPLE_RATE|CART_TTL|PRODUCT_CACHE_TTL|RECOMMENDATIONS_ENABLED"

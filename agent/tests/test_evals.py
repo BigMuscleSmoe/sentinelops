@@ -9,6 +9,7 @@ import copy
 import dataclasses
 import gzip
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -137,12 +138,70 @@ def test_a_right_pool_diagnosis_passes_even_naming_the_old_deploy_to_rule_it_out
         # Sweep 20261113T201129Z's two right answers the old words counted as blaming payments-api.
         "Database query time and payments-api were unchanged, and no requests failed.",
         "The database and payments-api are healthy, and no code changed.",
+        # Sweep 20261114T221926Z's right answer (pool-1027-1900-r1) the old words counted the same way.
+        "Payments-api and DB query time stayed flat throughout.",
+        # The rest of the batch added with it.
+        "Payments-api latency held steady through the incident.",
+        "Payments-api was unaffected, with no timeouts.",
+        "Payments-api latency was normal, and the database answered in about 60 ms.",
+        "There was no change to payments-api in the window.",
+        "No changes reached payments-api in the window.",
     ],
 )
-def test_unchanged_and_healthy_rule_a_suspect_out(sentence: str) -> None:
+def test_ruling_out_words_rule_a_suspect_out(sentence: str) -> None:
     assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION].wrong_suspects) == []
     cause = RUNS[POOL_RUN]["hypothesis"]["root_cause"]
     assert _rubric(POOL_RUN, root_cause=f"{cause} {sentence}").items["blames_no_other"]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # Whole words only: these blame the suspect.
+        "Payments-api latency was abnormally high, so checkouts timed out.",
+        "Payments-api responses turned abnormal at 18:56, failing checkouts.",
+        "Payments-api latency was steadily climbing, so checkouts timed out.",
+    ],
+)
+def test_ruling_out_words_match_whole_words_only(sentence: str) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION].wrong_suspects) == ["Payments-api"]
+
+
+# What a downstream_timeout answer names, ruled out or not; that fault's own rules come with step 7.
+DOWNSTREAM_SHAPED = re.compile(r"pool wait|database time|payments latency", re.I)
+
+
+@pytest.mark.parametrize(
+    "sentence, blamed",
+    [
+        # "normal" and "steady" as a state rule out what the sentence names...
+        ("Pool wait stayed normal through the incident.", []),
+        ("Database time held steady at about 60 ms.", []),
+        ("Pool wait remained normal while checkouts slowed.", []),
+        ("Database time was steady at 49.8 to 58 ms.", []),
+        ("Database time stayed in its normal range.", []),
+        ("Pool wait and database time were normal.", []),
+        ("Pool wait and database time are steady.", []),
+        # ...and as an adjective rule nothing out.
+        ("Payments latency rose above normal at 22:28:30.", ["Payments latency"]),
+        ("A steady climb in pool wait began at 18:56.", ["pool wait"]),
+        ("Payments latency is far above its normal level.", ["Payments latency"]),
+    ],
+)
+def test_normal_and_steady_rule_out_only_as_a_state(sentence: str, blamed: list[str]) -> None:
+    assert rubrics.blamed(sentence, DOWNSTREAM_SHAPED) == blamed
+
+
+@pytest.mark.parametrize(
+    "sentence, blamed",
+    [
+        # The false pass a bare "normal" allowed: the pool blamed beside "above normal".
+        ("Payments-api latency rose above normal, so the connection pool backed up.", ["connection pool"]),
+        ("A steady climb in pool wait followed the POOL_MAX_SIZE change.", ["POOL_MAX_SIZE"]),
+    ],
+)
+def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[str]) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == blamed
 
 
 def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
