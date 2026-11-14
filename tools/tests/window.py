@@ -28,7 +28,7 @@ PLACEHOLDER_ACCOUNT = "123456789012"
 # A FilterLogEvents page holds at most 10,000 events or 1 MB.
 PAGE_EVENTS = 10_000
 PAGE_BYTES = 1_048_576
-_TERM = re.compile(r'\$\.(\w+) = (?:"([^"]*)"|(-?\d+))')
+_TERM = re.compile(r'\$\.(\w+) (=|>=) (?:"([^"]*)"|(-?\d+))')
 
 
 class OutsideWindow(Exception):
@@ -107,7 +107,7 @@ class FakeLogs:
 
 
 def _pattern(pattern: str, service: str) -> Any:
-    """A matcher for the JSON patterns the log tool builds: `{ $.a = "x" && $.b = 1 }`."""
+    """A matcher for the JSON patterns the log tool builds: `{ $.a = "x" && $.b >= 500 }`."""
     body = pattern.strip()
     if not (body.startswith("{") and body.endswith("}")):
         raise OutsideWindow(f"not a JSON filter pattern: {pattern}")
@@ -116,18 +116,22 @@ def _pattern(pattern: str, service: str) -> Any:
         found = _TERM.fullmatch(term.strip())
         if found is None:
             raise OutsideWindow(f"unsupported term {term.strip()!r}")
-        field, text, number = found.groups()
-        terms.append((field, text if text is not None else int(number)))
-    if ("service", service) not in terms:
+        field, op, text, number = found.groups()
+        if op == ">=" and number is None:
+            raise OutsideWindow(f"unsupported term {term.strip()!r}")
+        terms.append((field, op, text if text is not None else int(number)))
+    if ("service", "=", service) not in terms:
         raise OutsideWindow(f"only {service}'s lines are recorded")
 
     def matches(record: dict[str, Any] | None) -> bool:
         if record is None:
             return False
-        for field, want in terms:
+        for field, op, want in terms:
             value = record.get(field)
             if isinstance(want, int):
-                if isinstance(value, bool) or not isinstance(value, int | float) or value != want:
+                if isinstance(value, bool) or not isinstance(value, int | float):
+                    return False
+                if value < want if op == ">=" else value != want:
                     return False
             elif value != want:
                 return False

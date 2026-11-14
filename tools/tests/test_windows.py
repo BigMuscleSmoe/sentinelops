@@ -13,10 +13,10 @@ import re
 from datetime import timedelta
 
 import pytest
-from window import PLACEHOLDER_ACCOUNT, WINDOWS, OutsideWindow, Window, parse_time
+from window import PLACEHOLDER_ACCOUNT, WINDOWS, OutsideWindow, Window, _pattern, parse_time
 
 from sentinelops_tools.deploys import history
-from sentinelops_tools.logs import recent_lines
+from sentinelops_tools.logs import filter_pattern, recent_lines
 from sentinelops_tools.metrics import metrics_table
 
 TOOLS = {"get_metrics": metrics_table, "get_recent_logs": recent_lines, "get_deploy_history": history}
@@ -77,3 +77,33 @@ def test_a_read_past_the_recording_fails_loudly(window: Window) -> None:
     for tool in TOOLS.values():
         with pytest.raises(OutsideWindow):
             tool(env)
+
+
+def test_the_error_filter_matches_any_5xx_whatever_its_error_field() -> None:
+    """No recorded window holds a 504 yet, so the matcher is held to it here:
+    an upstream timeout's line has error 0 and is still a failed request."""
+    matches = _pattern(filter_pattern("checkout-api", errors_only=True, route=None), "checkout-api")
+    line = {"service": "checkout-api", "route": "POST /checkout", "status": 504, "error": 0}
+    assert matches(line)
+    assert matches({**line, "status": 500, "error": 1})
+    assert not matches({**line, "status": 404})
+    assert not matches({**line, "status": 200})
+    assert not matches({**line, "status": True})
+    assert not matches({"service": "checkout-api"})
+    assert not matches({**line, "service": "payments-api"})
+    assert not matches(None)
+    on_route = _pattern(filter_pattern("checkout-api", errors_only=True, route="POST /cart/items"), "checkout-api")
+    assert not on_route(line) and on_route({**line, "route": "POST /cart/items"})
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        '{ $.service = "checkout-api" && $.status >= "500" }',
+        '{ $.service = "checkout-api" && $.status > 500 }',
+        "{ $.service >= 1 }",
+    ],
+)
+def test_a_pattern_the_log_tool_doesnt_build_fails_loudly(pattern: str) -> None:
+    with pytest.raises(OutsideWindow):
+        _pattern(pattern, "checkout-api")

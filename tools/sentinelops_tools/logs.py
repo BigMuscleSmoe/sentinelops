@@ -88,10 +88,15 @@ def recent_lines(
 
 
 def filter_pattern(service: str, errors_only: bool, route: str | None) -> str:
-    """A JSON filter pattern. Every value in it comes from a fixed set, never from free text."""
+    """A JSON filter pattern. Every value in it comes from a fixed set, never from free text.
+
+    A failed request is any 5xx: the service's own 500s, which its `error` field
+    and err% count, and the 504s it returns when an upstream times out, which
+    they don't.
+    """
     terms = [f'$.service = "{service}"']
     if errors_only:
-        terms.append("$.error = 1")
+        terms.append("$.status >= 500")
     if route is not None:
         terms.append(f'$.route = "{route}"')
     return "{ " + " && ".join(terms) + " }"

@@ -7,7 +7,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793127927027,
     "endTime": 1793127957026,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [
@@ -197,7 +197,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793127927027,
     "endTime": 1793127957026,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }",
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }",
     "nextToken": "Bxkq6kVGFtq2y_MoigeqscPOdhXVbhiVtLoAmXb5jCovPeC3wD51Lj28u2Du82RASA3MvYz6O7JbhSLUqPD2D_agZgFEHbSaz-p0oyp3-1fVNaMZxdfh_mMF2k6ikvMIgCPUmLDl8qKpA3jl6rYzofP5fs0GFVEQFd_VfPWLXSDzRqBsv_F2dkrlU4mP2_oOP08ahvKm9yM7CbXRW0ze_3QeWl3NUe2j_PhGzsEJ-ehCbnf6aWGXQZjaqfYX8pGdsyQjobzNVA0ixGwwhgKq6L4vj8q8LPOQbgb4idtcyzFWMKUuwG61eLNJDDs_weMnLT0879CPNZ5QHD_GK33vMw"
    },
    "response": {

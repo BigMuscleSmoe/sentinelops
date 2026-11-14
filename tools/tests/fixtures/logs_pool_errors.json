@@ -7,7 +7,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793127376775,
     "endTime": 1793127406774,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [],
@@ -20,7 +20,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793127316775,
     "endTime": 1793127376774,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [],
@@ -33,7 +33,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793127196775,
     "endTime": 1793127316774,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [],
@@ -46,7 +46,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793126956775,
     "endTime": 1793127196774,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [],
@@ -59,7 +59,7 @@
     "logGroupName": "/aws/lambda/sentinelops-checkout-api",
     "startTime": 1793126806774,
     "endTime": 1793126956774,
-    "filterPattern": "{ $.service = \"checkout-api\" && $.error = 1 }"
+    "filterPattern": "{ $.service = \"checkout-api\" && $.status >= 500 }"
    },
    "response": {
     "events": [],

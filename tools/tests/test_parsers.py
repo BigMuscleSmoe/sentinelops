@@ -83,7 +83,7 @@ def test_logs_round_trip(window: Window) -> None:
                 assert isinstance(line, dict), line[:100]
                 assert line == by_id[line["request_id"]]
                 if page.errors_only:
-                    assert line["error"] == 1
+                    assert line["status"] >= 500
                 if page.route:
                     assert line["route"] == page.route
                 stamps.append(line["timestamp"])

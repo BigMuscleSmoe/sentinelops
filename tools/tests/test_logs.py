@@ -64,7 +64,11 @@ def test_no_errors_searches_back_through_the_whole_window(recorded) -> None:
 
 
 def test_filter_patterns_name_only_fixed_values() -> None:
-    assert filter_pattern("checkout-api", True, None) == '{ $.service = "checkout-api" && $.error = 1 }'
+    # Any 5xx: an upstream timeout's 504 has error 0, and is a failed request all the same.
+    assert filter_pattern("checkout-api", True, None) == '{ $.service = "checkout-api" && $.status >= 500 }'
+    assert filter_pattern("checkout-api", True, "POST /checkout") == (
+        '{ $.service = "checkout-api" && $.status >= 500 && $.route = "POST /checkout" }'
+    )
     assert filter_pattern("checkout-api", False, "POST /checkout") == (
         '{ $.service = "checkout-api" && $.route = "POST /checkout" }'
     )
@@ -84,7 +88,7 @@ def line(ms: int, n: int, size: int = 0) -> dict:
 
 
 def expect_window(stubbed: Stubbed, start: int, end: int, events: list[dict], token: str | None = None,
-                  after: str | None = None, pattern: str = '{ $.service = "checkout-api" && $.error = 1 }'
+                  after: str | None = None, pattern: str = '{ $.service = "checkout-api" && $.status >= 500 }'
                   ) -> None:
     params = {
         "logGroupName": "/aws/lambda/sentinelops-checkout-api",
