@@ -9,7 +9,8 @@ the same result as running them concurrently: a request touches shared state
 only when it asks for a connection, which in virtual time is the moment it
 arrives, and after that its sleeps move only its own clock.
 
-tests/test_pool_ordering.py asserts on these runs. For a timeline per period:
+tests/test_pool_ordering.py asserts on these runs, as test_bad_deploy.py and
+test_downstream_timeout.py do on theirs. For a timeline per period:
     uv run python -m sim.pool_sim
 run(..., racy=True) shows why the ledger's updates are conditional: without
 the conditions, racing requests share connections, and the fault never shows.
@@ -28,6 +29,7 @@ from checkout.config import Config
 from controller.faults import DURATION_S as FAULT_S
 from sim import releases
 from sim.backend import Backend
+from sim.workload import DEGRADED, HEALTHY
 from sim.pool import MAX_ATTEMPTS, PoolState, Reservation, applied, holds, plan_reservation, reserved
 from traffic import burst, mix
 
@@ -46,6 +48,7 @@ class Scenario:
     horizon_s: int  # how long to run after the break
     release: str = VERSION  # the code that runs from the break on
     fault_s: int = FAULT_S  # how long the fault lasts: the controller's lifetime, uncleared
+    payments: str = HEALTHY  # payments-api's mode from the break on
 
 
 POOL_FAULT = Scenario(pool_max_size=2, burst=True, horizon_s=480)
@@ -53,6 +56,7 @@ SMALL_POOL_NO_BURST = Scenario(pool_max_size=2, burst=False, horizon_s=600)
 HEALTHY_BURST = Scenario(pool_max_size=20, burst=True, horizon_s=480)
 HEALTHY_BASELINE = Scenario(pool_max_size=20, burst=False, horizon_s=7200)
 BAD_DEPLOY = Scenario(pool_max_size=20, burst=True, horizon_s=480, release="1.43.0")
+DOWNSTREAM_TIMEOUT = Scenario(pool_max_size=20, burst=True, horizon_s=480, payments=DEGRADED)
 
 
 def p99(values: Sequence[float]) -> float:
@@ -163,17 +167,22 @@ def run(
     healthy = Config()
     broken = replace(healthy, pool_max_size=scenario.pool_max_size, version=scenario.release)
     current = healthy
+    upstream = HEALTHY
     lines: list[str] = []
     app = App(
         settings=lambda: current,
-        backend=Backend(MemoryLedger(clock, random.Random(seed + 1), round_trip_s, racy), rng),
+        backend=Backend(
+            MemoryLedger(clock, random.Random(seed + 1), round_trip_s, racy), rng, payments=lambda: upstream
+        ),
         clock=clock,
         sleep=clock.sleep,
         emit=lines.append,
     )
     try:
         for n, at in enumerate(arrivals(scenario, rng)):
-            current = broken if 0 <= at < scenario.fault_s else healthy
+            faulted = 0 <= at < scenario.fault_s
+            current = broken if faulted else healthy
+            upstream = scenario.payments if faulted else HEALTHY
             releases.deploy(current.version)
             clock.now = BREAK_AT + at
             app.handle(request_event(rng), request_id=f"sim-{n:06d}", cold_start=False)
@@ -246,3 +255,5 @@ if __name__ == "__main__":
     report("healthy pool and the burst", HEALTHY_BURST, 5)
     report("pool fault again, with unconditional ledger updates", POOL_FAULT, 1, racy=True)
     report("bad deploy: release 1.43.0 and the burst", BAD_DEPLOY, 1)
+    for seed in (1, 2, 3):
+        report("downstream timeout: payments-api degraded and the burst", DOWNSTREAM_TIMEOUT, seed)
