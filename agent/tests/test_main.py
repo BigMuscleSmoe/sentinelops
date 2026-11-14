@@ -13,9 +13,11 @@ from pathlib import Path
 import pytest
 
 import main
+from answers import DEPLOY_EVIDENCE
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, Reply, answer, text, tool_use
 from fake_gateway import URL, FakeGateway
 from pricing import price_for
+from sources import unmark
 from providers import FEDERATION_ENV, FEDERATION_ROLE_ENV, Settings
 from sentinelops_tools.env import ToolEnv
 from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
@@ -28,8 +30,9 @@ TOOL_FIXTURE_NAMES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_b
 DIAGNOSIS = {
     "root_cause": "Release 1.43.0 removed the null check in apply_promo; checkouts without a promo fail.",
     "confidence": 0.9,
-    "evidence": ["err% 10.1 at 19:05", "TypeError at checkout/pricing.py:15 in apply_promo"],
+    "evidence": DEPLOY_EVIDENCE,
     "affected_component": "checkout-api",
+    "fault_location": "this_service",
 }
 
 
@@ -94,11 +97,11 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     session.assert_all_called()  # every recorded call made, in order, with its exact parameters
     first = fake.requests[0]["body"]["messages"][0]["content"][0]["text"]
     assert first == load(AGENT_FIXTURES / "alarm_bad_deploy.json")["prompt"]
-    # What each tool returned is what its recorded calls produce, then the budget line.
+    # What each tool returned is what its recorded calls produce, marked as a source, then the budget line.
     results = fake.tool_results(3)
-    for result, name in zip(results, TOOL_FIXTURE_NAMES, strict=True):
+    for result, name, label in zip(results, TOOL_FIXTURE_NAMES, ["m1", "l1", "d1"], strict=True):
         output, budget = result.rsplit("\n", 1)
-        assert output == load(TOOL_FIXTURES / f"{name}.json")["text"]
+        assert unmark(output)[:2] == (label, load(TOOL_FIXTURES / f"{name}.json")["text"])
         assert budget.startswith("[budget: ") and budget.endswith(" remaining]")
 
     assert json.loads(out)["root_cause"] == DIAGNOSIS["root_cause"]
@@ -125,7 +128,7 @@ def test_a_replay_through_the_gateway_gives_the_model_what_a_local_one_does(tmp_
     assert code == main.EXIT_OK
     session.assert_all_called()  # each tool's recorded calls, made by its Lambda handler
     for result, name in zip(fake.tool_results(3), TOOL_FIXTURE_NAMES, strict=True):
-        assert result.rsplit("\n", 1)[0] == load(TOOL_FIXTURES / f"{name}.json")["text"]
+        assert unmark(result.rsplit("\n", 1)[0])[1] == load(TOOL_FIXTURES / f"{name}.json")["text"]
     assert [arguments["as_of"] for _, arguments in gateway.calls] == ["2026-10-27T19:05:57.026Z"] * 3
     assert json.loads(out)["root_cause"] == DIAGNOSIS["root_cause"]
     record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))

@@ -10,8 +10,9 @@ import pytest
 from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
 from fake_anthropic import ACCESS_TOKEN, FakeAnthropic, Reply, answer, signed_in, text, thinking, tool_use
+from answers import DEPLOY_EVIDENCE, item
 from guards import Limits
-from hooks import COUNTED_FIELDS
+from hooks import COUNTED_FIELDS, count_margin
 from models import StopReason
 from pricing import price_for
 from providers import Settings, build_model
@@ -22,8 +23,9 @@ SETTINGS = Settings()
 DIAGNOSIS = {
     "root_cause": "Release 1.43.0 removed the null check in apply_promo, so checkouts without a promo fail.",
     "confidence": 0.9,
-    "evidence": ["err% 10.1 in the 19:05 row", "TypeError at checkout/pricing.py:15 in apply_promo"],
+    "evidence": DEPLOY_EVIDENCE,
     "affected_component": "checkout-api",
+    "fault_location": "this_service",
 }
 
 
@@ -123,6 +125,55 @@ def test_every_tool_result_ends_with_the_budget() -> None:
     assert all(r.splitlines()[-1].endswith("s remaining]") and ", $0.0" in r for r in results)
 
 
+def test_every_tool_result_is_labeled_as_a_source_and_its_log_lines_numbered() -> None:
+    fake = FakeAnthropic(
+        [Reply([tool_use("get_metrics")]), Reply([tool_use("get_recent_logs")]), Reply([tool_use("get_metrics")]), answer(DIAGNOSIS)]
+    )
+    run(fake)
+
+    metrics, logs, again = fake.tool_results(3)
+    assert metrics.startswith("[source m1]\ntime  req  err%\n")
+    assert logs.startswith('[source l1]\n[1] {"error_type":"TypeError"')
+    assert again.startswith("[source m2]\n")
+
+
+# A leak like the one that cost deploy-1029-0156-r2 its run: the closing tag inside the string.
+LEAKED = {**DIAGNOSIS, "root_cause": f"{DIAGNOSIS['root_cause']}</root_cause>"}
+
+
+def test_a_malformed_answer_is_sent_back_twice_then_the_run_halts() -> None:
+    fake = FakeAnthropic([answer(LEAKED), answer(LEAKED), answer(LEAKED), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert len(fake.requests) == 3, "no fourth call after the third rejection"
+    (rejection,) = fake.tool_results(1)
+    assert "holds tool-call markup ('</root_cause>')" in rejection
+    assert report.hypothesis.halted_by is StopReason.RESEND_LIMIT
+    assert "resend limit (2 resends of a malformed answer)" in report.hypothesis.not_checked[0]
+    assert not report.hypothesis.can_open_pr
+
+
+def test_an_answer_fixed_on_its_last_resend_is_kept() -> None:
+    fake = FakeAnthropic([answer(LEAKED), answer(LEAKED), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.halted_by is None
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+
+
+def test_a_model_reporting_a_halt_with_no_evidence_fails_the_run() -> None:
+    # A halt may carry no evidence, so this passes the answer's check; cleared of its
+    # halt, it's an answer with no evidence, and nothing can resend it by then.
+    fake = FakeAnthropic([answer({**DIAGNOSIS, "evidence": [], "halted_by": "step_limit"})])
+
+    report = run(fake)
+
+    assert report.hypothesis is None
+    assert report.failure.startswith("ValidationError")
+
+
 def test_each_call_is_priced_from_its_own_usage_and_never_beyond_its_reservation() -> None:
     fake = FakeAnthropic([Reply([tool_use("get_metrics")]), Reply([tool_use("get_recent_logs")]), answer(DIAGNOSIS)])
     report = run(fake)
@@ -138,7 +189,8 @@ def test_each_call_is_priced_from_its_own_usage_and_never_beyond_its_reservation
 
 
 def test_the_sixteenth_tool_call_halts_the_run() -> None:
-    fake = FakeAnthropic([Reply([tool_use("get_metrics")]) for _ in range(16)] + [answer(DIAGNOSIS)])
+    # Small prompts, so the token limit can't trip first.
+    fake = FakeAnthropic([Reply([tool_use("get_metrics")], input_tokens=1_000) for _ in range(16)] + [answer(DIAGNOSIS)])
     tools = Tools()
 
     report = run(fake, tools)
@@ -171,7 +223,7 @@ def test_the_cost_cap_holds_across_a_run() -> None:
     assert report.hypothesis.halted_by is StopReason.COST_LIMIT
     assert len(fake.requests) == len(report.model_calls) == 2
     assert report.cost_usd <= 0.03
-    assert "$0.03" in report.hypothesis.evidence[0]
+    assert "$0.03" in report.hypothesis.not_checked[0]
 
 
 def test_the_wall_clock_cuts_off_a_slow_tool() -> None:
@@ -279,4 +331,4 @@ def test_a_failed_call_ends_the_run_and_is_charged_the_most_it_could_cost() -> N
     assert report.failure.startswith("BadRequestError")
     assert report.model_calls == []
     counted = fake.count_requests[0]["bytes"]  # the fake's count, unscripted
-    assert report.cost_usd == pytest.approx(HAIKU.most_a_call_costs(counted + 1_000, 16_000))
+    assert report.cost_usd == pytest.approx(HAIKU.most_a_call_costs(counted + count_margin(counted), 16_000))

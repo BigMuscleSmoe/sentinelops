@@ -28,7 +28,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
-from models import Hypothesis, StopReason
+from models import FaultLocation, Hypothesis, StopReason
 
 logger = logging.getLogger("sentinelops.guards")
 
@@ -39,6 +39,9 @@ class Limits:
     max_input_tokens: int = 200_000
     max_cost_usd: float = 0.10
     max_wall_clock_s: float = 300.0
+    # A malformed answer is sent back with its validation errors this many times;
+    # the next one ends the run (R5). One leak once cost a run 7 resends and its token budget.
+    max_answer_resends: int = 2
 
 
 class GuardLimitExceeded(Exception):
@@ -61,11 +64,16 @@ class WallClockExceeded(GuardLimitExceeded):
     reason = StopReason.WALL_CLOCK
 
 
+class ResendLimitExceeded(GuardLimitExceeded):
+    reason = StopReason.RESEND_LIMIT
+
+
 _EXCEPTIONS: dict[StopReason, type[GuardLimitExceeded]] = {
     StopReason.STEP_LIMIT: StepLimitExceeded,
     StopReason.TOKEN_LIMIT: TokenLimitExceeded,
     StopReason.COST_LIMIT: CostLimitExceeded,
     StopReason.WALL_CLOCK: WallClockExceeded,
+    StopReason.RESEND_LIMIT: ResendLimitExceeded,
 }
 
 
@@ -88,6 +96,7 @@ class RunGuard:
         self.tool_calls: list[str] = []
         self.input_tokens = 0
         self.cost_usd = 0.0
+        self.rejected_answers = 0
         self.tripped: StopReason | None = None
 
     @property
@@ -158,12 +167,26 @@ class RunGuard:
             raise ValueError(f"cost must be a non-negative number, got {usd}")
         self.cost_usd += usd
 
+    def record_rejected_answer(self) -> None:
+        """Count an answer that failed validation. Past the resends allowed, the run stops.
+
+        Never raises: it runs as the rejection goes back to the model, and the
+        next check(), before the model call that would answer it, stops the run.
+        """
+        self.rejected_answers += 1
+        self._log("answer_rejected", rejected=self.rejected_answers)
+        if self.rejected_answers > self.limits.max_answer_resends:
+            self._mark_tripped(StopReason.RESEND_LIMIT)
+
     def halted_hypothesis(self) -> Hypothesis:
         assert self.tripped is not None, "halted_hypothesis() before any limit tripped"
         return Hypothesis(
             root_cause=f"Not determined: the investigation hit its {self._describe(self.tripped)} before reaching a diagnosis.",
             confidence=0.0,
-            evidence=[
+            # Nothing here was observed, so none of it is evidence: the guard's
+            # account of the halt is what the run didn't get to check.
+            evidence=[],
+            not_checked=[
                 f"Halted by the {self._describe(self.tripped)}. Used {len(self.tool_calls)} of "
                 f"{self.limits.max_tool_calls} tool calls, {self.input_tokens:,} of "
                 f"{self.limits.max_input_tokens:,} input tokens, ${self.cost_usd:.4f} of "
@@ -172,6 +195,7 @@ class RunGuard:
                 self._summarize_tool_calls(),
             ],
             affected_component="unknown",
+            fault_location=FaultLocation.UNDETERMINED,
             halted_by=self.tripped,
         )
 
@@ -195,6 +219,8 @@ class RunGuard:
                 return f"cost limit (${self.limits.max_cost_usd:.2f})"
             case StopReason.WALL_CLOCK:
                 return f"wall-clock limit ({self.limits.max_wall_clock_s:.0f}s)"
+            case StopReason.RESEND_LIMIT:
+                return f"resend limit ({self.limits.max_answer_resends} resends of a malformed answer)"
 
     def _summarize_tool_calls(self) -> str:
         if not self.tool_calls:
@@ -276,5 +302,6 @@ async def run_guarded(
     if guard.tripped is not None:
         return guard.halted_hypothesis()
     # The model's schema leaves out halted_by, but nothing stops the model
-    # sending it. Only the guard reports a halt.
-    return result.model_copy(update={"halted_by": None})
+    # sending it. Only the guard reports a halt, so it's cleared and the answer
+    # validated again as a finished one: a halt may carry no evidence, an answer can't.
+    return Hypothesis.model_validate({**result.model_dump(), "halted_by": None})

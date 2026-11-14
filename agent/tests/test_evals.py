@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from alarm import AlarmEvent
+from answers import item
 from evals import rubrics, score, sweep
 from evals.__main__ import main as evals_main
 from evals.scenarios import BY_ID, SCENARIOS, Fault, load_window
@@ -39,20 +40,22 @@ DEPLOY_ANSWER = {
     "root_cause": "Deploy 1.43.0 (Simplify promo pricing) at 02:57:16 made apply_promo subscript None for carts without a promo, so those checkouts raise TypeError and return 500.",
     "confidence": 0.9,
     "evidence": [
-        "Deploy history: 1.43.0 deployed at 02:57:16.990Z by tomas, 'Simplify promo pricing'.",
-        "Logs: every failure is TypeError 'NoneType' object is not subscriptable in checkout/pricing.py apply_promo.",
-        "Metrics: err% 0.0 at 02:56, then 12.5% at 02:57.",
+        item("value", source="d1", column="version", at="2026-11-13T02:57:16.990Z", value="1.43.0", note="tomas, Simplify promo pricing"),
+        item("all", source="l1", column="error_type", value="TypeError", note="NoneType not subscriptable in checkout/pricing.py apply_promo"),
+        item("value", source="m1", column="err%", at="02:57:00", value="12.5", note="errors start in the deploy's minute"),
     ],
     "affected_component": "checkout-api 1.43.0, checkout/pricing.py apply_promo",
+    "fault_location": "this_service",
 }
 POOL_ANSWER = {
     "root_cause": "The 18:56:06 config change cut POOL_MAX_SIZE from 20 to 2, so requests wait for one of two connections and pool wait p99 climbs past the threshold. The 1.43.0 deploy at 03:01 was rolled back hours earlier and is not the cause.",
     "confidence": 0.9,
     "evidence": [
-        "Deploy history: config POOL_MAX_SIZE 20 -> 2 at 18:56:06 (maya).",
-        "Metrics: pool_wait_p99 rose from 0.4 ms to 1,410 ms at 18:56, with pool_active_max at 2.",
+        item("value", source="d1", column="POOL_MAX_SIZE", at="2026-10-27T18:56:06.312Z", value="20->2", note="maya's config change"),
+        item("value", source="m1", column="pool_wait_p99_ms", at="18:56:00", value="1410", note="pool wait past the threshold"),
     ],
     "affected_component": "checkout-api database connection pool",
+    "fault_location": "this_service",
 }
 
 
@@ -136,20 +139,27 @@ def test_a_right_pool_diagnosis_passes_even_naming_the_old_deploy_to_rule_it_out
         ),
         # The symptom, not the mechanism.
         ("deploy-1113-0257", _with(DEPLOY_ANSWER, root_cause="Checkout requests started failing with 500s at 02:57."), {"names_culprit", "names_mechanism"}),
-        # The upstream blamed.
+        # The upstream blamed, by name or by location; by location, no PR either.
         ("deploy-1113-0257", _with(DEPLOY_ANSWER, affected_component="payments-api"), {"location"}),
+        ("deploy-1113-0257", _with(DEPLOY_ANSWER, fault_location="upstream"), {"location", "pr_gate"}),
         # Not confident enough to open a PR, a citation with no search, and thin evidence.
         ("deploy-1113-0257", _with(DEPLOY_ANSWER, confidence=0.5), {"pr_gate"}),
         ("deploy-1113-0257", _with(DEPLOY_ANSWER, runbook_cited="bad-deploy.md"), {"runbook"}),
         (
             "deploy-1113-0257",
-            _with(DEPLOY_ANSWER, evidence=["A deploy happened.", "Errors went up."]),
+            _with(DEPLOY_ANSWER, evidence=[item("count", source="d1", count=1, note="a deploy happened"), item("count", source="m1", count=2, note="errors went up")]),
             {"evidence_change", "evidence_failure", "evidence_symptom"},
         ),
         # The right change at the wrong time: the 07:46 deploy for the 08:03 alarm.
         (
             "deploy-1112-0803",
-            _with(DEPLOY_ANSWER, evidence=["Deploy 1.43.0 at 07:46:29 (Simplify promo pricing).", *DEPLOY_ANSWER["evidence"][1:]]),
+            _with(
+                DEPLOY_ANSWER,
+                evidence=[
+                    item("value", source="d1", column="version", at="2026-11-12T07:46:29.556Z", value="1.43.0", note="Simplify promo pricing"),
+                    *DEPLOY_ANSWER["evidence"][1:],
+                ],
+            ),
             {"evidence_change"},
         ),
     ],

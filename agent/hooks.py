@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from strands.event_loop.streaming import _normalize_messages
-from strands.hooks import AfterModelCallEvent, BeforeModelCallEvent, HookProvider, HookRegistry
+from strands.hooks import (
+    AfterModelCallEvent,
+    AfterToolCallEvent,
+    BeforeModelCallEvent,
+    HookProvider,
+    HookRegistry,
+)
 from strands.middleware import InvokeModelContext
 from strands.models.anthropic import AnthropicModel, _mechanism_tool_choice, _with_native_output
 from strands.types.content import split_system_prompt
@@ -88,6 +94,17 @@ class GuardHooks(HookProvider):
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeModelCallEvent, self.before_model_call)
         registry.add_callback(AfterModelCallEvent, self.after_model_call)
+        registry.add_callback(AfterToolCallEvent, self.after_tool_call)
+
+    def after_tool_call(self, event: AfterToolCallEvent) -> None:
+        # The structured-output tool answers a Hypothesis that fails validation
+        # with an error result, and the model tries again. The guard caps the tries.
+        tool = event.selected_tool
+        if tool is None or tool.tool_type != "structured_output":
+            return
+        result = event.result
+        if isinstance(result, Exception) or (isinstance(result, dict) and result.get("status") == "error"):
+            self.guard.record_rejected_answer()
 
     def before_model_call(self, event: BeforeModelCallEvent) -> None:
         # Nothing is reserved until before_send has the request: a call that

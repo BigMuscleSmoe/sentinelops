@@ -13,13 +13,15 @@ from enum import Enum, auto
 import pytest
 
 from guards import RunGuard, guarded_tool, run_guarded
-from models import Hypothesis, StopReason
+from answers import item
+from models import FaultLocation, Hypothesis, StopReason
 
 CONFIDENT_ANSWER = Hypothesis(
     root_cause="Connection pool max size lowered in the latest config change.",
     confidence=0.95,
-    evidence=["pool_wait_time_ms p99 at 900ms"],
+    evidence=[item("value", source="m1", column="pool_wait_p99_ms", at="18:57:00", value="900")],
     affected_component="checkout-api",
+    fault_location=FaultLocation.THIS_SERVICE,
 )
 
 

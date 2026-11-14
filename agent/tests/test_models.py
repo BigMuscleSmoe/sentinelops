@@ -3,14 +3,18 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from models import Hypothesis, StopReason
+from answers import UPSTREAM_EVIDENCE, item
+from models import FaultLocation, Hypothesis, StopReason
 
 VALID = {
     "root_cause": "Upstream payments-api p99 rose from 120ms to 4.8s at 14:02; checkout-api times out waiting on it.",
     "confidence": 0.82,
-    "evidence": ["payments-api p99 4.8s at 14:03", "checkout-api CPU flat at 12%"],
+    "evidence": UPSTREAM_EVIDENCE,
     "affected_component": "payments-api",
+    "fault_location": "upstream",
 }
+# The same answer, as if the fault were in this service: the gate can open.
+IN_SERVICE = {**VALID, "affected_component": "checkout-api", "fault_location": "this_service"}
 
 
 def test_accepts_a_valid_hypothesis() -> None:
@@ -58,7 +62,7 @@ def test_halted_by_survives_the_hop_to_the_remediation_flow() -> None:
     # The agent and the Durable Function are separate processes. If halted_by
     # were dropped in serialization, a halted run would arrive looking finished.
     halted = Hypothesis.model_validate(
-        {**VALID, "confidence": 0.95, "halted_by": StopReason.STEP_LIMIT}
+        {**IN_SERVICE, "confidence": 0.95, "halted_by": StopReason.STEP_LIMIT}
     )
 
     received = Hypothesis.model_validate_json(halted.model_dump_json())
@@ -77,17 +81,20 @@ def test_halted_by_survives_the_hop_to_the_remediation_flow() -> None:
         (0.95, StopReason.STEP_LIMIT, False),
         (0.95, StopReason.COST_LIMIT, False),
         (1.0, StopReason.WALL_CLOCK, False),
+        (1.0, StopReason.RESEND_LIMIT, False),
     ],
 )
 def test_can_open_pr(confidence: float, halted_by: StopReason | None, expected: bool) -> None:
-    h = Hypothesis.model_validate({**VALID, "confidence": confidence, "halted_by": halted_by})
+    h = Hypothesis.model_validate({**IN_SERVICE, "confidence": confidence, "halted_by": halted_by})
     assert h.can_open_pr is expected
 
 
 def test_every_field_is_described_for_the_model() -> None:
     schema = Hypothesis.model_json_schema()
-    for name, prop in schema["properties"].items():
-        assert prop.get("description"), f"{name} has no description in the output schema"
+    models = {"Hypothesis": schema, **{name: schema["$defs"][name] for name in ("Evidence", "Inference")}}
+    for model, part in models.items():
+        for name, prop in part["properties"].items():
+            assert prop.get("description"), f"{model}.{name} has no description in the output schema"
 
 
 def test_runbook_cited_defaults_to_none_and_is_offered_to_the_model() -> None:
@@ -114,3 +121,107 @@ def test_a_citation_this_run_never_retrieved_is_cleared() -> None:
 def test_no_citation_needs_no_check() -> None:
     h = Hypothesis.model_validate(VALID)
     assert h.with_citation_checked(set()) is h
+
+
+# --- the fault location -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(("location", "expected"), [("this_service", True), ("upstream", False), ("undetermined", False)])
+def test_only_a_fault_in_this_service_can_open_a_pr(location: str, expected: bool) -> None:
+    h = Hypothesis.model_validate({**IN_SERVICE, "confidence": 0.95, "fault_location": location})
+    assert h.can_open_pr is expected
+
+
+def test_the_fault_location_is_required() -> None:
+    with pytest.raises(ValidationError, match="fault_location"):
+        Hypothesis.model_validate({k: v for k, v in VALID.items() if k != "fault_location"})
+
+
+# --- typed evidence ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        item("value", source="m1", column="err%", at="19:05:00", value="10.1"),
+        item("value", source="l2", column="error_type", lines=[3], value="TypeError"),
+        item("value", source="d1", column="version", at="2026-11-12T07:46:29.556Z", value="1.43.0"),
+        item("range", source="m1", column="p99_ms", start="18:41", end="18:55", low=472, high=860),
+        item("range", source="l1", column="latency_ms", lines=[1, 2, 5], low=0.2, high=0.4),
+        item("all", source="l1", column="status", value="500"),
+        item("count", source="l1", count=20),
+        item("first", source="l1", column="version", value="1.43.0", at="02:57:20.104"),
+        item("none", source="m1", column="err%", start="18:30", end="18:55", value="0"),
+        item("gap", start="18:56:06.039", end="19:00:00", seconds=234),
+    ],
+    ids=lambda e: e["kind"],
+)
+def test_each_kind_of_item_validates_with_what_it_needs(evidence: dict) -> None:
+    Hypothesis.model_validate({**VALID, "evidence": [evidence]})
+
+
+@pytest.mark.parametrize(
+    ("evidence", "message"),
+    [
+        (item("value", source="m1", column="err%", value="10.1"), "needs at or lines"),
+        (item("value", source="l1", column="status", lines=[1, 2], value="500"), "cites one line"),
+        (item("range", source="m1", column="err%", start="18:41", low=0, high=1), "needs end with its start"),
+        (item("range", source="m1", column="err%", start="18:41", end="18:55", low=5, high=1), "low is more than high"),
+        (item("count", column="status", count=3), "needs source"),
+        (item("none", source="m1", start="18:30"), "needs end"),
+        (item("gap", start="18:56", end="19:00"), "needs seconds"),
+        (item("value", source="m1", column="err%", at="six past seven", value="1"), "must be a time"),
+        (item("value", source="m1", column="err%", at="19:05", value="1", seen=True), "Extra inputs"),
+        (item("value", source="m1", column="err%", at="19:05", value="1", note=""), "at least 1 character"),
+    ],
+)
+def test_an_item_missing_what_its_kind_needs_is_rejected(evidence: dict, message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Hypothesis.model_validate({**VALID, "evidence": [evidence]})
+
+
+def test_a_sentence_is_not_an_evidence_item() -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**VALID, "evidence": ["payments-api p99 4.8s at 14:03"]})
+
+
+def test_a_halt_may_carry_no_evidence_and_an_answer_may_not() -> None:
+    assert Hypothesis.model_validate({**VALID, "evidence": [], "halted_by": StopReason.STEP_LIMIT}).evidence == []
+    with pytest.raises(ValidationError, match="evidence needs at least one item"):
+        Hypothesis.model_validate({**VALID, "evidence": []})
+
+
+# --- inferences -------------------------------------------------------------------
+
+
+def test_an_inference_rests_on_items_that_exist() -> None:
+    two = [*UPSTREAM_EVIDENCE, item("count", source="l1", count=4)]
+    h = Hypothesis.model_validate({**VALID, "evidence": two, "inferences": [{"claim": "The timeouts follow the slowdown.", "rests_on": ["e1", "e2"]}]})
+    assert h.inferences[0].rests_on == ["e1", "e2"]
+    for bad in (["e3"], ["e0"], ["1"], []):
+        with pytest.raises(ValidationError):
+            Hypothesis.model_validate({**VALID, "evidence": two, "inferences": [{"claim": "x", "rests_on": bad}]})
+
+
+# --- leaked markup (R5) -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {**VALID, "root_cause": "Pool exhausted.</root_cause>"},
+        {**VALID, "root_cause": 'Pool exhausted. <parameter name="confidence">0.9'},
+        {**VALID, "affected_component": "checkout-api</affected_component>"},
+        {**VALID, "not_checked": ["the replica's limit</not_checked>"]},
+        {**VALID, "evidence": [item("count", source="l1", count=2, note="two lines</note>")]},
+        {**VALID, "inferences": [{"claim": "<invoke name=\"Hypothesis\">", "rests_on": ["e1"]}]},
+    ],
+)
+def test_tool_call_markup_in_any_prose_field_is_rejected_by_name(answer: dict) -> None:
+    with pytest.raises(ValidationError, match="holds tool-call markup"):
+        Hypothesis.model_validate(answer)
+
+
+@pytest.mark.parametrize("prose", ["p99 < 100 ms, then > 1,400 ms", "1.42.0 -> 1.43.0", "<none>", "a <b> tag"])
+def test_ordinary_angle_brackets_are_kept(prose: str) -> None:
+    assert Hypothesis.model_validate({**VALID, "root_cause": prose}).root_cause == prose

@@ -16,6 +16,7 @@ from app import GATEWAY_URL, SESSION_HEADER, create_app
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, answer
 from fake_gateway import URL, FakeGateway
 from sentinelops_tools.env import ToolEnv
+from sources import unmark
 from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 from test_main import DIAGNOSIS, ERRORS, TOOL_FIXTURE_NAMES, investigating, replay_session
 
@@ -74,7 +75,7 @@ def test_a_replay_runs_through_the_gateway_and_answers_with_its_transcript(
     assert regions == ["us-east-1"]
     session.assert_all_called()  # the alarm's history, one JWT from STS, and each tool's recorded calls
     for result, name in zip(fake.tool_results(3), TOOL_FIXTURE_NAMES, strict=True):
-        assert result.rsplit("\n", 1)[0] == load(TOOL_FIXTURES / f"{name}.json")["text"]
+        assert unmark(result.rsplit("\n", 1)[0])[1] == load(TOOL_FIXTURES / f"{name}.json")["text"]
     assert [arguments["as_of"] for _, arguments in gateway.calls] == ["2026-10-27T19:05:57.026Z"] * 3
     assert len(fake.token_requests) == 1
     assert all(r["headers"]["authorization"] == f"Bearer {ACCESS_TOKEN}" for r in fake.requests)

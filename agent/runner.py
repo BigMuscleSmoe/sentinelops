@@ -13,6 +13,7 @@ from guards import Limits, RunGuard, guarded_tool, run_guarded
 from hooks import GuardHooks, ModelCall, ModelRefused
 from models import Hypothesis
 from pricing import ModelPrice
+from sources import Sources, cited
 
 logger = logging.getLogger("sentinelops.runner")
 
@@ -67,9 +68,11 @@ async def investigate(
 
     guard = RunGuard(limits, clock=clock)
     hooks = GuardHooks(guard, price, max_output_tokens)
+    sources = Sources()
     agent = Agent(
         model=model,
-        tools=[tool(guarded_tool(guard, fn)) for fn in tools],
+        # Counted first, then run and labeled as a source, then given the budget line.
+        tools=[tool(guarded_tool(guard, cited(sources, fn))) for fn in tools],
         system_prompt=system_prompt(),
         callback_handler=None,
         # Nothing trims, summarizes, or offloads context behind the guard's back:

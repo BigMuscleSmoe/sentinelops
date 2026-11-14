@@ -17,15 +17,18 @@ from guards import (
     TokenLimitExceeded,
     WallClockExceeded,
     guarded_tool,
+    ResendLimitExceeded,
     run_guarded,
 )
-from models import Hypothesis
+from answers import UPSTREAM_EVIDENCE
+from models import FaultLocation, Hypothesis
 
 DIAGNOSIS = Hypothesis(
     root_cause="Upstream payments-api p99 rose to 4.8s; checkout-api times out waiting on it.",
     confidence=0.85,
-    evidence=["payments-api p99 4.8s at 14:03"],
+    evidence=UPSTREAM_EVIDENCE,
     affected_component="payments-api",
+    fault_location=FaultLocation.UPSTREAM,
 )
 
 
@@ -57,7 +60,7 @@ def tool_call_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
 
 def test_defaults_match_the_documented_limits() -> None:
     assert Limits() == Limits(
-        max_tool_calls=15, max_input_tokens=200_000, max_cost_usd=0.10, max_wall_clock_s=300.0
+        max_tool_calls=15, max_input_tokens=200_000, max_cost_usd=0.10, max_wall_clock_s=300.0, max_answer_resends=2
     )
 
 
@@ -122,9 +125,9 @@ def test_step_limit_returns_halted_hypothesis_instead_of_raising() -> None:
     assert result.halted_by is StopReason.STEP_LIMIT
     assert result.confidence == 0.0
     assert result.affected_component == "unknown"
-    assert "step limit" in result.evidence[0]
-    assert "15 of 15 tool calls" in result.evidence[0]
-    assert "get_recent_logs x15" in result.evidence[1]
+    assert "step limit" in result.not_checked[0]
+    assert "15 of 15 tool calls" in result.not_checked[0]
+    assert "get_recent_logs x15" in result.not_checked[1]
 
 
 # --- token cap ------------------------------------------------------------------
@@ -160,8 +163,8 @@ def test_token_limit_returns_halted_hypothesis_instead_of_raising() -> None:
 
     assert result.halted_by is StopReason.TOKEN_LIMIT
     assert result.confidence == 0.0
-    assert "input-token limit" in result.evidence[0]
-    assert "240,000 of 200,000 input tokens" in result.evidence[0]
+    assert "input-token limit" in result.not_checked[0]
+    assert "240,000 of 200,000 input tokens" in result.not_checked[0]
     assert guard.tripped is StopReason.TOKEN_LIMIT
 
 
@@ -215,9 +218,9 @@ def test_cost_limit_returns_halted_hypothesis_instead_of_raising() -> None:
 
     assert result.halted_by is StopReason.COST_LIMIT
     assert result.confidence == 0.0
-    assert "cost limit ($0.10)" in result.evidence[0]
+    assert "cost limit ($0.10)" in result.not_checked[0]
     # Seven calls spent $0.091. The eighth could have reached $0.109, so it was never sent.
-    assert "$0.0910 of $0.10" in result.evidence[0]
+    assert "$0.0910 of $0.10" in result.not_checked[0]
 
 
 @pytest.mark.parametrize("usd", [-0.01, math.nan, math.inf])
@@ -258,7 +261,7 @@ def test_wall_clock_returns_halted_hypothesis_instead_of_raising(clock: FakeCloc
 
     assert result.halted_by is StopReason.WALL_CLOCK
     assert result.confidence == 0.0
-    assert "wall-clock limit" in result.evidence[0]
+    assert "wall-clock limit" in result.not_checked[0]
 
 
 def test_wall_clock_cuts_off_a_hung_call() -> None:
@@ -276,7 +279,7 @@ def test_wall_clock_cuts_off_a_hung_call() -> None:
     assert time.monotonic() - started < 2
     assert result.halted_by is StopReason.WALL_CLOCK
     assert result.confidence == 0.0
-    assert "get_recent_logs x1" in result.evidence[1]
+    assert "get_recent_logs x1" in result.not_checked[1]
 
 
 # --- budget and logging ---------------------------------------------------------
@@ -468,4 +471,35 @@ def test_halted_with_no_tool_calls_says_so() -> None:
 
     result = asyncio.run(run_guarded(guard, work))
 
-    assert result.evidence[1] == "No tool calls were made before halting."
+    assert result.not_checked[1] == "No tool calls were made before halting."
+
+
+# --- malformed answers (R5) -------------------------------------------------------
+
+
+def test_a_malformed_answer_gets_two_resends_and_the_third_stops_the_run(guard: RunGuard, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    guard.record_rejected_answer()
+    guard.record_rejected_answer()
+    guard.check()  # two rejections: the model may answer again
+    assert guard.tripped is None
+
+    guard.record_rejected_answer()  # never raises: the rejection is already on its way back
+    assert guard.tripped is StopReason.RESEND_LIMIT
+    with pytest.raises(ResendLimitExceeded):
+        guard.check()
+    guard.record_rejected_answer()
+    assert guard.rejected_answers == 4 and guard.tripped is StopReason.RESEND_LIMIT
+    events = [json.loads(r.getMessage())["event"] for r in caplog.records if r.name == "sentinelops.guards"]
+    assert events.count("answer_rejected") == 4 and events.count("guard_tripped") == 1
+
+
+def test_a_halted_answer_states_nothing_as_evidence(guard: RunGuard) -> None:
+    for _ in range(3):
+        guard.record_rejected_answer()
+    halted = guard.halted_hypothesis()
+
+    assert halted.evidence == [] and halted.inferences == []
+    assert halted.fault_location is FaultLocation.UNDETERMINED and not halted.can_open_pr
+    assert halted.not_checked[0].startswith("Halted by the resend limit (2 resends of a malformed answer).")
+    assert Hypothesis.model_validate_json(halted.model_dump_json()) == halted

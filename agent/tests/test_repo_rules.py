@@ -22,6 +22,7 @@ PR_GATE_PATTERNS = [
     re.compile(r"(<=?|>=?)\s*[\w.]*confidence\b"),
     re.compile(r"\bPR_CONFIDENCE_THRESHOLD\b"),
     re.compile(r"\bhalted_by\s+is\b"),
+    re.compile(r"\bfault_location\s+(is|==|!=)\s*(not\s+)?FaultLocation\.THIS_SERVICE\b"),
 ]
 
 
@@ -78,6 +79,7 @@ def test_pr_gate_is_only_decided_by_can_open_pr() -> None:
         "if 0.7 <= payload.confidence:",
         "ok = conf > PR_CONFIDENCE_THRESHOLD",
         "if hypothesis.halted_by is None and ...",
+        "and h.fault_location is FaultLocation.THIS_SERVICE",
     ],
 )
 def test_pr_gate_patterns_catch_re_derived_rules(line: str) -> None:
