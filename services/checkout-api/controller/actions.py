@@ -3,11 +3,13 @@
 A break is one transaction: the flag, only if no fault is active; the fault's
 cause in deploy history, dated now; one decoy, dated 1 to 6 hours ago; and the
 rollback, dated when the flag expires, so the history matches what the
-service does even if nobody clears it. Once the transaction lands, it starts
-the traffic burst, which every fault needs to show within a minute. clear
-deletes the flag and moves the rollback to now; a burst still running runs
-out, harmlessly, against the healthy service. Every history write is
-conditional, so none overwrites another.
+service does even if nobody clears it. A fault outside checkout-api
+(downstream_timeout) has no cause or rollback to record, only the decoy.
+Once the transaction lands, it starts the traffic burst, which every fault
+needs to show within a minute. clear deletes the flag and moves the rollback,
+if any, to now; a burst still running runs out, harmlessly, against the
+healthy service. Every history write is conditional, so none overwrites
+another.
 """
 
 import math
@@ -86,8 +88,9 @@ class FaultController:
             "overrides": {"M": fault.overrides},
             "set_at": {"N": f"{now:.3f}"},
             "expires_at": {"N": str(expires_at)},
-            "rollback_ts": {"S": timestamp(expires_at)},
         }
+        if fault.rollback is not None:
+            flag["rollback_ts"] = {"S": timestamp(expires_at)}
         decoy = self._rng.choice(DECOYS)
         decoy_at = now - self._rng.uniform(*DECOY_AGE_S)
         writes = [
@@ -101,10 +104,12 @@ class FaultController:
                     "ExpressionAttributeValues": {":now": {"N": f"{now:.3f}"}},
                 }
             },
-            self._put_record(fault.cause, now),
-            self._put_record(decoy, decoy_at),
-            self._put_record(fault.rollback, expires_at),
         ]
+        if fault.cause is not None:
+            writes.append(self._put_record(fault.cause, now))
+        writes.append(self._put_record(decoy, decoy_at))
+        if fault.rollback is not None:
+            writes.append(self._put_record(fault.rollback, expires_at))
         try:
             self._client.transact_write_items(TransactItems=writes)
         except Exception as exc:
@@ -142,7 +147,7 @@ class FaultController:
             }
         ]
         fault = FAULTS.get(item["mode"]["S"])
-        if active and fault is not None:  # the rollback hasn't happened yet: it happens now
+        if active and fault is not None and fault.rollback is not None:  # the rollback happens now, not later
             writes += [
                 {
                     "Delete": {

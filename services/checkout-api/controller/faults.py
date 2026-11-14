@@ -2,8 +2,9 @@
 
 A fault is the overrides checkout-api applies while the flag lasts, the change
 deploy history records when it starts, and the rollback it records when it
-ends. Every break also records one decoy: a harmless change from 1 to 6 hours
-earlier, so the newest change in the history isn't always the cause.
+ends. A fault in payments-api changes nothing in checkout-api, so it records
+neither. Every break also records one decoy: a harmless change from 1 to 6
+hours earlier, so the newest change in the history isn't always the cause.
 
 The versions, sizes, and commit here copy checkout-api's own, so this package
 ships alone. tests/test_controller.py holds them to the originals.
@@ -19,6 +20,7 @@ BAD_RELEASE = "1.43.0"
 BAD_RELEASE_COMMIT = "9c41e7b"
 POOL_MAX_SIZE = 20
 SMALL_POOL_MAX_SIZE = 2
+PAYMENTS_DEGRADED = "degraded"  # sim/workload.py's mode for a slow payments-api
 # How long a fault lasts unless it's cleared: the burst's 360 s plus 30, so the
 # fault ends with its traffic and nothing is left to re-fire (Phase 3, decision 3).
 DURATION_S = 390
@@ -39,8 +41,8 @@ class Change:
 @dataclass(frozen=True)
 class Fault:
     overrides: dict[str, Any]  # DynamoDB attribute values, as sim/flags.py reads them
-    cause: Change
-    rollback: Change
+    cause: Change | None = None  # None: nothing in checkout-api changed
+    rollback: Change | None = None
 
 
 FAULTS = {
@@ -67,6 +69,8 @@ FAULTS = {
             (("version", BAD_RELEASE, RELEASE),),
         ),
     ),
+    # payments-api slows down; checkout-api's own history shows only the decoy.
+    "downstream_timeout": Fault(overrides={"payments_api": {"S": PAYMENTS_DEGRADED}}),
 }
 
 DECOYS = (

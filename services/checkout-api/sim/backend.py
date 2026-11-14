@@ -4,14 +4,18 @@ A request asks once, when it needs a connection, and gets its whole timeline
 back: how long it queues for a connection, how long its query holds it, and
 how long payments-api takes to answer. Deciding all of it up front lets the
 request take its place in the pool's ledger in a single write.
+
+payments-api's mode comes from outside checkout-api's settings: a slow upstream
+changes nothing this service is configured with.
 """
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from checkout.config import Config
 from sim.pool import Ledger
-from sim.workload import sample_hold, sample_payments_latency
+from sim.workload import HEALTHY, sample_hold, sample_payments_latency
 
 CHECKOUT = "POST /checkout"
 
@@ -35,14 +39,19 @@ class Timeline:
         return self.granted_at + self.hold_s
 
 
+def _healthy() -> str:
+    return HEALTHY
+
+
 class Backend:
-    def __init__(self, ledger: Ledger, rng: random.Random) -> None:
+    def __init__(self, ledger: Ledger, rng: random.Random, payments: Callable[[], str] = _healthy) -> None:
         self._ledger = ledger
         self._rng = rng
+        self._payments = payments  # payments-api's mode for the request being served
 
     def connect(self, route: str, settings: Config) -> Timeline:
         hold_s = sample_hold(route, self._rng)
-        upstream_s = sample_payments_latency(self._rng) if route == CHECKOUT else None
+        upstream_s = sample_payments_latency(self._rng, self._payments()) if route == CHECKOUT else None
         # The request stays in flight after its connection is back, while payments-api answers.
         after_release_s = 0.0 if upstream_s is None else min(upstream_s, settings.payments_timeout_s)
         reservation = self._ledger.reserve(

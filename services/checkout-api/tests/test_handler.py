@@ -106,6 +106,16 @@ def test_a_release_override_runs_1_43_0_whose_checkouts_fail_without_a_promo(han
     assert ("get_item", POOL_TABLE) not in dynamo.calls
 
 
+def test_a_payments_override_reaches_the_backend_and_no_setting(handler, capsys):
+    module, dynamo = handler
+    dynamo.flag = flag({"payments_api": {"S": "degraded"}})
+    module.handler({"routeKey": "GET /health"}, Context())
+    (line,) = lines(capsys)
+    assert line["version"] == VERSION
+    assert module._flags.payments() == "degraded"
+    assert module.app._backend._payments == module._flags.payments
+
+
 def test_when_the_flag_ends_the_healthy_release_is_back(handler, capsys):
     module, dynamo = handler
     dynamo.flag = flag({"release": {"S": "1.43.0"}})

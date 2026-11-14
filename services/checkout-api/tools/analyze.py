@@ -132,5 +132,5 @@ print("\n== checkout-api lines in the run, by route, version, and error type (sh
 for row in insights("filter ispresent(route) | stats count() as n by route, version, error_type, status | sort route, status"):
     print("  ", row)
 print("\n== lines that would leak the answer (expect none)")
-leaks = insights(r"filter @message like /sim\/|Traceback|stackTrace|pool ledger|config refresh|override|bad_deploy|db_pool_exhaustion|releases/ | stats count() as n by level")
+leaks = insights(r"filter @message like /sim\/|Traceback|stackTrace|pool ledger|config refresh|override|bad_deploy|db_pool_exhaustion|downstream_timeout|degraded|releases/ | stats count() as n by level")
 print("  ", leaks or "none")

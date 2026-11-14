@@ -1,9 +1,11 @@
 import logging
 import random
+import statistics
 
 import pytest
 
 from checkout.config import Config
+from sim import workload
 from sim.backend import Backend
 from sim.pool import (
     BUCKETS,
@@ -327,6 +329,27 @@ def test_a_checkout_stays_in_flight_until_payments_answers():
     assert product.upstream_s is None and led.calls[0][3] == 0.0
     assert checkout.upstream_s is not None and led.calls[1][3] == checkout.upstream_s
     assert led.calls[1][:2] == (20, 1.5)
+
+
+def test_a_degraded_payments_api_slows_only_checkouts_and_only_while_it_lasts():
+    led = RecordingLedger()
+    mode = [workload.DEGRADED]
+    backend = Backend(led, random.Random(3), payments=lambda: mode[0])
+    product = backend.connect("GET /products/{id}", Config())
+    slow = [backend.connect("POST /checkout", Config()).upstream_s for _ in range(400)]
+    mode[0] = workload.HEALTHY
+    fast = [backend.connect("POST /checkout", Config()).upstream_s for _ in range(400)]
+    assert product.upstream_s is None
+    assert statistics.median(slow) > 5 * statistics.median(fast)
+
+
+def test_the_degraded_payments_api_times_out_about_one_checkout_in_25():
+    rng = random.Random(11)
+    samples = [workload.sample_payments_latency(rng, workload.DEGRADED) for _ in range(40_000)]
+    assert 0.68 <= statistics.median(samples) <= 0.72
+    assert 0.035 <= sum(s > 2.0 for s in samples) / len(samples) <= 0.045
+    healthy = [workload.sample_payments_latency(rng) for _ in range(40_000)]
+    assert sum(s > 2.0 for s in healthy) / len(healthy) < 0.0001
 
 
 def test_a_checkout_whose_payment_times_out_is_in_flight_until_the_timeout():

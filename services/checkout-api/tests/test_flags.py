@@ -4,6 +4,7 @@ and the defaults once reads have failed for a minute."""
 import pytest
 
 from checkout.config import Config
+from sim import workload
 from sim.flags import FlagReader
 from sim.pool_sim import VirtualClock
 
@@ -126,14 +127,30 @@ def test_overrides_it_cannot_apply_are_skipped_and_the_warning_names_none(clock,
         {
             "POOL_MAX_SIZE": {"N": "0"},
             "release": {"S": "9.9.9"},
-            "payments_api": {"S": "degraded"},
+            "payments_api": {"S": "slow"},
             "PAYMENTS_TIMEOUT_MS": {"S": "fast"},
         }
     )
-    assert reader(StubTable(item), clock)() == DEFAULTS
+    flags = reader(StubTable(item), clock)
+    assert flags() == DEFAULTS and flags.payments() == workload.HEALTHY
     assert "ignoring 4 of 4 config overrides" in caplog.text
-    for detail in ("POOL", "release", "payments", "PAYMENTS", "9.9.9", "degraded", "fast"):
+    for detail in ("POOL", "release", "payments", "PAYMENTS", "9.9.9", "slow", "fast"):
         assert detail not in caplog.text
+
+
+def test_a_slow_payments_api_changes_no_setting_and_lasts_as_long_as_the_flag(clock, caplog):
+    flags = reader(StubTable(flag_item({"payments_api": {"S": "degraded"}}, expires_at=START + 390)), clock)
+    assert flags() == DEFAULTS
+    assert flags.payments() == workload.DEGRADED
+    clock.now = START + 390
+    assert flags() == DEFAULTS and flags.payments() == workload.HEALTHY
+    assert caplog.text == ""
+
+
+def test_with_no_flag_payments_api_is_healthy(clock):
+    flags = reader(StubTable(), clock)
+    flags()
+    assert flags.payments() == workload.HEALTHY
 
 
 @pytest.mark.parametrize("missing", ["expires_at", "overrides"])

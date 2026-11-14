@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: live_run.sh <healthy|db_pool_exhaustion|bad_deploy>
+# usage: live_run.sh <healthy|db_pool_exhaustion|bad_deploy|downstream_timeout>
 # One live run against the deployed stack. A fault mode breaks the service,
 # which also starts the burst, then clears the fault once the burst is over;
 # "healthy" sends the burst alone, as a control. Prints each alarm transition
@@ -9,8 +9,8 @@ set -u
 export AWS_PROFILE=sentinelops AWS_PAGER="" MSYS_NO_PATHCONV=1 AWS_REGION=us-east-1
 mode=${1:-}
 case "$mode" in
-  healthy | db_pool_exhaustion | bad_deploy) ;;
-  *) echo "usage: live_run.sh <healthy|db_pool_exhaustion|bad_deploy>" >&2; exit 2 ;;
+  healthy | db_pool_exhaustion | bad_deploy | downstream_timeout) ;;
+  *) echo "usage: live_run.sh <healthy|db_pool_exhaustion|bad_deploy|downstream_timeout>" >&2; exit 2 ;;
 esac
 
 alarm_states() {

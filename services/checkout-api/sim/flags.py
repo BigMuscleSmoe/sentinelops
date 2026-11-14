@@ -1,9 +1,12 @@
 """The fault flag: overrides for checkout-api's settings while a fault lasts.
 
 The fault controller writes at most one item, flag = "active", to the flags
-table, with `overrides` ({"POOL_MAX_SIZE": 2} or {"release": "1.43.0"}) and
-`expires_at` in epoch seconds. Each instance reads it at most every 2 s, and
-applies it until expires_at, whatever DynamoDB's TTL has done with the item.
+table, with `overrides` ({"POOL_MAX_SIZE": 2}, {"release": "1.43.0"}, or
+{"payments_api": "degraded"}) and `expires_at` in epoch seconds. Each instance
+reads it at most every 2 s, and applies it until expires_at, whatever
+DynamoDB's TTL has done with the item. payments_api changes none of
+checkout-api's settings: it sets how the simulated payments-api answers
+(`FlagReader.payments`, which sim/backend.py asks).
 When reads fail, the last item read still counts for 60 s from when it was
 read; after that the defaults do.
 
@@ -18,7 +21,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from checkout.config import Config
-from sim import releases
+from sim import releases, workload
 
 logger = logging.getLogger("checkout.config")
 
@@ -31,6 +34,7 @@ STALE_S = 60.0
 class Flag:
     expires_at: float
     changes: Mapping[str, Any] = field(default_factory=dict)  # Config fields to replace
+    payments: str = workload.HEALTHY  # payments-api's mode, outside checkout-api's settings
 
 
 def parse(item: Mapping[str, Any]) -> Flag | None:
@@ -43,16 +47,23 @@ def parse(item: Mapping[str, Any]) -> Flag | None:
     if not isinstance(overrides, dict):
         return None
     changes: dict[str, Any] = {}
+    payments = workload.HEALTHY
+    applied = 0
     for name, value in overrides.items():
         if name == "POOL_MAX_SIZE":
             size = _positive_int(value)
             if size is not None:
                 changes["pool_max_size"] = size
+                applied += 1
         elif name == "release" and isinstance(value, dict) and value.get("S") in releases.RELEASES:
             changes["version"] = value["S"]
-    if len(changes) < len(overrides):
-        logger.warning("ignoring %d of %d config overrides", len(overrides) - len(changes), len(overrides))
-    return Flag(expires_at, changes)
+            applied += 1
+        elif name == "payments_api" and isinstance(value, dict) and value.get("S") in workload.PAYMENTS:
+            payments = value["S"]
+            applied += 1
+    if applied < len(overrides):
+        logger.warning("ignoring %d of %d config overrides", len(overrides) - applied, len(overrides))
+    return Flag(expires_at, changes, payments)
 
 
 def _positive_int(value: Any) -> int | None:
@@ -102,10 +113,21 @@ class FlagReader:
         now = self._clock()
         if now - self._tried_at >= self._cache_s:
             self._refresh(now)
+        flag = self._live(now)
+        return self._defaults if flag is None else replace(self._defaults, **flag.changes)
+
+    def payments(self) -> str:
+        """payments-api's mode: the flag's while it lasts. It reads no table; the
+        request's own settings call, just before, refreshed the flag."""
+        flag = self._live(self._clock())
+        return workload.HEALTHY if flag is None else flag.payments
+
+    def _live(self, now: float) -> Flag | None:
+        """The flag, while it applies: read within the last minute, and not expired."""
         flag = self._flag
         if flag is None or now - self._read_at > self._stale_s or now >= flag.expires_at:
-            return self._defaults
-        return replace(self._defaults, **flag.changes)
+            return None
+        return flag
 
     def _refresh(self, now: float) -> None:
         self._tried_at = now

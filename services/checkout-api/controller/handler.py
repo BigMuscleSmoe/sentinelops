@@ -6,7 +6,7 @@ From the CLI, with the payload in a file:
         --cli-binary-format raw-in-base64-out --payload file://break.json out.json
 
 where the payload is {"action": "break", "mode": "db_pool_exhaustion"} (or
-"bad_deploy"), {"action": "clear"}, or {"action": "status"}.
+"bad_deploy", or "downstream_timeout"), {"action": "clear"}, or {"action": "status"}.
 """
 
 import json

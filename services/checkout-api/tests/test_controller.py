@@ -13,7 +13,7 @@ from checkout import VERSION
 from checkout.config import Config
 from controller import faults
 from controller.actions import FLAG_KEY, FaultController, timestamp
-from sim import releases
+from sim import releases, workload
 from sim.flags import parse
 from sim.pool_sim import VirtualClock
 from traffic import burst
@@ -142,17 +142,33 @@ def test_a_bad_deploy_is_recorded_as_a_deploy_of_1_43_0(controller, dynamo):
     assert (rollback["Item"]["version"], rollback["Item"]["commit"]) == ({"S": VERSION}, {"S": faults.RELEASE_COMMIT})
 
 
+def test_a_downstream_timeout_records_only_the_decoy(controller, dynamo):
+    """payments-api slows down: nothing in checkout-api changed, so its history gets no cause or rollback."""
+    result = controller.handle({"action": "break", "mode": "downstream_timeout"})
+    assert (result["ok"], result["mode"], result["expires_at"]) == (True, "downstream_timeout", timestamp(EXPIRES_AT))
+    flag, decoy = puts(dynamo.transactions[0])
+    assert flag["Item"]["overrides"] == {"M": {"payments_api": {"S": "degraded"}}}
+    assert "rollback_ts" not in flag["Item"]
+    assert decoy["TableName"] == HISTORY and 3600 <= NOW - epoch(decoy["Item"]["ts"]["S"]) <= 6 * 3600
+    assert decoy["Item"]["kind"] == {"S": "config"}
+
+
 @pytest.mark.parametrize(
-    "mode, expected",
-    [("db_pool_exhaustion", {"pool_max_size": 2}), ("bad_deploy", {"version": releases.BAD_RELEASE})],
+    "mode, expected, payments",
+    [
+        ("db_pool_exhaustion", {"pool_max_size": 2}, workload.HEALTHY),
+        ("bad_deploy", {"version": releases.BAD_RELEASE}, workload.HEALTHY),
+        ("downstream_timeout", {}, workload.DEGRADED),
+    ],
 )
-def test_checkout_api_reads_each_flag_as_its_fault(controller, dynamo, mode, expected):
+def test_checkout_api_reads_each_flag_as_its_fault(controller, dynamo, mode, expected, payments):
     controller.handle({"action": "break", "mode": mode})
     flag = parse(dynamo.flag)
     assert flag is not None and dict(flag.changes) == expected and flag.expires_at == EXPIRES_AT
+    assert flag.payments == payments
 
 
-@pytest.mark.parametrize("mode", ["db_pool_exhaustion", "bad_deploy"])
+@pytest.mark.parametrize("mode", ["db_pool_exhaustion", "bad_deploy", "downstream_timeout"])
 def test_every_break_starts_the_burst_once_its_transaction_has_landed(controller, bursts, mode):
     controller.handle({"action": "break", "mode": mode})
     assert bursts.started == [1]
@@ -190,7 +206,7 @@ def test_a_burst_that_fails_to_start_is_reported_and_the_fault_stays(controller,
 @pytest.mark.parametrize(
     "payload, error",
     [
-        ({"action": "break", "mode": "downstream_timeout"}, "unknown mode 'downstream_timeout'"),
+        ({"action": "break", "mode": "disk_full"}, "unknown mode 'disk_full'"),
         ({"action": "break"}, "unknown mode None"),
         ({"action": "explode"}, "unknown action 'explode'"),
         ({}, "unknown action None"),
@@ -218,6 +234,15 @@ def test_clear_deletes_the_flag_and_moves_the_rollback_to_now(controller, dynamo
     }
     assert put_rollback["Put"]["Item"]["ts"] == {"S": timestamp(NOW + 120)}
     assert put_rollback["Put"]["Item"]["message"] == {"S": faults.FAULTS["db_pool_exhaustion"].rollback.message}
+    assert dynamo.flag is None
+
+
+def test_clearing_a_downstream_timeout_only_deletes_the_flag(controller, dynamo, clock):
+    controller.handle({"action": "break", "mode": "downstream_timeout"})
+    clock.sleep(120)
+    assert controller.handle({"action": "clear"}) == {"ok": True, "cleared": "downstream_timeout"}
+    (delete_flag,) = dynamo.transactions[1]
+    assert delete_flag["Delete"]["TableName"] == FLAGS
     assert dynamo.flag is None
 
 
@@ -266,6 +291,7 @@ def test_the_copies_match_checkout_api_and_the_seeded_history():
     assert faults.RELEASE == VERSION
     assert faults.BAD_RELEASE == releases.BAD_RELEASE
     assert (faults.POOL_MAX_SIZE, faults.SMALL_POOL_MAX_SIZE) == (Config().pool_max_size, 2)
+    assert faults.PAYMENTS_DEGRADED == workload.DEGRADED
     seeded = (REPO / "infra" / "checkout_data.tf").read_text(encoding="utf-8")
     assert f'"{faults.RELEASE_COMMIT}"' in seeded and f'"{faults.RELEASE}"' in seeded
 

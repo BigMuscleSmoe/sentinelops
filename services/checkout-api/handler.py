@@ -30,7 +30,7 @@ def _settings() -> Config:
 app = App(
     settings=_settings,
     # Wall clock, not monotonic: the ledger compares times across instances.
-    backend=Backend(DynamoLedger.from_env(os.environ, time.time), random.Random()),
+    backend=Backend(DynamoLedger.from_env(os.environ, time.time), random.Random(), payments=_flags.payments),
     clock=time.time,
     sleep=time.sleep,
     emit=functools.partial(print, flush=True),
