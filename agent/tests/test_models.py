@@ -1,11 +1,16 @@
 import copy
+import json
 import math
+import re
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from answers import UPSTREAM_EVIDENCE, item
-from models import FaultLocation, Hypothesis, StopReason, trimmed_answer
+from models import Evidence, FaultLocation, Hypothesis, StopReason, trimmed_answer
+
+PROMPT = (Path(__file__).parents[1] / "prompts" / "system.md").read_text(encoding="utf-8")
 
 VALID = {
     "root_cause": "Upstream payments-api p99 rose from 120ms to 4.8s at 14:02; checkout-api times out waiting on it.",
@@ -96,6 +101,28 @@ def test_every_field_is_described_for_the_model() -> None:
     for model, part in models.items():
         for name, prop in part["properties"].items():
             assert prop.get("description"), f"{model}.{name} has no description in the output schema"
+
+
+def test_the_schema_says_a_list_of_lines_is_only_its_lines_and_none_means_nothing_matches() -> None:
+    """The wording behind two typed slips in the trials (step 4's hand read): lines [1, 30] for
+    lines 1 to 30, and none over a window holding records the model judged unrelated."""
+    lines = Evidence.model_fields["lines"].description or ""
+    assert "[3, 4, 5] is lines 3 to 5" in lines and "[1, 30] is lines 1 and 30, not 1 to 30" in lines
+    assert "list every one, or give start and end" in lines
+    kind = Evidence.model_fields["kind"].description or ""
+    assert "checked against everything in the window, not only what matters" in kind
+    assert "a window that holds a record you judge unrelated isn't none" in kind
+    assert "cite that record in an item of its own" in kind
+
+
+def test_the_prompt_says_the_same_and_its_examples_are_valid_items() -> None:
+    assert "`[1, 30]` is lines 1 and 30 only" in PROMPT and "To cite a run of lines, list every one" in PROMPT
+    assert "`none` means nothing in that window matches, not that nothing there matters" in PROMPT
+    examples = [json.loads(m) for m in re.findall(r"^- `(\{.*\})`$", PROMPT, re.M)]
+    assert [e["kind"] for e in examples] == ["range", "value", "count", "none"]
+    for example in examples:
+        Evidence.model_validate(example)
+    assert "other" not in examples[-1]["note"]  # "no other change" read as "none relevant"
 
 
 def test_runbook_cited_defaults_to_none_and_is_offered_to_the_model() -> None:

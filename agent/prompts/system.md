@@ -35,17 +35,17 @@ Blaming this service for someone else's outage sends the engineer to the wrong p
 
 ## Evidence
 
-Every tool result starts with its label: `[source m1]` is your first metrics read, `[source l2]` your second log read, `[source d1]` your first deploy read. The alarm message is source `alarm`. Log lines are numbered: `[3] {...}` is line 3 of that result.
+Every tool result starts with its label: `[source m1]` is your first metrics read, `[source l2]` your second log read, `[source d1]` your first deploy read. The alarm message is source `alarm`. Log lines are numbered: `[3] {...}` is line 3 of that result. A `lines` list cites exactly the lines in it: `[3, 4, 5]` is lines 3 to 5, and `[1, 30]` is lines 1 and 30 only. To cite a run of lines, list every one, or give `start` and `end` for the lines in that stretch of time.
 
 Each evidence item is one observation from one result, written as data so it can be checked against exactly what it cites. Its `kind` says what it states; the schema says which fields each kind needs. For example:
 
 - `{"kind": "range", "source": "m2", "column": "payments_p99_ms", "start": "14:00:00", "end": "14:09:00", "low": 88.0, "high": 131.0, "note": "payments-api latency flat through the incident"}`
 - `{"kind": "value", "source": "d1", "column": "version", "at": "2026-03-04T13:58:12.004Z", "value": "2.7.0", "note": "the only deploy before the errors start"}`
 - `{"kind": "count", "source": "l1", "column": "error_type", "value": "SSLError", "count": 18, "note": "every failure shown is a TLS handshake error"}`
-- `{"kind": "none", "source": "d1", "start": "2026-03-04T12:00:00.000Z", "end": "2026-03-04T13:58:11.000Z", "note": "no other change in the two hours before"}`
+- `{"kind": "none", "source": "d1", "start": "2026-03-04T12:00:00.000Z", "end": "2026-03-04T13:58:11.000Z", "note": "no deploy or config change at all in the two hours before this deploy"}`
 
 - Write values as the source shows them. A range's `low` and `high` are the smallest and largest values in the rows or lines you cite: read every one of them.
-- Absence counts only where you looked: a `none` item's window must be one its result covers.
+- Absence counts only where you looked: a `none` item's window must be one its result covers. And `none` means nothing in that window matches, not that nothing there matters: a window holding a record you judge unrelated isn't `none`. Give that record its own item, with a note on why it isn't the cause.
 - Include the evidence that rules out alternatives, not only the evidence that supports your answer. Account for every deploy-history record you read: an item for each, by its time and change, with a note on why it is or isn't the cause.
 - What no single result shows, such as a cause, a comparison, or a share, goes in `inferences`, with the evidence items it rests on. Every number in `root_cause` must also be in an evidence item.
 - Don't claim to have checked something you didn't. What you couldn't or didn't check goes in `not_checked`.

@@ -101,12 +101,14 @@ class Evidence(BaseModel):
             "its smallest and largest value. "
             "all: every row from start to end, every cited line, or with neither every line of the result, "
             "has column equal to value. "
-            "count: count of the cited lines (every line of the result if none are cited) have column equal "
-            "to value; with no column, the result shows count lines. "
+            "count: count of the cited lines (with no lines cited, every line of the result) have column "
+            "equal to value; with no column, the result shows count lines. "
             "first, last: the oldest or newest line the result shows, among those with column equal to value "
             "if one is given, is at at. "
-            "none: nothing in the result from start to end has column equal to value; with no column, the "
-            "result has no row, line, or record there at all. "
+            "none: no row, line, or record in the result from start to end has column equal to value; with "
+            "no column, the result has nothing there at all. It's checked against everything in the window, "
+            "not only what matters: a window that holds a record you judge unrelated isn't none, so cite that "
+            "record in an item of its own and say in its note why it isn't the cause. "
             "gap: seconds pass from start to end."
         )
     )
@@ -145,7 +147,12 @@ class Evidence(BaseModel):
     )
     lines: list[int] | None = Field(
         default=None,
-        description="Log lines by the numbers the result gives them: [3] is line 3.",
+        description=(
+            "Every log line it rests on, each by the number the result gives it: [3] is line 3, and [3, 4, 5] "
+            "is lines 3 to 5. A list holds only the numbers in it: [1, 30] is lines 1 and 30, not 1 to 30. "
+            "For a run of lines, list every one, or give start and end for the lines in that stretch of time; "
+            "for every line of the result, leave lines out."
+        ),
     )
     value: str | None = Field(
         default=None,

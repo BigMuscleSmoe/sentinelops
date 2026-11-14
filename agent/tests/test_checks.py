@@ -120,6 +120,21 @@ def test_each_kind_is_checked_on_its_own_fields(sources: RunSources, evidence: A
     assert why in check.reason
 
 
+def test_lines_and_none_are_checked_as_the_schema_words_them(sources: RunSources) -> None:
+    """A list cites only its lines; a run of lines is every one listed, or a window. None means nothing matches."""
+    def verdict(evidence: dict[str, Any]) -> Verdict:
+        return check_item("e1", evidence, sources).verdict
+
+    assert verdict(item("count", source="l1", lines=[1, 20], count=2)) is Verdict.HOLDS
+    assert verdict(item("count", source="l1", lines=[1, 20], count=20)) is Verdict.CONTRADICTED
+    assert verdict(item("count", source="l1", lines=list(range(1, 21)), count=20)) is Verdict.HOLDS
+    assert verdict(item("count", source="l1", start="19:05:33.125", end="19:05:55.310", count=20)) is Verdict.HOLDS
+    # The 18:56 change, judged unrelated or not, is in a 14:00-19:00 window: that window isn't none.
+    assert verdict(item("none", source="d1", start="14:00", end="19:00")) is Verdict.CONTRADICTED
+    assert verdict(item("value", source="d1", column="POOL_MAX_SIZE", at="18:56:06.039", value="20->2")) is Verdict.HOLDS
+    assert verdict(item("none", source="d1", start="14:20", end="18:55")) is Verdict.HOLDS
+
+
 def test_fields_beyond_the_kind_are_listed_unchecked(sources: RunSources) -> None:
     check = check_item("e1", item("value", source="m1", column="err%", at="19:01", value="19.5", low=1, high=2, count=3), sources)
     assert check.verdict is Verdict.HOLDS and check.unchecked == ["low", "high", "count"]
