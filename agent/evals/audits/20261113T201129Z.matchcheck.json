@@ -1,0 +1,498 @@
+{
+ "about": "Hand-check of the 43 grader flags that matched an audit label in the one grading pass of sweep 20261113T201129Z (grader 57455ab; audit 6e029ce and re-check 6c814a6, both unchanged): 34 matched by one shared token only, 9 by text containment. Each was checked against its run's own tool output and the label it matched. tier A: the flag is on the labeled claim and its detail shows the slip. B: the labeled claim, a real slip, but the flag's detail doesn't show it (wrong rows, source, subset, or scope). C: the flagged statement isn't the model's claim or isn't a slip; it shares a token with a label on another claim in the same field.",
+ "sweep": "20261113T201129Z",
+ "runs": {
+  "pool-1027-1856-r1": [
+   {
+    "where": "evidence[2]",
+    "text": "Pool waits 12 to 664 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "Pool waits were 12 to 664 ms",
+    "note": "the claim is about the shown log lines (0.0-664.0); the flag checked the metric rows (585)"
+   },
+   {
+    "where": "evidence[4]",
+    "text": "db_query_p50_ms 60 to 67 ms (span 18:41 18:56)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50_ms was 60 to 67 ms from 18:41 through 18:56",
+    "note": "the rows run 49.8-67.9, as the label says"
+   },
+   {
+    "where": "evidence[4]",
+    "text": "latency 300 to 700 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "loose",
+    "label_quote": "Many sampled lines had db_query under 50 ms while total latency was 300 to 700 ms",
+    "note": "the claim is about the 8 lines with db_query under 50 ms (31.1-712.2); the flag checked all 30 lines"
+   }
+  ],
+  "pool-1027-1900-r1": [
+   {
+    "where": "evidence[5]",
+    "text": "db_query_p50_ms 60-66 ms (rows 19:00)",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50_ms stayed 60-66 ms across the whole window",
+    "note": "scoped to 19:00 (64.2, inside the range) from 'including 19:00'; the slip is the rest of the window, 49.8-66.7"
+   },
+   {
+    "where": "evidence[7]",
+    "text": "payments_p99_ms 200-280 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "payments_p99_ms 200-280 ms and 0 payments_timeouts throughout",
+    "note": "the whole window runs 77-384, the reading the loose label names"
+   }
+  ],
+  "pool-1027-1901-r1": [
+   {
+    "where": "evidence[6]",
+    "text": "db_query_p50 60-66 ms (span 18:41 19:01)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50 stayed 60",
+    "note": "the rows run 49.8-67.9; the label's quote stops at the en dash"
+   },
+   {
+    "where": "evidence[7]",
+    "text": "payments_p99 258-277 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "loose",
+    "label_quote": "payments_p99 stayed 258",
+    "note": "the claim is scoped 'during the incident' (the slip: 18:56 is 252); the flag checked the whole window"
+   }
+  ],
+  "deploy-1027-1905-r1": [
+   {
+    "where": "evidence[5]",
+    "text": "pool_wait 0",
+    "check": "range",
+    "match": "text",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "whose log lines show pool_wait 0",
+    "note": "the TypeError lines have no pool fields (the slip); the flag read the older pool-timeout lines (1500)"
+   }
+  ],
+  "deploy-1029-0156-r1": [
+   {
+    "where": "root_cause",
+    "text": "err% 100%",
+    "check": "range",
+    "match": "weak",
+    "tier": "C",
+    "label_kind": "strict",
+    "label_quote": "which is why the error rate is about 15% and not 100%",
+    "note": "'not 100%' read as a claimed 100%; the label is the denominator in the same clause, which the flag doesn't address"
+   },
+   {
+    "where": "evidence[1]",
+    "text": "about 30 s before",
+    "check": "arithmetic",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "about 30 s before the first failing minute",
+    "note": "the deploy is 28.5 s after the first failing minute starts, not 30 s before it"
+   }
+  ],
+  "deploy-1112-0803-r1": [
+   {
+    "where": "evidence[1]",
+    "text": "First error at 08:03:17",
+    "check": "truncation",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "First error at 08:03:17.897",
+    "note": "a cut page: 30 of 31"
+   },
+   {
+    "where": "evidence[3]",
+    "text": "latency 350-500 ms",
+    "check": "range",
+    "match": "text",
+    "tier": "B",
+    "label_kind": "loose",
+    "label_quote": "latency 350-500 ms",
+    "note": "the claim is about the 4 successes (354.6-502.9); the flag checked the failed lines"
+   }
+  ],
+  "deploy-1112-2000-r1": [
+   {
+    "where": "evidence[0]",
+    "text": "datapoints 0.177 (rows 20:00:10)",
+    "check": "value",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+    "note": "20:00:10 is 0.1739: the swapped times the label names"
+   },
+   {
+    "where": "evidence[0]",
+    "text": "datapoints 0.174 (rows 20:00:20)",
+    "check": "value",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+    "note": "20:00:20 is 0.1774: the same swap"
+   }
+  ],
+  "deploy-1113-0257-r1": [
+   {
+    "where": "evidence[0]",
+    "text": "First error log at 02:57:19",
+    "check": "truncation",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "First error log at 02:57:19.584",
+    "note": "a cut page: 30 of 33"
+   },
+   {
+    "where": "evidence[4]",
+    "text": "payments_p99 37-300 ms (span 02:37 02:57)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "payments_p99 stayed 37",
+    "note": "02:41 is 30.5; the label's quote stops at the en dash"
+   }
+  ],
+  "pool-1027-1900-r2": [
+   {
+    "where": "evidence[2]",
+    "text": "DB query p50 60-66 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "DB query p50 is flat at 60-66 ms throughout",
+    "note": "the rows run 49.8-66.7"
+   },
+   {
+    "where": "evidence[5]",
+    "text": "payments-api p99 157-384 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "payments-api p99 is 157-384 ms",
+    "note": "the rows run 77-384"
+   }
+  ],
+  "pool-1027-1901-r2": [
+   {
+    "where": "evidence[1]",
+    "text": "pool_wait_p99 0.5 ms (rows 18:55)",
+    "check": "value",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "~0.5 ms (18:55)",
+    "note": "18:55 is 0.3; the label is loose for the '~'"
+   },
+   {
+    "where": "evidence[4]",
+    "text": "db_query_p50 60-66 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50 stayed at 60",
+    "note": "the rows run 49.8-67.9; the label's quote stops at the en dash"
+   },
+   {
+    "where": "evidence[4]",
+    "text": "payments_p99 190-280 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "payments_p99 stayed at 190",
+    "note": "the whole window runs 77-384, the reading the loose label names"
+   }
+  ],
+  "deploy-1027-1905-r2": [
+   {
+    "where": "evidence[5]",
+    "text": "pool_wait_p99 585-1,495 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "pool_wait_p99 of 585-1,495 ms",
+    "note": "pinned to the 18:56:06 change (585); the slip is 18:57's 455 and 19:01-19:02's 1498"
+   },
+   {
+    "where": "evidence[5]",
+    "text": "errors 19-21% (span 18:59 19:02)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "19-21% errors at 18:59-19:02",
+    "note": "the rows run 0.5-21.1"
+   },
+   {
+    "where": "evidence[6]",
+    "text": "payments_p99_ms 186-277 ms (span 18:45 19:05)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "payments_p99_ms was 186-277 ms with 0 timeouts across 18:45-19:05",
+    "note": "the rows run 77-384"
+   },
+   {
+    "where": "evidence[7]",
+    "text": "db_query_p50_ms 60-66 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50_ms was 60-66 ms throughout",
+    "note": "the rows run 41.1-97"
+   }
+  ],
+  "deploy-1112-2000-r2": [
+   {
+    "where": "evidence[0]",
+    "text": "Alarm datapoints 0.177 (rows 20:00:10)",
+    "check": "value",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+    "note": "the swapped times, as in run 1"
+   },
+   {
+    "where": "evidence[0]",
+    "text": "Alarm datapoints 0.174 (rows 20:00:20)",
+    "check": "value",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "0.177 at 20:00:10 and 0.174 at 20:00:20",
+    "note": "the same swap"
+   }
+  ],
+  "deploy-1113-0257-r2": [
+   {
+    "where": "evidence[1]",
+    "text": "first error is at 02:57:19",
+    "check": "truncation",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "The first error is at 02:57:19.584",
+    "note": "a cut page: 30 of 33"
+   }
+  ],
+  "pool-1027-1856-r3": [
+   {
+    "where": "root_cause",
+    "text": "pool_wait_time_ms 100 to 660 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "pool_wait_time_ms rises to 100 to 660 ms",
+    "note": "the 30 lines run 0-664, as the loose label says"
+   },
+   {
+    "where": "root_cause",
+    "text": "pool wait 100 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "C",
+    "label_kind": "loose",
+    "label_quote": "pool_wait_time_ms rises to 100 to 660 ms",
+    "note": "'p99 pool wait crosses 100 ms' is true (585 and up); it shares only '100' with the label's '100 to 660'"
+   },
+   {
+    "where": "evidence[2]",
+    "text": "concurrency 3 to 11",
+    "check": "range",
+    "match": "text",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "with concurrency 3 to 11",
+    "note": "the lines run 2-11 (the slip); the flag checked a metric row (5)"
+   },
+   {
+    "where": "evidence[2]",
+    "text": "db_query_ms 30 to 180 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_ms stays 30 to 180 ms",
+    "note": "the lines run 30.5-1011.8"
+   }
+  ],
+  "pool-1027-1900-r3": [
+   {
+    "where": "evidence[4]",
+    "text": "db_query_p50_ms 60 to 66 ms (rows 19:00)",
+    "check": "range",
+    "match": "weak",
+    "tier": "B",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50_ms 60 to 66 ms throughout the window",
+    "note": "scoped to 19:00 (64.2) from 'including 19:00'; the slip is the rest of the window, 49.8-66.7"
+   }
+  ],
+  "pool-1027-1901-r3": [
+   {
+    "where": "evidence[6]",
+    "text": "payments_p99 191-277 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "payments_p99 stayed at 191-277 ms",
+    "note": "the rows run 77-384"
+   },
+   {
+    "where": "evidence[6]",
+    "text": "db_query_p50 60-66 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50 stayed at 60-66 ms throughout",
+    "note": "the rows run 49.8-67.9"
+   }
+  ],
+  "deploy-1027-1905-r3": [
+   {
+    "where": "evidence[5]",
+    "text": "Payments p99 186-269 ms (span 19:03 19:05)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "Payments p99 186-269 ms with 0 timeouts across 19:03-19:05",
+    "note": "19:03-19:05 run 186-237, as the loose label says"
+   }
+  ],
+  "deploy-1029-0156-r3": [
+   {
+    "where": "evidence[2]",
+    "text": "first failing line at 01:55:32",
+    "check": "truncation",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "first failing line at 01:55:32.466Z",
+    "note": "a cut page: 60 of 68"
+   },
+   {
+    "where": "evidence[5]",
+    "text": "pool_wait_time_ms 0.5 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "pool_wait_time_ms about 0.5 ms",
+    "note": "the lines run 0-0.5, as the loose label says"
+   }
+  ],
+  "deploy-1112-0747-r3": [
+   {
+    "where": "evidence[0]",
+    "text": "Latency p50 57-58 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "Latency p50 ~57-58 ms and pool_wait_p99 ~0.5 ms throughout",
+    "note": "the whole window runs 52.2-80.2, as the loose label says"
+   }
+  ],
+  "deploy-1112-0803-r3": [
+   {
+    "where": "evidence[7]",
+    "text": "pool wait p99 0.5 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "loose",
+    "label_quote": "pool wait p99 0.5 ms throughout",
+    "note": "07:53-07:58 hold 0.3 and 0.4, as the loose label says"
+   }
+  ],
+  "deploy-1112-2000-r3": [
+   {
+    "where": "evidence[2]",
+    "text": "Latency 0.2-5.5 ms",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "Latency is 0.2-5.5 ms",
+    "note": "the failed 1.43.0 lines include 126.0 ms, the line the label names"
+   },
+   {
+    "where": "evidence[5]",
+    "text": "db_query_p50 45-80 ms (whole)",
+    "check": "range",
+    "match": "weak",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "db_query_p50 stayed 45-80 ms",
+    "note": "the rows run 45.3-97 (19:42)"
+   }
+  ],
+  "deploy-1113-0257-r3": [
+   {
+    "where": "evidence[2]",
+    "text": "First 500 logged at 02:57:19",
+    "check": "truncation",
+    "match": "text",
+    "tier": "A",
+    "label_kind": "strict",
+    "label_quote": "First 500 logged at 02:57:19.584",
+    "note": "a cut page: 30 of 33"
+   }
+  ]
+ },
+ "recheck_under_these_tiers": [
+  {
+   "run": "pool-1027-1856-r2",
+   "where": "evidence[2]",
+   "text": "db_query_p50 60 to 67 ms (rows 18:56)",
+   "tier": "B",
+   "label": "same as 18:41 to 18:55",
+   "note": "filed false_flag (no shared token with its label); the same pattern as the 19:00 rows above: true at 18:56, and the sentence's baseline is a strict slip"
+  },
+  {
+   "run": "deploy-1113-0257-r1",
+   "where": "root_cause",
+   "text": "err% 100%",
+   "tier": "C",
+   "label": "the denominator",
+   "note": "filed false_flag; the same 'not 100%' misreading as deploy-1029-0156-r1 above"
+  }
+ ]
+}
