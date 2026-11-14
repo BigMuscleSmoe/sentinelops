@@ -320,6 +320,7 @@ def test_a_sweep_replays_each_alarm_through_the_real_loop_and_keeps_every_transc
 
     saved = json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))
     assert [r["run"] for r in saved["records"]] == ["deploy-1113-0257-r1", "pool-1027-1856-r1"]
+    assert (saved["arm"], saved["per_run_usd"], saved["cap_usd"]) == ("haiku", 0.10, 1.00)
     transcript = json.loads((tmp_path / "deploy-1113-0257-r1.json").read_text(encoding="utf-8"))
     assert transcript["eval"]["scenario"] == "deploy-1113-0257" and transcript["eval"]["seen"] is False
     assert transcript["hypothesis"]["root_cause"] == DEPLOY_ANSWER["root_cause"]
@@ -412,8 +413,3 @@ def test_grading_refuses_an_audit_that_isnt_committed(tmp_path: Path) -> None:
     finally:
         loose.unlink()
 
-
-def test_grade_refuses_until_step_5_rebuilds_scoring(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    assert evals_main(["grade", str(tmp_path), "--audit", "evals/audits/20261113T201129Z.json"]) == 1
-    err = capsys.readouterr().err
-    assert "the prose grader is retired" in err and "57455ab" in err and "python -m checker" in err

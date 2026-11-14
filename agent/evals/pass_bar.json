@@ -1,0 +1,19 @@
+{
+  "about": "The test sweep's pass bar (R7, the user's call, 2026-11-13), committed before the sweep. precision: flags hand-checked right over all flags. strict_recall: strict labels caught over strict labels, a catch being a flag on the label's own target saying its own complaint; recall_includes_prose_only counts the labels no flag can match (a root_cause sentence, an inference, or the unsupported complaint) in the denominator. judge_if_prose_share_at_least: R4's trigger, the prose-only share of strict labels. frozen: set true in the freeze commit (the redesign's step 8); from then on the scorer takes the commit that last changed this file as the freeze, and refuses a sweep that ran before it or on different frozen_paths, or a checker changed since.",
+  "decided": "2026-11-13",
+  "precision": 0.85,
+  "strict_recall": 0.70,
+  "recall_includes_prose_only": true,
+  "judge_if_prose_share_at_least": 0.20,
+  "frozen": false,
+  "frozen_paths": [
+    "agent/checker",
+    "agent/evals/audit.py",
+    "agent/evals/rubrics.py",
+    "agent/evals/score.py",
+    "agent/models.py",
+    "agent/prompts",
+    "agent/sources.py",
+    "tools/sentinelops_tools"
+  ]
+}

@@ -10,9 +10,12 @@ never scored: an API error or timeout, a refused sign-in, a read the recording
 can't answer, or an answer from a model other than the one asked for. A halted
 run, a refusal by the model, and a run with no Hypothesis are outcomes.
 
-Spend is held three ways: the guard's $0.10 a run, the sweep's cap (a run
+Spend is held three ways: the guard's cap on a run, the sweep's cap (a run
 starts only if the cap still has room for a whole run's worth), and the $10
-monthly limit in the Anthropic Console. The sweep never grades.
+monthly limit in the Anthropic Console. Both caps are the arm's (evals/arms.py):
+$0.10 and $1.00 for Haiku, the production cap. sweep.json records the arm and
+the commit the sweep ran on, so a test sweep can be held to the freeze. The
+sweep never grades.
 """
 
 import asyncio
@@ -27,6 +30,8 @@ from typing import Any
 
 import httpx
 
+from evals import repo
+from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.scenarios import Scenario, load_window, window_module
 from evals.witness import ModelWitness, same_model
 from guards import Limits
@@ -35,8 +40,6 @@ from pricing import ModelPrice
 from providers import Settings
 
 SWEEPS = Path("scratch") / "evals"
-SWEEP_CAP_USD = 1.00
-PER_RUN_USD = Limits().max_cost_usd
 MAX_TEXT = 300
 _ACCOUNT_LIKE = re.compile(r"\d{12}")
 
@@ -140,6 +143,7 @@ async def run_one(
     out_dir: Path,
     api_transport: Callable[[], httpx.AsyncBaseTransport],
     token_http_client: Any = None,
+    limits: Limits = Limits(),
 ) -> RunRecord:
     import anthropic
 
@@ -160,6 +164,7 @@ async def run_one(
             session=session,
             http_client=client,
             token_http_client=token_http_client,
+            limits=limits,
         )
     except Exception as e:  # an error of the harness or the recording, never the model's
         record.detail = _short(f"{type(e).__name__}: {e}")
@@ -239,13 +244,26 @@ async def run_sweep(
     out_dir: Path,
     api_transport: Callable[[], httpx.AsyncBaseTransport],
     token_http_client: Any = None,
-    cap_usd: float = SWEEP_CAP_USD,
-    per_run_usd: float = PER_RUN_USD,
+    arm: Arm = ARMS[DEFAULT_ARM],
+    cap_usd: float | None = None,
+    per_run_usd: float | None = None,
     pause_s: float = 10.0,
     say: Callable[[str], None] = print,
 ) -> list[RunRecord]:
     """Each planned run once, skipping runs that already have an outcome, so a rerun
-    of the same sweep retries only its errors. Stops before a run the cap can't cover."""
+    of the same sweep retries only its errors. Stops before a run the cap can't cover.
+
+    The arm sets both caps; cap_usd and per_run_usd override them, for tests. A
+    resumed sweep must be the same arm's."""
+    cap_usd = arm.cap_usd if cap_usd is None else cap_usd
+    per_run_usd = arm.per_run_usd if per_run_usd is None else per_run_usd
+    limits = Limits(max_cost_usd=per_run_usd)
+    earlier = out_dir / "sweep.json"
+    if earlier.exists():
+        was = json.loads(earlier.read_text(encoding="utf-8")).get("arm", DEFAULT_ARM)
+        if was != arm.name:
+            raise ValueError(f"{out_dir.name} is the {was} arm's sweep, not {arm.name}'s")
+    commit, dirty = repo.head(), repo.dirty()
     records = load_records(out_dir)
     done = {r.run for r in records if r.scored}
     attempts = {r.run: r.attempt for r in records}
@@ -268,6 +286,7 @@ async def run_sweep(
             out_dir=out_dir,
             api_transport=api_transport,
             token_http_client=token_http_client,
+            limits=limits,
         )
         records.append(record)
         attempts[rid] = record.attempt
@@ -275,8 +294,12 @@ async def run_sweep(
             out_dir / "sweep.json",
             {
                 "sweep": out_dir.name,
+                "arm": arm.name,
                 "model": settings.model_id,
+                "per_run_usd": per_run_usd,
                 "cap_usd": cap_usd,
+                "commit": commit,
+                "dirty": dirty,
                 "runs_per_scenario": runs,
                 "scenarios": [s.id for s in scenarios],
                 "records": [asdict(r) for r in records],

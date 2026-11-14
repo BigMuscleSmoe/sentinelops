@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from alarm import AlarmEvent, AlarmNotFiring
+from guards import Limits
 from pricing import ModelPrice
 from providers import FederationFailed, Settings, SettingsError, build_model, federated_credentials
 from runner import RunReport, investigate
@@ -83,9 +84,11 @@ async def investigate_alarm(
     http_client: Any = None,
     token_http_client: Any = None,
     gateway_transport: Any = None,
+    limits: Limits = Limits(),
 ) -> Investigation | Refused:
     """Investigate the alarm live, or as of a past moment, where every tool reads as of then.
 
+    limits are the guard's: the default everywhere but an eval arm's runs.
     http_client, token_http_client, and gateway_transport are for tests: a fake
     Messages API, token endpoint, and Gateway.
     """
@@ -121,6 +124,7 @@ async def investigate_alarm(
             tools=tools,
             price=price,
             max_output_tokens=settings.max_output_tokens,
+            limits=limits,
         )
     finally:
         await model.client.close()
