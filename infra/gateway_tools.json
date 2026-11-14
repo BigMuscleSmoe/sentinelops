@@ -23,7 +23,7 @@
  },
  {
   "name": "get_recent_logs",
-  "description": "checkout-api's newest request log lines, whole, oldest first.\n\nEach line is one request: route, status, latency, version, pool fields, and\nfor a failure its error type, message, and stack. Logs can trail the metrics\nby minutes under load, so a missing recent line proves nothing alone.",
+  "description": "checkout-api's newest request log lines, whole, oldest first.\n\nEach line is one request: route, status, latency, version, pool fields, and\nfor a failure its error type and message, and its stack if it has one. Logs\ncan trail the metrics by minutes under load, so a missing recent line proves\nnothing alone.",
   "inputSchema": {
    "type": "object",
    "properties": {

@@ -34,8 +34,9 @@ def make_tools(env: ToolEnv) -> list[Callable[..., str]]:
         """checkout-api's newest request log lines, whole, oldest first.
 
         Each line is one request: route, status, latency, version, pool fields, and
-        for a failure its error type, message, and stack. Logs can trail the metrics
-        by minutes under load, so a missing recent line proves nothing alone.
+        for a failure its error type and message, and its stack if it has one. Logs
+        can trail the metrics by minutes under load, so a missing recent line proves
+        nothing alone.
 
         Args:
             minutes: How far back to search, ending now.
