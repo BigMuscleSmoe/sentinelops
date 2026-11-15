@@ -137,7 +137,7 @@ def test_without_the_federation_ids_nothing_runs() -> None:
 
 def test_a_model_without_a_price_is_refused_before_anything_runs() -> None:
     app = create_app(
-        environ={GATEWAY_URL: URL, **FEDERATION_IDS, "SENTINELOPS_MODEL_ID": "claude-sonnet-5-5"},
+        environ={GATEWAY_URL: URL, **FEDERATION_IDS, "SENTINELOPS_MODEL_ID": "claude-opus-5-5"},
         session_factory=unused_session,
     )
 

@@ -37,9 +37,8 @@ ARMS: dict[str, Arm] = {
         cap_usd=5.00,
         expected_run_usd=0.108,
         blocked=(
-            "the redesign's step 9 comes first: Sonnet 5.5's price checked against the pricing page and added "
-            "to pricing.PRICES, a free count_tokens comparison, and its native-JSON answer path given the "
-            "main path's resends"
+            "the redesign's step 9 comes first: its native-JSON answer path given the main path's resends, "
+            "a free count_tokens comparison, and one paid check run"
         ),
     ),
 }

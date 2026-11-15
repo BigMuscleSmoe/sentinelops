@@ -23,7 +23,7 @@ from evals.arms import ARMS, Arm
 from evals.scenarios import BY_ID
 from fake_anthropic import FEDERATION_IDS, FakeAnthropic, Reply, answer, tool_use
 from guards import Limits
-from pricing import UnknownModelPrice, price_for
+from pricing import price_for
 from providers import Settings
 from stubs import FakeSession
 
@@ -377,10 +377,10 @@ def test_each_arm_has_its_own_model_and_caps_and_haikus_are_productions() -> Non
     assert settings.model_id == "claude-sonnet-5-5" and settings.max_output_tokens == 16_000
 
 
-def test_sonnets_arm_waits_for_step_9_and_its_price(capsys: pytest.CaptureFixture[str]) -> None:
+def test_sonnets_arm_has_a_price_and_still_waits_for_step_9(capsys: pytest.CaptureFixture[str]) -> None:
     assert ARMS["sonnet"].blocked is not None and "step 9" in ARMS["sonnet"].blocked
-    with pytest.raises(UnknownModelPrice):
-        price_for("anthropic", "claude-sonnet-5-5")
+    assert "price" not in ARMS["sonnet"].blocked  # checked and added, 2026-11-15
+    assert price_for("anthropic", "claude-sonnet-5-5").standard.output == 10.00
     assert evals_main(["sweep", "--go", "--arm", "sonnet", "--runs", "1"]) == 1
     captured = capsys.readouterr()
     assert "on the sonnet arm (claude-sonnet-5-5)" in captured.out and "at most $4.50 ($0.50 a run, $5.00 a sweep)" in captured.out

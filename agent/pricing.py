@@ -8,7 +8,7 @@ run: a model whose price isn't known can't be held to the per-run cost cap.
 from dataclasses import dataclass
 
 PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
-PRICES_CHECKED = "2026-10-28"
+PRICES_CHECKED = "2026-11-15"
 
 
 @dataclass(frozen=True)
@@ -74,6 +74,14 @@ PRICES: dict[tuple[str, str], ModelPrice] = {
     ("anthropic", "claude-haiku-5-5"): ModelPrice(
         standard=Rates(input=0.10, cache_write=0.20, cache_read=0.01, output=0.50),
         long_prompt=Rates(input=0.50, cache_write=1.00, cache_read=0.05, output=2.50),
+    ),
+    # The eval's second arm (evals/arms.py, R10). One price at any prompt length:
+    # the page gives every model from Claude 4.6 on, except Haiku 5.5, its whole
+    # context window at standard prices. Its cache read is 0.05x the input price.
+    # A call reserves 16,000 output tokens at $10, $0.16, so the production cap
+    # ($0.10 a run) stops a Sonnet run at its first call.
+    ("anthropic", "claude-sonnet-5-5"): ModelPrice(
+        standard=Rates(input=2.00, cache_write=4.00, cache_read=0.10, output=10.00),
     ),
 }
 

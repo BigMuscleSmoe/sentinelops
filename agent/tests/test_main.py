@@ -261,7 +261,7 @@ def test_a_run_without_a_hypothesis_exits_1_and_still_writes_its_transcript(tmp_
 def test_a_model_without_a_price_is_refused_before_anything_runs(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("SENTINELOPS_MODEL_ID", "claude-sonnet-5-5")
+    monkeypatch.setenv("SENTINELOPS_MODEL_ID", "claude-opus-5-5")
     for name, value in FEDERATION_IDS.items():  # in place of this machine's own
         monkeypatch.setenv(name, value)
     monkeypatch.delenv(FEDERATION_ROLE_ENV, raising=False)
