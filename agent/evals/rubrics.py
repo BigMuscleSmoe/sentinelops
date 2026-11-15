@@ -15,7 +15,14 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     database") is blamed only where its clause says it
                     caused the failure ("the pool caused the errors", "due
                     to the database"); a plain mention ("database time
-                    rose 2 ms") isn't blame
+                    rose 2 ms") isn't blame. A clause that tells of an
+                    earlier incident is ruled out: its change "rolled
+                    back", "reverted", or "resolved", or put well before
+                    the onset ("hours before", "88 minutes before", "at
+                    22:28, before this alarm"). Said of "it" in the clause
+                    that follows, that covers the clause before as well
+                    ("1.43.0 caused 500s at 22:28, but it was rolled
+                    back"). A time alone rules nothing out
   location          affected_component and fault_location are where the fault
                     is: this service for a pool fault or a bad deploy, and
                     payments-api, upstream, for a downstream timeout
@@ -93,6 +100,36 @@ _NOT_REACHED = re.compile(
     r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$",
     re.I,
 )
+# An earlier incident, over before this one, isn't blamed for this one. The
+# clause says its change was rolled back, reverted, or resolved (the last two
+# rule out by themselves, above), or puts it well before the onset: "well
+# before", "hours before", "88 minutes before" (10 minutes or more: a change
+# here shows within a minute). "Before the onset" or "before this alarm" alone
+# is how any cause is told, so it counts only right after a verb of happening
+# ("happened before the onset") or a clock time ("at 22:28, before this
+# alarm"), and not where the clause goes on to say what that caused ("a deploy
+# at 23:56, before the alarm, caused the slowdown").
+_OVER = re.compile(r"\broll(?:ed|ing|s)?[- ]?back\b|\breverted\b|\bresolved\b", re.I)
+_WELL_BEFORE = re.compile(
+    r"\b(?:well|long|far)\s+before\b|\b(?:hours?|hrs?|days?)\s+before\b|(?<![\d.])\d+(?:\.\d+)?\s*h\s+before\b"
+    r"|(?<![\d.])\d{2,}(?:\.\d+)?\s*(?:minutes?|mins?)\s+before\b",
+    re.I,
+)
+_BEFORE_THIS = re.compile(
+    r"(?:\b(?:happened|occurred|took place|ended|finished|completed|was over|were over)\s+"
+    r"|\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:Z|UTC)?,?\s+)"
+    r"before\s+(?:(?:the|this|its)\s+)?(?:(?:current|latency)\s+)?(?:onset|alarm|incident|outage|slowdown)\b",
+    re.I,
+)
+# The clause after may say it of the one before: "..., but it was rolled back
+# well before onset", "It was reverted at 22:29." It opens by referring back
+# and names no suspect of its own.
+_REFERS_BACK = re.compile(
+    r"(?:(?:but|and|though|although|yet|while|whereas|so)\s+)?"
+    r"(?:it|which|they|both|that|this|these|those|was|were|had|has"
+    r"|the\s+(?:deploy(?:ment)?|release|rollout|rollback|change|version|incident|fault|issue|problem|bug|regression))\b",
+    re.I,
+)
 # Another fault's culprit by its bare noun, blamed only where the clause says
 # it caused the failure: the noun, then a causing verb or "the cause" ("the
 # pool caused the errors", "the database was the root cause"); a causal phrase,
@@ -102,16 +139,17 @@ _NOT_REACHED = re.compile(
 # with no comma, bracket, "and", or "or", and without the fault's own culprit,
 # which the verb then belongs to ("the pool was at 10 of 20 when payments-api
 # caused the timeouts"). A passive isn't the noun's doing ("the database errors
-# were caused by 1.43.0").
-_GAP = r"(?:(?!\b(?:and|or)\b)[^,;:()]){0,40}?"
-_THEN_CAUSES = re.compile(
-    rf"(?P<gap>{_GAP})(?:"
-    r"(?<!\bis )(?<!\bare )(?<!\bwas )(?<!\bwere )(?<!\bbeen )(?<!\bbeing )"
+# were caused by 1.43.0"). A clock time's colon ("at 23:56") is no punctuation.
+_IN_CLAUSE = r"(?:[^,;:()]|(?<=\d):(?=\d))"
+_GAP = rf"(?:(?!\b(?:and|or)\b){_IN_CLAUSE}){{0,40}}?"
+_SAYS_IT_CAUSED = (
+    r"(?:(?<!\bis )(?<!\bare )(?<!\bwas )(?<!\bwere )(?<!\bbeen )(?<!\bbeing )"
     r"\b(?:caused|triggered|introduced)\b(?!\s+by\b)"
     r"|\b(?:caus(?:es?|ing)|culprit|responsible|at fault|to blame|led to|leads? to|leading to"
-    r"|result(?:s|ed|ing)? in|broke|breaks?|breaking|triggers?|introduces?)\b)",
-    re.I,
+    r"|result(?:s|ed|ing)? in|broke|breaks?|breaking|triggers?|introduces?)\b)"
 )
+_THEN_CAUSES = re.compile(rf"(?P<gap>{_GAP}){_SAYS_IT_CAUSED}", re.I)
+_GOES_ON_TO_CAUSE = re.compile(_SAYS_IT_CAUSED, re.I)
 _CAUSED_BY = re.compile(
     r"\b(?:due to|because of|owing to|thanks to|(?:caused|causing|triggered|introduced|driven) by"
     r"|result(?:s|ed|ing)? (?:of|from)|stems? from|stemm(?:ed|ing) from|comes? from|came from|coming from"
@@ -131,7 +169,7 @@ _NAMES_A_READING = re.compile(
 # A bare noun the clause doesn't assert anything of: "no deploy caused it",
 # "nothing in the pool or the database", "if the pool were the cause". "No
 # promo" is the service's own phrase, not a denial.
-_NOT_ASSERTED = re.compile(r"\b(?:no|nothing|none|if|whether|unless)\b(?! promo)[^,;:()]{0,30}$", re.I)
+_NOT_ASSERTED = re.compile(rf"\b(?:no|nothing|none|if|whether|unless)\b(?! promo){_IN_CLAUSE}{{0,30}}$", re.I)
 _BARE_POOL = r"pools?"
 _BARE_DATABASE = r"(?:database|db)(?!\s+(?:connection|pool))"  # "the DB connection pool" is the pool
 _BARE_PAYMENTS = r"payments?"
@@ -261,16 +299,34 @@ def blamed(text: str, rules: FaultRules) -> list[str]:
     A named suspect is blamed in a clause that doesn't rule it out, unless it's
     named only as never reached. A clause that blames none of those is read for
     the bare nouns, each blamed only if the clause says it caused the failure.
+    A clause that tells of an earlier incident blames nothing, and neither does
+    the clause before one that says so of "it".
     """
+    parts = [c for s in sentences(text) for c in clauses(s)]
     out: list[str] = []
-    for s in sentences(text):
-        for c in clauses(s):
-            if _RULED_OUT.search(c):
-                continue
-            named = list(rules.wrong_suspects.finditer(c))
-            found = [m.group() for m in named if not _NOT_REACHED.search(c[: m.start()])]
-            out += found or _bare_blamed(c, rules, named)
+    for c, after in zip(parts, [*parts[1:], ""]):
+        if _RULED_OUT.search(c) or _earlier(c) or _says_it_was_earlier(after, rules):
+            continue
+        named = list(rules.wrong_suspects.finditer(c))
+        found = [m.group() for m in named if not _NOT_REACHED.search(c[: m.start()])]
+        out += found or _bare_blamed(c, rules, named)
     return out
+
+
+def _earlier(clause: str) -> bool:
+    """Whether a clause tells of an earlier incident: rolled back, reverted, or resolved, or well before the onset."""
+    if _OVER.search(clause) or _WELL_BEFORE.search(clause):
+        return True
+    return any(not _GOES_ON_TO_CAUSE.search(clause[m.end() :]) for m in _BEFORE_THIS.finditer(clause))
+
+
+def _says_it_was_earlier(clause: str, rules: FaultRules) -> bool:
+    """Whether a clause says the one before it was an earlier incident: "but it was rolled back well before onset"."""
+    return (
+        _REFERS_BACK.match(clause.lstrip()) is not None
+        and not rules.wrong_suspects.search(clause)
+        and _earlier(clause)
+    )
 
 
 def _bare_blamed(clause: str, rules: FaultRules, named: list[re.Match[str]]) -> list[str]:

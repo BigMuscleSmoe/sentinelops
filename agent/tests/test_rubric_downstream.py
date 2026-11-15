@@ -238,6 +238,65 @@ def test_a_ruling_out_covers_its_own_clause(sentence, blamed):
 @pytest.mark.parametrize(
     "sentence, blamed",
     [
+        # Rolled back, reverted, or resolved: the earlier incident is over.
+        ("1.43.0 caused 500s at 22:28, but it was rolled back well before onset", []),
+        ("The 22:28 deploy caused errors then and was reverted", []),
+        ("1.43.0 caused 500s at 22:28 and was rolled back at 22:29.", []),
+        ("1.43.0 was deployed at 22:28:29Z, with a rollback to 1.42.0 at 22:29:53Z.", []),
+        # A time well before the onset.
+        ("1.43.0 caused 500s at 22:28, hours before this alarm.", []),
+        ("Deploy 1.43.0 broke checkout 88 minutes before the alarm.", []),
+        ("1.43.0 caused 500s at 22:28, before this alarm.", []),
+        ("The deploy of 1.43.0 happened before the onset.", []),
+        ("The 1.43.0 deploy broke checkout for 84 s and ended before this incident.", []),
+        # Said of "it" in the clause that follows, in the same sentence or the next.
+        ("The 22:28 deploy caused 500s, but that happened before the onset.", []),
+        ("The 22:28 deploy caused 500s then, but was resolved long before the onset.", []),
+        ("1.43.0 caused 500s at 22:28. It was rolled back at 22:29:53.", []),
+        ("1.43.0 caused 500s at 22:28; that deploy was reverted a minute later.", []),
+        # A time alone rules nothing out.
+        ("A deploy at 23:56 caused the slowdown", ["deploy"]),
+        ("The 22:28 deploy caused 500s then.", ["deploy"]),
+        # "Before the onset" after a short interval, or with what it caused, is how a cause is told.
+        ("A deploy 30 s before the onset caused the slowdown.", ["deploy"]),
+        ("A deploy just before the alarm caused the slowdown.", ["deploy"]),
+        ("A deploy before the alarm caused the slowdown.", ["deploy"]),
+        ("A deploy 2 minutes before the onset caused the slowdown.", ["deploy"]),
+        ("The deploy that happened before the onset caused the slowdown.", ["deploy"]),
+        ("1.43.0 was deployed 40 seconds before the onset.", ["1.43.0"]),
+        ("1.43.0 was deployed 1.25 minutes before the onset.", ["1.43.0"]),
+        ("The connection pool was exhausted before the alarm fired.", ["connection pool"]),
+        ("POOL_MAX_SIZE was cut to 2 before the alarm.", ["POOL_MAX_SIZE"]),
+        # The clause after covers the one before only when it speaks of "it", names no suspect of its
+        # own, and tells of an earlier incident: no other ruling-out word reaches back.
+        ("The pool caused the timeouts, while the earlier errors were resolved before the onset.", ["pool"]),
+        ("Pool exhaustion caused the timeouts, but 1.43.0 was rolled back well before onset.", ["Pool exhaust"]),
+        ("A deploy at 23:56 caused the slowdown, while 1.43.0 was rolled back at 22:29.", ["deploy"]),
+        ("Pool exhaustion caused the timeouts, but it was not obvious from err%.", ["Pool exhaust"]),
+        ("Pool exhaustion caused the timeouts, but that is unrelated to the config change.", ["Pool exhaust"]),
+    ],
+)
+def test_a_clause_that_tells_of_an_earlier_incident_is_ruled_out(sentence, blamed):
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT]) == blamed
+
+
+def test_a_right_answer_that_dismisses_the_earlier_break_passes_and_one_blaming_a_deploy_fails():
+    """The held-out window holds the 22:28 bad deploy: a right answer may tell of it to set it aside."""
+    right = RIGHT["root_cause"]
+    for dismissal in (
+        "1.43.0 caused 500s at 22:28, but it was rolled back well before onset.",
+        "The 22:28 deploy caused errors then and was reverted.",
+    ):
+        result = score(answer(root_cause=f"{right} {dismissal}"))
+        assert result.items["blames_no_other"] and result.diagnosis
+    result = score(answer(root_cause=f"{right} A deploy at 23:56 caused the slowdown."))
+    assert not result.items["blames_no_other"] and not result.diagnosis
+    assert result.notes["blames_no_other"] == "blames deploy"
+
+
+@pytest.mark.parametrize(
+    "sentence, blamed",
+    [
         ("Checkouts passed checkout-api's 2000 ms PAYMENTS_TIMEOUT_MS and returned 504.", []),
         ("The 504s came with and without a promo code.", []),
         ("PAYMENTS_TIMEOUT_MS was lowered to 500 ms, so checkouts time out.", ["PAYMENTS_TIMEOUT_MS was lowered"]),

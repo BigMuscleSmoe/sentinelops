@@ -341,6 +341,26 @@ def test_a_bare_noun_is_blamed_only_where_its_clause_says_it_caused_the_failure(
     assert rubrics.blamed(sentence, rubrics.RULES[fault]) == blamed
 
 
+@pytest.mark.parametrize(
+    "fault, sentence, blamed",
+    [
+        # An earlier incident, on the other faults' rubrics: over before this one.
+        (Fault.BAD_DEPLOY, "Pool exhaustion at 18:56 caused errors then, but it was reverted hours before this alarm.", []),
+        (Fault.BAD_DEPLOY, "The pool exhaustion at 18:56 caused errors. That change was rolled back at 19:03.", []),
+        (Fault.BAD_DEPLOY, "Pool exhaustion at 18:56 caused errors then.", ["Pool exhaust"]),
+        (Fault.DB_POOL_EXHAUSTION, "Release 1.43.0 broke checkout at 18:50, but it was rolled back well before this alarm.", []),
+        (Fault.DB_POOL_EXHAUSTION, "Release 1.43.0 broke checkout.", ["1.43.0"]),
+        # A clock time between a bare noun and its verb, or between a denial and the noun, changes nothing.
+        (Fault.BAD_DEPLOY, "The pool at 02:57 caused the errors.", ["pool"]),
+        (Fault.BAD_DEPLOY, "No 02:57 pool change caused the errors.", []),
+    ],
+)
+def test_an_earlier_incident_is_ruled_out_and_a_clock_time_alone_is_not(
+    fault: Fault, sentence: str, blamed: list[str]
+) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[fault]) == blamed
+
+
 def test_a_bad_deploy_answer_that_also_blames_the_pool_by_its_bare_noun_fails() -> None:
     saved = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
     result = _rubric(DEPLOY_RUN, root_cause=f"{saved} The pool caused the errors.")
