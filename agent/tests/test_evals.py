@@ -149,7 +149,7 @@ def test_a_right_pool_diagnosis_passes_even_naming_the_old_deploy_to_rule_it_out
     ],
 )
 def test_ruling_out_words_rule_a_suspect_out(sentence: str) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION].wrong_suspects) == []
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION]) == []
     cause = RUNS[POOL_RUN]["hypothesis"]["root_cause"]
     assert _rubric(POOL_RUN, root_cause=f"{cause} {sentence}").items["blames_no_other"]
 
@@ -164,11 +164,13 @@ def test_ruling_out_words_rule_a_suspect_out(sentence: str) -> None:
     ],
 )
 def test_ruling_out_words_match_whole_words_only(sentence: str) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION].wrong_suspects) == ["Payments-api"]
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DB_POOL_EXHAUSTION]) == ["Payments-api"]
 
 
-# What a downstream_timeout answer names, ruled out or not; that fault's own rules come with step 7.
-DOWNSTREAM_SHAPED = re.compile(r"pool wait|database time|payments latency", re.I)
+# What a downstream_timeout answer names, ruled out or not, as named suspects of their own.
+DOWNSTREAM_SHAPED = dataclasses.replace(
+    rubrics.RULES[Fault.BAD_DEPLOY], wrong_suspects=re.compile(r"pool wait|database time|payments latency", re.I)
+)
 
 
 @pytest.mark.parametrize(
@@ -201,7 +203,7 @@ def test_normal_and_steady_rule_out_only_as_a_state(sentence: str, blamed: list[
     ],
 )
 def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[str]) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY]) == blamed
 
 
 @pytest.mark.parametrize(
@@ -222,7 +224,7 @@ def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[
     ],
 )
 def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == []
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY]) == []
     cause = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
     result = _rubric(DEPLOY_RUN, root_cause=f"{cause} {sentence}")
     assert result.items["blames_no_other"] and result.diagnosis
@@ -244,7 +246,7 @@ def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
     ],
 )
 def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: list[str]) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.BAD_DEPLOY]) == blamed
 
 
 @pytest.mark.parametrize(
@@ -266,7 +268,7 @@ def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: 
     ],
 )
 def test_a_ruling_out_covers_its_own_clause_not_the_sentence(fault: Fault, sentence: str, blamed: list[str]) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[fault].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[fault]) == blamed
 
 
 @pytest.mark.parametrize(
@@ -286,17 +288,66 @@ def test_a_ruling_out_covers_its_own_clause_not_the_sentence(fault: Fault, sente
     ],
 )
 def test_neither_nor_rules_out_both_in_its_own_clause(fault: Fault, sentence: str, blamed: list[str]) -> None:
-    assert rubrics.blamed(sentence, rubrics.RULES[fault].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[fault]) == blamed
 
 
 def test_a_right_bad_deploy_answer_that_rules_two_suspects_out_with_neither_nor_passes() -> None:
     cause = "Neither the pool nor payments-api was involved; 1.43.0's TypeError in apply_promo fails every checkout without a promo."
-    assert rubrics.blamed(cause, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == []
+    assert rubrics.blamed(cause, rubrics.RULES[Fault.BAD_DEPLOY]) == []
     result = _rubric(DEPLOY_RUN, root_cause=cause)
     assert result.items["blames_no_other"] and result.diagnosis
     # And appended to the saved answer's own root cause.
     saved = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
     result = _rubric(DEPLOY_RUN, root_cause=f"{saved} Neither the pool nor payments-api was involved.")
+    assert result.items["blames_no_other"] and result.diagnosis
+
+
+@pytest.mark.parametrize(
+    "fault, sentence, blamed",
+    [
+        # Another fault's culprit by its bare noun is blamed where the clause says it caused the failure.
+        (Fault.BAD_DEPLOY, "The pool caused the errors.", ["pool"]),
+        (Fault.BAD_DEPLOY, "The errors are due to the database.", ["database"]),
+        (Fault.BAD_DEPLOY, "Payments caused the 500s.", ["Payments"]),
+        (Fault.BAD_DEPLOY, "The pool was the root cause of the failed checkouts.", ["pool"]),
+        (Fault.BAD_DEPLOY, "Checkouts with no promo fail because the pool is exhausted.", ["pool"]),
+        (Fault.BAD_DEPLOY, "The pool caused the errors before any payments-api call.", ["pool"]),
+        (Fault.DB_POOL_EXHAUSTION, "The database caused the wait.", ["database"]),
+        (Fault.DB_POOL_EXHAUSTION, "The wait is the result of slow responses from payments.", ["payments"]),
+        # A plain mention isn't blame, and the verb belongs to the culprit standing beside it.
+        (Fault.BAD_DEPLOY, "1.43.0 caused the errors and the pool was fine.", []),
+        (Fault.BAD_DEPLOY, "The database errors were caused by 1.43.0.", []),
+        (Fault.BAD_DEPLOY, "Deploy 1.43.0 introduced a TypeError in apply_promo before any database work.", []),
+        (Fault.BAD_DEPLOY, "The pool was at 10 of 20 connections when 1.43.0 broke checkout.", []),
+        (Fault.BAD_DEPLOY, "Pool wait stayed near zero and database time rose 2 ms.", []),
+        # The ruling-out words still cover their clause.
+        (Fault.BAD_DEPLOY, "The pool did not cause the errors.", []),
+        (Fault.BAD_DEPLOY, "Neither the pool nor the database caused the errors.", []),
+        (Fault.BAD_DEPLOY, "The pool is not the cause: 1.43.0 fails every checkout without a promo.", []),
+        (Fault.BAD_DEPLOY, "The database is not involved, but the pool caused the errors.", ["pool"]),
+        # The pool's own culprit: "the DB pool" is the pool, and its change may be called a deploy.
+        (Fault.DB_POOL_EXHAUSTION, "Shrinking the DB pool to 2 caused requests to queue.", []),
+        (Fault.DB_POOL_EXHAUSTION, "A config change cut the checkout DB connection pool to 2, which caused requests to queue.", []),
+        (Fault.DB_POOL_EXHAUSTION, "With two database connections the pool caused every request to wait.", []),
+        (Fault.DB_POOL_EXHAUSTION, "The config deploy at 18:56 caused pool exhaustion.", []),
+        # A clause that already blames a named suspect lists that one.
+        (Fault.DB_POOL_EXHAUSTION, "Release 1.43.0 broke checkout because the database was overloaded.", ["1.43.0"]),
+        (Fault.BAD_DEPLOY, "The connection pool caused the errors.", ["connection pool"]),
+    ],
+)
+def test_a_bare_noun_is_blamed_only_where_its_clause_says_it_caused_the_failure(
+    fault: Fault, sentence: str, blamed: list[str]
+) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[fault]) == blamed
+
+
+def test_a_bad_deploy_answer_that_also_blames_the_pool_by_its_bare_noun_fails() -> None:
+    saved = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
+    result = _rubric(DEPLOY_RUN, root_cause=f"{saved} The pool caused the errors.")
+    assert not result.items["blames_no_other"] and not result.diagnosis
+    assert result.notes["blames_no_other"] == "blames pool"
+    # A plain mention beside the same right answer changes nothing.
+    result = _rubric(DEPLOY_RUN, root_cause=f"{saved} Pool wait stayed near zero and database time rose 2 ms.")
     assert result.items["blames_no_other"] and result.diagnosis
 
 

@@ -10,7 +10,12 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     any payments-api call", "before it reached payments-api").
                     A ruling-out covers its own clause, not the
                     sentence: "pool exhaustion caused the timeouts, while
-                    database time was normal" blames the pool
+                    database time was normal" blames the pool. Another
+                    fault's culprit by its bare noun ("the pool", "the
+                    database") is blamed only where its clause says it
+                    caused the failure ("the pool caused the errors", "due
+                    to the database"); a plain mention ("database time
+                    rose 2 ms") isn't blame
   location          affected_component and fault_location are where the fault
                     is: this service for a pool fault or a bad deploy, and
                     payments-api, upstream, for a downstream timeout
@@ -88,6 +93,49 @@ _NOT_REACHED = re.compile(
     r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$",
     re.I,
 )
+# Another fault's culprit by its bare noun, blamed only where the clause says
+# it caused the failure: the noun, then a causing verb or "the cause" ("the
+# pool caused the errors", "the database was the root cause"); a causal phrase,
+# then the noun ("due to the database", "caused by contention in the pool",
+# "the root cause is the database"); or the noun right after "because"
+# ("because the pool ..."). Up to 40 characters may stand between the two,
+# with no comma, bracket, "and", or "or", and without the fault's own culprit,
+# which the verb then belongs to ("the pool was at 10 of 20 when payments-api
+# caused the timeouts"). A passive isn't the noun's doing ("the database errors
+# were caused by 1.43.0").
+_GAP = r"(?:(?!\b(?:and|or)\b)[^,;:()]){0,40}?"
+_THEN_CAUSES = re.compile(
+    rf"(?P<gap>{_GAP})(?:"
+    r"(?<!\bis )(?<!\bare )(?<!\bwas )(?<!\bwere )(?<!\bbeen )(?<!\bbeing )"
+    r"\b(?:caused|triggered|introduced)\b(?!\s+by\b)"
+    r"|\b(?:caus(?:es?|ing)|culprit|responsible|at fault|to blame|led to|leads? to|leading to"
+    r"|result(?:s|ed|ing)? in|broke|breaks?|breaking|triggers?|introduces?)\b)",
+    re.I,
+)
+_CAUSED_BY = re.compile(
+    r"\b(?:due to|because of|owing to|thanks to|(?:caused|causing|triggered|introduced|driven) by"
+    r"|result(?:s|ed|ing)? (?:of|from)|stems? from|stemm(?:ed|ing) from|comes? from|came from|coming from"
+    r"|traced (?:back )?to|blamed? on|(?:cause|culprit|fault) (?:is|was|lies in|lies with|lay in|lay with))\b"
+    rf"(?P<gap>{_GAP})$",
+    re.I,
+)
+_BECAUSE = re.compile(r"\bbecause\s+(?:(?:the|a|an|its|this|that)\s+)?(?:[\w'-]+\s+)?$", re.I)
+# After "because", a noun that only names a metric or a record is a plain
+# mention: "because pool wait stayed under 1 ms", "because the deploy history
+# shows nothing".
+_NAMES_A_READING = re.compile(
+    r"\s+(?:wait|active|time|quer(?:y|ies)|latency|p\d\d|timeouts?|calls?|connections?|usage|use|metrics?"
+    r"|columns?|work|writes?|history|records?)\b",
+    re.I,
+)
+# A bare noun the clause doesn't assert anything of: "no deploy caused it",
+# "nothing in the pool or the database", "if the pool were the cause". "No
+# promo" is the service's own phrase, not a denial.
+_NOT_ASSERTED = re.compile(r"\b(?:no|nothing|none|if|whether|unless)\b(?! promo)[^,;:()]{0,30}$", re.I)
+_BARE_POOL = r"pools?"
+_BARE_DATABASE = r"(?:database|db)(?!\s+(?:connection|pool))"  # "the DB connection pool" is the pool
+_BARE_PAYMENTS = r"payments?"
+_BARE_DEPLOY = r"deploy(?:ment)?|release|rollout"
 _DECOY_KEYS = r"LOG_SAMPLE_RATE|CART_TTL|PRODUCT_CACHE_TTL|RECOMMENDATIONS_ENABLED"
 _SHOWN = (Verdict.HOLDS, Verdict.LOOSE)  # what an item got right; a loose one's extra words aren't
 _STATES_A_NUMBER = ("value", "range", "all")  # a count states how many, a first or last a time
@@ -100,6 +148,8 @@ class FaultRules:
     culprit: re.Pattern[str]
     mechanism: tuple[re.Pattern[str], ...]  # every one must match
     wrong_suspects: re.Pattern[str]
+    # The other faults' culprits by their bare nouns: blame only with a cause word.
+    bare_suspects: re.Pattern[str]
     # The mechanism in the cited data: a logged value that names it (an error type
     # is itself the observation), or a column whose number shows it (a wait).
     failure_value: re.Pattern[str] | None
@@ -126,6 +176,7 @@ RULES = {
         wrong_suspects=re.compile(
             rf"POOL_MAX_SIZE|pool[_ ]max|pool size|pool[- ]exhaust|connection pool|payments-api|{_DECOY_KEYS}", re.I
         ),
+        bare_suspects=re.compile(rf"\b(?:{_BARE_POOL}|{_BARE_DATABASE}|{_BARE_PAYMENTS})\b", re.I),
         failure_value=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
         failure_column=None,
     ),
@@ -145,6 +196,8 @@ RULES = {
         wrong_suspects=re.compile(
             rf"1\.43\.0|9c41e7b|promo|TypeError|payments-api|slow quer|database (is |was )?slow|{_DECOY_KEYS}", re.I
         ),
+        # No bare "deploy" or "release" here: the pool's own culprit is a change an answer may call one.
+        bare_suspects=re.compile(rf"\b(?:{_BARE_DATABASE}|{_BARE_PAYMENTS})\b", re.I),
         failure_value=None,
         failure_column=re.compile(r"^pool_(wait|active)"),
     ),
@@ -158,6 +211,7 @@ RULES = {
             rf"|promo pricing|PAYMENTS_TIMEOUT_MS (was )?(change|lower|reduc|cut)\w*|{_DECOY_KEYS}",
             re.I,
         ),
+        bare_suspects=re.compile(rf"\b(?:{_BARE_POOL}|{_BARE_DATABASE}|{_BARE_DEPLOY})\b", re.I),
         failure_value=re.compile(r"UpstreamTimeout|did not respond|payment provider timed out|\b504\b"),
         failure_column=re.compile(r"^payments_"),
         location=FaultLocation.UPSTREAM,
@@ -201,16 +255,41 @@ def clauses(sentence: str) -> list[str]:
     return [c for c in _CLAUSE.split(sentence) if c.strip()]
 
 
-def blamed(text: str, suspects: re.Pattern[str]) -> list[str]:
-    """The suspects named in a clause that doesn't rule them out, and not only as never reached."""
-    return [
-        m.group()
-        for s in sentences(text)
-        for c in clauses(s)
-        if not _RULED_OUT.search(c)
-        for m in suspects.finditer(c)
-        if not _NOT_REACHED.search(c[: m.start()])
-    ]
+def blamed(text: str, rules: FaultRules) -> list[str]:
+    """The suspects a root cause blames, clause by clause.
+
+    A named suspect is blamed in a clause that doesn't rule it out, unless it's
+    named only as never reached. A clause that blames none of those is read for
+    the bare nouns, each blamed only if the clause says it caused the failure.
+    """
+    out: list[str] = []
+    for s in sentences(text):
+        for c in clauses(s):
+            if _RULED_OUT.search(c):
+                continue
+            named = list(rules.wrong_suspects.finditer(c))
+            found = [m.group() for m in named if not _NOT_REACHED.search(c[: m.start()])]
+            out += found or _bare_blamed(c, rules, named)
+    return out
+
+
+def _bare_blamed(clause: str, rules: FaultRules, named: list[re.Match[str]]) -> list[str]:
+    """The bare nouns a clause says caused the failure; part of a named suspect is that suspect."""
+    out = []
+    for m in rules.bare_suspects.finditer(clause):
+        before, after = clause[: m.start()], clause[m.end() :]
+        if any(m.start() < n.end() and n.start() < m.end() for n in named):
+            continue
+        if _NOT_REACHED.search(before) or _NOT_ASSERTED.search(before):
+            continue
+        then, by = _THEN_CAUSES.match(after), _CAUSED_BY.search(before)
+        if (
+            (then and not rules.culprit.search(then["gap"]))
+            or (by and not rules.culprit.search(by["gap"]))
+            or (_BECAUSE.search(before) and not _NAMES_A_READING.match(after))
+        ):
+            out.append(m.group())
+    return out
 
 
 def shown(check: ItemCheck) -> list[str]:
@@ -311,7 +390,7 @@ def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck
 
     result.items["names_culprit"] = bool(rules.culprit.search(cause))
     result.items["names_mechanism"] = all(p.search(cause) for p in rules.mechanism)
-    wrong = blamed(cause, rules.wrong_suspects)
+    wrong = blamed(cause, rules)
     result.items["blames_no_other"] = not wrong
     if wrong:
         result.notes["blames_no_other"] = "blames " + ", ".join(sorted(set(wrong)))

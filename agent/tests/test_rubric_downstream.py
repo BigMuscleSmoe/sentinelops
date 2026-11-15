@@ -163,6 +163,52 @@ def test_a_right_answer_that_rules_the_pool_and_the_database_out_with_neither_no
 @pytest.mark.parametrize(
     "sentence, blamed",
     [
+        # A bare noun is blamed where its clause says it caused the failure...
+        ("The database caused the slowdown, and payments-api timed out.", ["database"]),
+        ("The database was the root cause of the slow checkouts.", ["database"]),
+        ("The slowdown was due to the database.", ["database"]),
+        ("The root cause is the database.", ["database"]),
+        ("Checkouts slowed because the pool ran out of connections.", ["pool"]),
+        ("The latency was caused by contention in the pool.", ["pool"]),
+        ("The pool is to blame for the 504s.", ["pool"]),
+        ("Pool wait caused the latency.", ["Pool"]),
+        ("A recent deploy introduced the slowdown.", ["deploy"]),
+        ("The slowdown stems from the last release.", ["release"]),
+        # ...and nowhere else: a plain mention, a reading given as a reason, a verb that is payments-api's.
+        ("Database time rose 2 ms while payments-api timed out.", []),
+        ("Pool wait stayed near zero and database time rose 2 ms.", []),
+        ("Because pool wait stayed under 1 ms and database time was level, the fault is upstream.", []),
+        ("payments-api is at fault because the deploy history is empty.", []),
+        ("payments-api caused the timeouts, with the pool at 10 of 20 connections.", []),
+        ("The 504s were caused by payments-api, and the pool and the database were quiet.", []),
+        ("The pool was at 10 of 20 connections when payments-api caused the timeouts.", []),
+        ("The order's connection goes back to the pool before the charge.", []),
+        # Not asserted of it: denied, or only supposed.
+        ("No deploy caused the slowdown.", []),
+        ("Nothing in the pool or the database caused it.", []),
+        ("If the pool were the cause, pool wait would have risen.", []),
+        ("The pool did not cause the timeouts.", []),
+        ("The database was not the cause: payments-api timed out.", []),
+    ],
+)
+def test_a_bare_noun_is_blamed_only_where_its_clause_says_it_caused_the_failure(sentence, blamed):
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT]) == blamed
+
+
+def test_an_answer_that_blames_the_database_beside_payments_api_fails():
+    """It names the culprit and the mechanism, and puts the fault upstream; it still blames the database."""
+    result = score(answer(root_cause="The database caused the slowdown, and payments-api timed out."))
+    assert result.items["names_culprit"] and result.items["names_mechanism"] and result.items["location"]
+    assert not result.items["blames_no_other"] and not result.diagnosis
+    assert result.notes["blames_no_other"] == "blames database"
+    # The plain mention beside the same culprit passes.
+    result = score(answer(root_cause="Database time rose 2 ms while payments-api timed out."))
+    assert result.items["blames_no_other"] and result.diagnosis
+
+
+@pytest.mark.parametrize(
+    "sentence, blamed",
+    [
         ("Database time was normal, but pool exhaustion caused the timeouts.", ["pool exhaust"]),
         ("The cause is not the database: the connection pool was exhausted.", ["connection pool"]),
         ("Pool exhaustion caused the timeouts, not payments-api.", ["Pool exhaust"]),
@@ -186,7 +232,7 @@ def test_a_right_answer_that_rules_the_pool_and_the_database_out_with_neither_no
     ],
 )
 def test_a_ruling_out_covers_its_own_clause(sentence, blamed):
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT]) == blamed
 
 
 @pytest.mark.parametrize(
@@ -200,7 +246,7 @@ def test_a_ruling_out_covers_its_own_clause(sentence, blamed):
     ],
 )
 def test_naming_the_timeout_or_a_promo_isnt_blame_but_a_change_to_it_is(sentence, blamed):
-    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT].wrong_suspects) == blamed
+    assert rubrics.blamed(sentence, rubrics.RULES[Fault.DOWNSTREAM_TIMEOUT]) == blamed
 
 
 @pytest.mark.parametrize(
