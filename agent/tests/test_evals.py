@@ -210,6 +210,9 @@ def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[
         # payments-api named only to place the failure before it: not blamed.
         "The TypeError fires in apply_promo before any payments-api call.",
         "The request never reached payments-api.",
+        # The past tense reads as the present does: it failed first, so it never got there.
+        "The request failed before it reached payments-api.",
+        "Each checkout without a promo returned its 500 before the request reached the payments-api call.",
         # The five saved bad-deploy sentences that say so of "payment" or "payments", rewritten to name it.
         "Every checkout without a promo raises TypeError and returns 500 before any payments-api call, so the error rate jumped from 0% to about 17% of requests.",
         "The unhandled exception returns HTTP 500 within a few milliseconds, before any payments-api or database work.",
@@ -232,8 +235,12 @@ def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
         ("The connection pool was exhausted before any payments-api call.", ["connection pool"]),
         ("Payments-api timed out before any database work.", ["Payments-api"]),
         ("Checkouts failed once requests reached payments-api.", ["payments-api"]),
-        # "before it reached" says it did reach it.
-        ("The outage began before it reached payments-api, which then timed out.", ["payments-api"]),
+        # "Before it reached" excuses that mention, as "before it reaches" does, and no other.
+        ("The outage began before it reached payments-api, which then timed out.", []),
+        ("The outage began before it reached payments-api, which then timed out, so payments-api failed checkouts.", ["payments-api"]),
+        ("The connection pool was exhausted before it reached payments-api.", ["connection pool"]),
+        # No "before": the request got there.
+        ("Every request reached payments-api and timed out there.", ["payments-api"]),
     ],
 )
 def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: list[str]) -> None:
@@ -260,6 +267,37 @@ def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: 
 )
 def test_a_ruling_out_covers_its_own_clause_not_the_sentence(fault: Fault, sentence: str, blamed: list[str]) -> None:
     assert rubrics.blamed(sentence, rubrics.RULES[fault].wrong_suspects) == blamed
+
+
+@pytest.mark.parametrize(
+    "fault, sentence, blamed",
+    [
+        # "Neither X nor Y" rules out both, in its own clause.
+        (Fault.BAD_DEPLOY, "Neither the connection pool nor payments-api was involved.", []),
+        (Fault.BAD_DEPLOY, "Neither a POOL_MAX_SIZE change nor payments-api explains the 500s.", []),
+        (Fault.DB_POOL_EXHAUSTION, "Neither the 1.43.0 deploy nor payments-api caused the wait.", []),
+        # "Nor" alone, and with a clause break between the two halves.
+        (Fault.DB_POOL_EXHAUSTION, "Pool wait rose first. Nor was 1.43.0 involved.", []),
+        (Fault.BAD_DEPLOY, "Neither the connection pool, though it was busy, nor payments-api caused the errors.", []),
+        # It covers its clause and no more: the suspect blamed in the next one is still blamed.
+        (Fault.BAD_DEPLOY, "Neither the deploy nor the config was at fault: the connection pool was exhausted.", ["connection pool"]),
+        (Fault.BAD_DEPLOY, "Neither the database nor the release failed, but payments-api timed out.", ["payments-api"]),
+        (Fault.DB_POOL_EXHAUSTION, "Neither the pool nor the database was the problem; 1.43.0 broke checkout.", ["1.43.0"]),
+    ],
+)
+def test_neither_nor_rules_out_both_in_its_own_clause(fault: Fault, sentence: str, blamed: list[str]) -> None:
+    assert rubrics.blamed(sentence, rubrics.RULES[fault].wrong_suspects) == blamed
+
+
+def test_a_right_bad_deploy_answer_that_rules_two_suspects_out_with_neither_nor_passes() -> None:
+    cause = "Neither the pool nor payments-api was involved; 1.43.0's TypeError in apply_promo fails every checkout without a promo."
+    assert rubrics.blamed(cause, rubrics.RULES[Fault.BAD_DEPLOY].wrong_suspects) == []
+    result = _rubric(DEPLOY_RUN, root_cause=cause)
+    assert result.items["blames_no_other"] and result.diagnosis
+    # And appended to the saved answer's own root cause.
+    saved = RUNS[DEPLOY_RUN]["hypothesis"]["root_cause"]
+    result = _rubric(DEPLOY_RUN, root_cause=f"{saved} Neither the pool nor payments-api was involved.")
+    assert result.items["blames_no_other"] and result.diagnosis
 
 
 def test_the_rubric_s_record_kinds_are_the_recorded_history_s() -> None:

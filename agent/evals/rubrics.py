@@ -4,10 +4,11 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
   names_culprit     root_cause names the change that caused it
   names_mechanism   root_cause says how that change produces the symptom
   blames_no_other   root_cause blames no other change: a suspect named in a
-                    clause that rules it out ("not", "separate", "already
-                    reverted") is accounted for, not blamed, and so is one
-                    named only as never reached ("before any payments-api
-                    call"). A ruling-out covers its own clause, not the
+                    clause that rules it out ("not", "neither ... nor",
+                    "separate", "already reverted") is accounted for, not
+                    blamed, and so is one named only as never reached ("before
+                    any payments-api call", "before it reached payments-api").
+                    A ruling-out covers its own clause, not the
                     sentence: "pool exhaustion caused the timeouts, while
                     database time was normal" blames the pool
   location          affected_component and fault_location are where the fault
@@ -62,6 +63,9 @@ _RULED_OUT = re.compile(
     r"\bnot\b|n't\b|\bno longer\b|\brule[sd]? out\b|\bunrelated\b|\bseparate\b|\bresolved\b|\bearlier\b"
     r"|\balready\b|\brather than\b|\binstead of\b|\breverted\b|\bprior\b|\bprevious\b"
     r"|\bunchanged\b|\bhealthy\b"
+    # "Neither X nor Y" rules out both. "Nor" counts alone, so the second half
+    # is still ruled out when a clause break falls between the two.
+    r"|\bneither\b|\bnor\b"
     r"|\bstayed flat\b|\bunaffected\b|\bno changes?\b"
     # A state, not an adjective: "a steady climb" or "above normal" rules nothing out.
     r"|\b(?:is|are|was|were|stays|stay|stayed|remains|remain|remained|looks|look|looked) normal\b|\bnormal range\b"
@@ -74,11 +78,13 @@ _RULED_OUT = re.compile(
 _CLAUSE = re.compile(r"\s*[;:]\s+|,?\s+(?=(?:while|whereas|but|although|though|yet|so)\b)|,\s+(?=not\b)", re.I)
 # A suspect named only as never reached, read from the words before it: "before
 # any payments-api call", "before any database or payments-api work", "before the
-# request reaches payments-api", "never reached payments-api". It excuses the
-# suspect it names and nothing else in the clause.
+# request reaches payments-api", "before it reached payments-api", "never reached
+# payments-api". It excuses the suspect it names and nothing else in the clause.
+# The past tense reads the same as the present: what failed before it reached
+# a suspect never got there. No saved answer uses it for an arrival.
 _NOT_REACHED = re.compile(
     r"\bbefore any\b[^,;:]{0,40}$"
-    r"|\bbefore\b[^,;:]{0,30}\breach(?:es|ing)?\s+(?:the\s+)?$"
+    r"|\bbefore\b[^,;:]{0,30}\breach(?:es|ed|ing)?\s+(?:the\s+)?$"
     r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$",
     re.I,
 )

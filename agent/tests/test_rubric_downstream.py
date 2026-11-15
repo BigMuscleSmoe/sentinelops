@@ -151,6 +151,15 @@ def test_a_suspect_blamed_beside_a_ruling_out_phrase_is_still_blamed():
     assert not result.diagnosis and result.confidently_wrong
 
 
+def test_a_right_answer_that_rules_the_pool_and_the_database_out_with_neither_nor_passes():
+    cause = (
+        "payments-api slowed down and about 4% of checkouts hit the 2000 ms timeout and returned 504. "
+        "Neither the connection pool nor the database caused the slowdown."
+    )
+    result = score(answer(root_cause=cause))
+    assert result.items["blames_no_other"] and result.diagnosis
+
+
 @pytest.mark.parametrize(
     "sentence, blamed",
     [
@@ -166,6 +175,14 @@ def test_a_suspect_blamed_beside_a_ruling_out_phrase_is_still_blamed():
         ("The slowness is in payments-api, not the connection pool or the database.", []),
         ("The 1.43.0 deploy, which was rolled back hours earlier, is unrelated.", []),
         ("The 504s are returned before any TypeError could be raised.", []),
+        # "Neither X nor Y" rules out both, in its own clause.
+        ("Neither the connection pool nor the database caused the slowdown.", []),
+        ("Neither the connection pool nor a slow database caused the slowdown.", []),
+        ("Neither pool exhaustion nor the 1.43.0 deploy explains the 504s, while payments-api p99 hit 2 s.", []),
+        ("Neither the deploy history nor the logs show a change, yet the connection pool backed up.", ["connection pool"]),
+        ("Neither payments-api nor the network was slow: pool exhaustion caused the timeouts.", ["pool exhaust"]),
+        # Never reached, in the past tense.
+        ("The request timed out before it reached apply_promo.", []),
     ],
 )
 def test_a_ruling_out_covers_its_own_clause(sentence, blamed):
