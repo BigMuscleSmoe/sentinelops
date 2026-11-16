@@ -69,6 +69,13 @@ SCENARIOS = [
     Scenario("deploy-1112-0803", "2026-11-12-0747", ERRORS, _at("2026-11-12T08:03:45.006Z"), Fault.BAD_DEPLOY, "08:03", seen=False, split=Split.TUNING),
     Scenario("deploy-1112-2000", "2026-11-12-2000", ERRORS, _at("2026-11-12T20:00:45.006Z"), Fault.BAD_DEPLOY, "20:00", seen=True, split=Split.TUNING),
     Scenario("deploy-1113-0257", "2026-11-13-0257", ERRORS, _at("2026-11-13T02:57:45.007Z"), Fault.BAD_DEPLOY, "02:57", seen=False, split=Split.TUNING),
+    # Held out (the user's call, 2026-11-14): its window is downstream_timeout's measuring break,
+    # recorded with no replay, sweep, or tuning on it before the freeze. The onset is the break's
+    # T0, as the fault controller answered it; payments-api records no change, so no culprit.
+    Scenario(
+        "downstream-1114-2357", "2026-11-14-2357", LATENCY, _at("2026-11-14T23:57:37.083Z"), Fault.DOWNSTREAM_TIMEOUT, None,
+        seen=False, onset=_at("2026-11-14T23:56:55.746Z"), split=Split.TEST,
+    ),
 ]
 BY_ID = {s.id: s for s in SCENARIOS}
 

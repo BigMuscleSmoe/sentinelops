@@ -10,7 +10,7 @@ import dataclasses
 import gzip
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,7 @@ def test_every_recorded_alarm_is_one_scenario() -> None:
         window = load_window(name)
         replays |= {(name, r.alarm, r.fired_at) for r in window.replays}
     assert {(s.window, s.alarm, s.fired_at) for s in SCENARIOS} == replays
-    assert len(SCENARIOS) == 9 and len(BY_ID) == 9
+    assert len(SCENARIOS) == 10 and len(BY_ID) == 10
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.id)
@@ -81,6 +81,15 @@ def test_each_scenario_replays_offline_and_its_culprit_is_in_deploy_history(scen
     window = load_window(scenario.window)
     alarm = AlarmEvent.as_of(window.client("cloudwatch"), scenario.alarm, scenario.fired_at)
     assert alarm.fired_at == scenario.fired_at and alarm.name == scenario.alarm
+    if scenario.culprit_at is None:
+        # A fault outside this service: nothing recorded from 10 minutes before its onset to the
+        # alarm (the rubric's "well before the onset" is 10 minutes or more).
+        assert scenario.fault == Fault.DOWNSTREAM_TIMEOUT and scenario.onset is not None
+        assert scenario.onset < scenario.fired_at
+        since = (scenario.onset - timedelta(minutes=10)).isoformat()
+        near = [i["ts"]["S"] for i in window.meta["deploys"]["items"] if since <= i["ts"]["S"] <= scenario.fired_at.isoformat()]
+        assert near == []
+        return
     day = scenario.fired_at.strftime("%Y-%m-%d")
     culprits = [
         i for i in window.meta["deploys"]["items"]
@@ -100,7 +109,9 @@ def test_seen_marks_exactly_the_alarms_the_first_grader_was_written_on() -> None
 
 def test_the_tuning_split_is_the_nine_alarms_tuned_on_and_a_new_row_must_say_its_split() -> None:
     assert {s.id for s in SCENARIOS if s.split is Split.TUNING} == TUNED_ON
-    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == []  # none until the held-out window's row
+    # The held-out window's alarm; the fresh breaks' rows join it after the freeze.
+    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == ["downstream-1114-2357"]
+    assert all(s.split is Split.TEST for s in SCENARIOS if s.window == "2026-11-14-2357")
     with pytest.raises(TypeError, match="split"):
         Scenario("new-0101-0000", "2026-11-13-0257", ERRORS, datetime(2027, 1, 1, tzinfo=UTC), Fault.BAD_DEPLOY, "00:00", seen=False)
 
@@ -712,13 +723,6 @@ def test_without_go_the_sweep_command_only_plans(capsys: pytest.CaptureFixture[s
     assert "27 runs (9 scenarios x 3) of the tuning split" in out and "at most $1.00" in out and "Nothing ran" in out
 
 
-def _with_one_test_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The commands' scenarios with one alarm in the test split, as the held-out window's row will be."""
-    moved = [dataclasses.replace(s, split=Split.TEST) if s.id == "deploy-1113-0257" else s for s in SCENARIOS]
-    monkeypatch.setattr(evals_cli, "SCENARIOS", moved)
-    monkeypatch.setattr(evals_cli, "BY_ID", {s.id: s for s in moved})
-
-
 @pytest.fixture
 def no_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
     """A test of a refusal passes --go: if the refusal ever goes, the test fails here and no run starts."""
@@ -729,19 +733,19 @@ def no_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(evals_cli, "run_sweep", started)
 
 
-def test_a_plan_takes_one_split_the_tuning_one_unless_asked(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _with_one_test_scenario(monkeypatch)
+def test_a_plan_takes_one_split_the_tuning_one_unless_asked(capsys: pytest.CaptureFixture[str]) -> None:
     assert evals_main(["plan"]) == 0
     out = capsys.readouterr().out
-    assert "24 runs (8 scenarios x 3) of the tuning split" in out and "deploy-1113-0257" not in out
+    assert "27 runs (9 scenarios x 3) of the tuning split" in out and "downstream-1114-2357" not in out
     assert evals_main(["plan", "--split", "test"]) == 0
     out = capsys.readouterr().out
+    assert "downstream-1114-2357  downstream_timeout  test   unseen sentinelops-checkout-latency at 2026-11-14 23:57:37Z" in out
     assert "3 runs (1 scenarios x 3) of the test split" in out and "pool-1027-1856" not in out
     # A named scenario must be in the split asked for.
-    assert evals_main(["plan", "--scenario", "deploy-1113-0257"]) == 1
-    assert "Refused: not in the tuning split: deploy-1113-0257" in capsys.readouterr().err
-    assert evals_main(["plan", "--scenario", "deploy-1113-0257", "--split", "test"]) == 0
-    assert evals_main(["plan", "--scenario", "pool-1027-1856", "--scenario", "deploy-1113-0257", "--split", "test"]) == 1
+    assert evals_main(["plan", "--scenario", "downstream-1114-2357"]) == 1
+    assert "Refused: not in the tuning split: downstream-1114-2357" in capsys.readouterr().err
+    assert evals_main(["plan", "--scenario", "downstream-1114-2357", "--split", "test"]) == 0
+    assert evals_main(["plan", "--scenario", "pool-1027-1856", "--scenario", "downstream-1114-2357", "--split", "test"]) == 1
     assert "Refused: not in the test split: pool-1027-1856" in capsys.readouterr().err
 
 
@@ -756,7 +760,6 @@ def test_a_split_with_no_scenarios_plans_nothing(
 def test_a_test_sweep_is_refused_before_the_freeze_and_before_it_spends(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_sweep: None
 ) -> None:
-    _with_one_test_scenario(monkeypatch)
     bar = tmp_path / "bar.json"
     bar.write_text(json.dumps({**json.loads(score.PASS_BAR.read_text(encoding="utf-8")), "frozen": False}), encoding="utf-8")
     monkeypatch.setattr(score, "PASS_BAR", bar)  # whatever the committed bar says by now
