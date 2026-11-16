@@ -506,7 +506,7 @@ def test_compare_refuses_label_files_that_arent_committed(capsys: pytest.Capture
 def test_each_arm_has_its_own_model_and_caps_and_haikus_are_productions() -> None:
     haiku, sonnet = ARMS["haiku"], ARMS["sonnet"]
     assert (haiku.model_id, haiku.per_run_usd, haiku.cap_usd, haiku.blocked) == ("claude-haiku-5-5", Limits().max_cost_usd, 1.00, None)
-    assert (sonnet.model_id, sonnet.per_run_usd, sonnet.cap_usd, sonnet.blocked) == ("claude-sonnet-5-5", 0.50, 5.00, None)
+    assert (sonnet.model_id, sonnet.per_run_usd, sonnet.cap_usd, sonnet.blocked) == ("claude-sonnet-5-5", 0.50, 6.00, None)
     # The user's rule (2026-11-16): the check run projected the 33-run sweep at $7.74, past $4.50, so 2.
     assert (haiku.runs_per_scenario, sonnet.runs_per_scenario) == (3, 2)
     assert Limits().max_cost_usd == 0.10  # production's cap is untouched
@@ -520,7 +520,7 @@ def test_each_arm_plans_its_own_runs_per_alarm_unless_told(capsys: pytest.Captur
     assert evals_main(["sweep", "--arm", "sonnet"]) == 2
     out = capsys.readouterr().out
     assert "18 runs (9 scenarios x 2) of the tuning split, one at a time, on the sonnet arm (claude-sonnet-5-5)" in out
-    assert "Expected about $4.23; at most $5.00 ($0.50 a run, $5.00 a sweep)" in out
+    assert "Expected about $4.23; at most $6.00 ($0.50 a run, $6.00 a sweep)" in out
     assert "can't run yet" not in out and "Nothing ran" in out
     assert evals_main(["plan", "--arm", "sonnet", "--runs", "1"]) == 0
     assert "9 runs (9 scenarios x 1)" in capsys.readouterr().out

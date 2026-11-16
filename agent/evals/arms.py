@@ -32,14 +32,16 @@ ARMS: dict[str, Arm] = {
     "haiku": Arm(
         "haiku", "claude-haiku-5-5", per_run_usd=Limits().max_cost_usd, cap_usd=1.00, expected_run_usd=0.0071, runs_per_scenario=3
     ),
-    # The user's calls: $0.50 a run with 16,000 max output, $5.00 for the arm (2026-11-14);
+    # The user's calls: $0.50 a run with 16,000 max output (2026-11-14);
     # 3 runs an alarm if the check run projects the 33-run test sweep at $4.50 or less, else 2
     # (2026-11-16), so the sweep never ends with a round cut short. The check run
     # (deploy-1113-0257, 2026-11-16) cost $0.2774 against the $0.129 the count_tokens
     # comparison predicted at Haiku's output: 2.15 times, projecting $7.74, so 2. The estimate
-    # is the predicted mean ($3.60 for 33 runs) times the same 2.15.
+    # is the predicted mean ($3.60 for 33 runs) times the same 2.15. The arm's cap, $5.00 since
+    # 2026-11-14, is $6.00 (2026-11-16): 22 runs at $0.235 project $5.16, and a run starts only
+    # while a whole run's $0.50 is left, so $5.00 would stop the second round 2 alarms short.
     "sonnet": Arm(
-        "sonnet", "claude-sonnet-5-5", per_run_usd=0.50, cap_usd=5.00, expected_run_usd=0.235, runs_per_scenario=2
+        "sonnet", "claude-sonnet-5-5", per_run_usd=0.50, cap_usd=6.00, expected_run_usd=0.235, runs_per_scenario=2
     ),
 }
 DEFAULT_ARM = "haiku"
