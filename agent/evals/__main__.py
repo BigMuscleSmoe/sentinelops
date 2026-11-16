@@ -1,7 +1,7 @@
 """The eval harness's commands (from agent/; see evals/__init__.py).
 
-    uv run python -m evals plan [--runs 3] [--arm haiku|sonnet] [--split tuning|test]
-    uv run python -m evals sweep --go [--runs 3] [--arm haiku] [--split tuning] [--scenario ID ...] [--resume DIR] [--pause 10]
+    uv run python -m evals plan [--runs N] [--arm haiku|sonnet] [--split tuning|test]
+    uv run python -m evals sweep --go [--runs N] [--arm haiku] [--split tuning] [--scenario ID ...] [--resume DIR] [--pause 10]
     uv run python -m evals packet DIR --out PACKET.md [--run RUN ...]
     uv run python -m evals audit DIR --labels LABELS.json [--some]
     uv run python -m evals flags DIR --out FLAGS.json
@@ -40,7 +40,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("plan", "sweep"):
         p = sub.add_parser(name)
-        p.add_argument("--runs", type=int, default=3, help="runs per scenario (default 3)")
+        p.add_argument(
+            "--runs",
+            type=int,
+            help="runs per scenario (default the arm's: "
+            + ", ".join(f"{a.name} {a.runs_per_scenario}" for a in ARMS.values())
+            + ")",
+        )
         p.add_argument("--scenario", action="append", choices=sorted(BY_ID), help="only these (repeatable)")
         p.add_argument("--arm", choices=sorted(ARMS), default=DEFAULT_ARM, help=f"the agent's model and caps (default {DEFAULT_ARM})")
         p.add_argument(
@@ -284,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     if args.command in ("plan", "sweep"):
+        if args.runs is None:
+            args.runs = ARMS[args.arm].runs_per_scenario
         try:
             args.scenarios = chosen(args)
         except ValueError as e:

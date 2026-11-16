@@ -19,6 +19,7 @@ import pytest
 from checked_runs import RUNS
 from checker.__main__ import check_run
 from evals import audit, packet, repo, score, sweep
+from evals import __main__ as evals_cli
 from evals.__main__ import main as evals_main
 from evals.arms import ARMS, Arm
 from evals.scenarios import BY_ID, WINDOW_NOTES, Split
@@ -505,19 +506,37 @@ def test_compare_refuses_label_files_that_arent_committed(capsys: pytest.Capture
 def test_each_arm_has_its_own_model_and_caps_and_haikus_are_productions() -> None:
     haiku, sonnet = ARMS["haiku"], ARMS["sonnet"]
     assert (haiku.model_id, haiku.per_run_usd, haiku.cap_usd, haiku.blocked) == ("claude-haiku-5-5", Limits().max_cost_usd, 1.00, None)
-    assert (sonnet.model_id, sonnet.per_run_usd, sonnet.cap_usd) == ("claude-sonnet-5-5", 0.50, 5.00)
+    assert (sonnet.model_id, sonnet.per_run_usd, sonnet.cap_usd, sonnet.blocked) == ("claude-sonnet-5-5", 0.50, 5.00, None)
+    # The user's rule (2026-11-16): the check run projected the 33-run sweep at $7.74, past $4.50, so 2.
+    assert (haiku.runs_per_scenario, sonnet.runs_per_scenario) == (3, 2)
     assert Limits().max_cost_usd == 0.10  # production's cap is untouched
     settings = sonnet.settings(Settings.from_env(FEDERATION_IDS))
     assert settings.model_id == "claude-sonnet-5-5" and settings.max_output_tokens == 16_000
 
 
-def test_sonnets_arm_has_a_price_and_still_waits_for_step_9(capsys: pytest.CaptureFixture[str]) -> None:
-    assert ARMS["sonnet"].blocked is not None and "step 9" in ARMS["sonnet"].blocked
-    assert "price" not in ARMS["sonnet"].blocked  # checked and added, 2026-11-15
+def test_each_arm_plans_its_own_runs_per_alarm_unless_told(capsys: pytest.CaptureFixture[str]) -> None:
+    # Never --go here: the sonnet arm is unblocked, so a --go would sign in and spend.
     assert price_for("anthropic", "claude-sonnet-5-5").standard.output == 10.00
+    assert evals_main(["sweep", "--arm", "sonnet"]) == 2
+    out = capsys.readouterr().out
+    assert "18 runs (9 scenarios x 2) of the tuning split, one at a time, on the sonnet arm (claude-sonnet-5-5)" in out
+    assert "Expected about $4.23; at most $5.00 ($0.50 a run, $5.00 a sweep)" in out
+    assert "can't run yet" not in out and "Nothing ran" in out
+    assert evals_main(["plan", "--arm", "sonnet", "--runs", "1"]) == 0
+    assert "9 runs (9 scenarios x 1)" in capsys.readouterr().out
+    assert evals_main(["plan"]) == 0
+    assert "27 runs (9 scenarios x 3) of the tuning split, one at a time, on the haiku arm" in capsys.readouterr().out
+
+
+def test_a_blocked_arm_still_refuses_to_spend(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    def started(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a sweep started")
+
+    monkeypatch.setattr(evals_cli, "run_sweep", started)
+    monkeypatch.setitem(ARMS, "sonnet", dataclasses.replace(ARMS["sonnet"], blocked="a test's reason"))
     assert evals_main(["sweep", "--go", "--arm", "sonnet", "--runs", "1"]) == 1
     captured = capsys.readouterr()
-    assert "on the sonnet arm (claude-sonnet-5-5)" in captured.out and "at most $4.50 ($0.50 a run, $5.00 a sweep)" in captured.out
+    assert "The sonnet arm can't run yet: a test's reason." in captured.out
     assert "Refused: the sonnet arm is blocked." in captured.err
 
 
@@ -541,7 +560,7 @@ def _run(arm: Arm, out_dir: Path, fake: FakeAnthropic, **kwargs: Any) -> list[sw
 
 
 def test_an_arms_cap_on_a_run_reaches_the_guard_and_the_sweep_records_the_arm(tmp_path: Path) -> None:
-    tiny = Arm("tiny", "claude-haiku-5-5", per_run_usd=0.001, cap_usd=1.00, expected_run_usd=0.0)
+    tiny = Arm("tiny", "claude-haiku-5-5", per_run_usd=0.001, cap_usd=1.00, expected_run_usd=0.0, runs_per_scenario=1)
     records = _run(tiny, tmp_path, _scripted(1))
     assert [(r.status, r.detail) for r in records] == [("halted", "cost_limit")]
     saved = json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))
