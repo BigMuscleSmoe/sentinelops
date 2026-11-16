@@ -7,8 +7,11 @@ from pathlib import Path
 import httpx
 import pytest
 from botocore.exceptions import EndpointConnectionError
+from strands.models._native_output import _UNSUPPORTED_MECHANISMS
+from strands.models.anthropic import AnthropicModel
 
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, signed_in
+from models import Hypothesis
 from providers import (
     FEDERATION_ENV,
     FEDERATION_ROLE_ENV,
@@ -318,6 +321,23 @@ def test_the_model_sends_the_answer_tool_strict() -> None:
     model = build_model(Settings(federation=FEDERATION), credentials=signed_in())
 
     assert isinstance(model, StrictAnswerModel)
+
+
+def test_the_answer_is_never_asked_for_as_native_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = build_model(Settings(federation=FEDERATION), credentials=signed_in())
+    key = ("anthropic", model.config["model_id"])
+    forced = {"tool": {"name": "Hypothesis"}}
+
+    monkeypatch.setitem(_UNSUPPORTED_MECHANISMS, key, set())
+    assert model._structured_output_mechanism(Hypothesis, forced) == "forced"
+    assert model._structured_output_mechanism(None, forced) is None  # a call that isn't asking for the answer
+
+    # Once the model has refused a forced tool, Strands 1.62.0's next pick is native
+    # JSON; ours is the one after it. If an upgrade moves Strands' pick, this says so.
+    monkeypatch.setitem(_UNSUPPORTED_MECHANISMS, key, {"forced"})
+    assert AnthropicModel._structured_output_mechanism(model, Hypothesis, forced) == "native"
+    assert model._structured_output_mechanism(Hypothesis, forced) == "auto"
+    assert model._structured_output_mechanism(Hypothesis, None) == "auto"
 
 
 def test_the_strict_schema_drops_what_strict_tool_use_rejects_and_requires_every_field_at_any_depth() -> None:

@@ -19,6 +19,14 @@ logger = logging.getLogger("sentinelops.runner")
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "system.md"
 MAX_FAILURE_CHARS = 500
+# What the model is sent when it gives its answer as text. Only a model that
+# can't be forced to call a tool can: asked for its answer with tool_choice auto
+# (providers.StrictAnswerModel), it may still reply in text. An answer is a call
+# to the answer tool, so text is refused, whole or not, and counts as a resend.
+ANSWER_AS_TEXT = (
+    "No answer was recorded: your reply was text, and an answer is only taken from a call to the "
+    "Hypothesis tool. Call the Hypothesis tool now with what you found."
+)
 
 
 def system_prompt() -> str:
@@ -37,6 +45,8 @@ class RunReport:
     messages: list[Any] = field(repr=False)
     # The text cut off each answer the guard trimmed, not resent (models.trimmed_answer).
     trims: list[str] = field(default_factory=list)
+    # Answers given as text and asked for again as a tool call (ANSWER_AS_TEXT).
+    answers_in_text: int = 0
 
     def summary(self) -> str:
         tools = ", ".join(f"{name} x{n}" for name, n in Counter(self.tool_calls).items()) or "none"
@@ -67,6 +77,7 @@ async def investigate(
     from strands.agent.conversation_manager import NullConversationManager
     from strands.middleware import InvokeModelStage
     from strands.tools.executors import SequentialToolExecutor
+    from strands.types.exceptions import StructuredOutputException
 
     guard = RunGuard(limits, clock=clock)
     hooks = GuardHooks(guard, price, max_output_tokens)
@@ -89,11 +100,30 @@ async def investigate(
     # Each call's cost is reserved, or the call refused, on the request about to go out.
     agent.add_middleware(InvokeModelStage.Input, hooks.before_send)
 
+    answers_in_text = 0
+
     async def work() -> Hypothesis:
-        result = await agent.invoke_async(prompt, structured_output_model=Hypothesis)
-        if not isinstance(result.structured_output, Hypothesis):
-            raise RuntimeError("The run ended without a Hypothesis.")
-        return result.structured_output
+        nonlocal answers_in_text
+        ask = prompt
+        while True:
+            try:
+                result = await agent.invoke_async(ask, structured_output_model=Hypothesis)
+            except StructuredOutputException:
+                # Asked for its answer, the model replied in text that is no Hypothesis.
+                pass
+            else:
+                if not isinstance(result.structured_output, Hypothesis):
+                    raise RuntimeError("The run ended without a Hypothesis.")
+                if calls_the_answer_tool(result.message):
+                    return result.structured_output
+                # Text that is a whole Hypothesis, which Strands takes: not from the
+                # strict tool, and never trimmed, so it's asked for again like any other.
+            answers_in_text += 1
+            logger.info(json.dumps({"event": "answer_in_text", "count": answers_in_text}))
+            # Counted with the answers that failed validation: past the cap, check() ends the run.
+            guard.record_rejected_answer()
+            guard.check()
+            ask = ANSWER_AS_TEXT
 
     hypothesis: Hypothesis | None = None
     failure: str | None = None
@@ -127,7 +157,13 @@ async def investigate(
         seconds=guard.elapsed_s,
         messages=agent.messages,
         trims=list(guard.trims),
+        answers_in_text=answers_in_text,
     )
+
+
+def calls_the_answer_tool(message: Any) -> bool:
+    """True if the message, the run's last from the model, calls the answer tool."""
+    return any(block.get("toolUse", {}).get("name") == Hypothesis.__name__ for block in message.get("content", []))
 
 
 def describe_failure(error: BaseException) -> str:

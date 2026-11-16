@@ -91,6 +91,14 @@ def test_resends_are_counted_from_the_answers_sent_back(transcript: dict[str, An
     assert rejected_answers(with_rejections(transcript, 2)) == 2
 
 
+def test_answers_asked_for_again_as_a_tool_call_are_resends_too(transcript: dict[str, Any]) -> None:
+    assert transcript["answers_in_text"] == 0  # every run records its own count
+    assert rejected_answers({**transcript, "answers_in_text": 2}) == 2
+    assert rejected_answers({**with_rejections(transcript, 1), "answers_in_text": 2}) == 3
+    before = {k: v for k, v in transcript.items() if k != "answers_in_text"}  # a transcript from before the count
+    assert rejected_answers(with_rejections(before, 1)) == 1
+
+
 def test_the_cli_prints_the_marks_and_exits_on_the_verdict(transcript: dict[str, Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "good").mkdir()
     (tmp_path / "bad").mkdir()

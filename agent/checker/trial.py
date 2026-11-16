@@ -69,9 +69,10 @@ def final_records(sweep: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def rejected_answers(transcript: dict[str, Any]) -> int:
-    """How many answers failed validation and went back to the model."""
+    """How many answers went back to the model: those that failed validation, and
+    those given as text and asked for again as a tool call (the run's own count)."""
     names: dict[str, str] = {}
-    count = 0
+    count = int(transcript.get("answers_in_text") or 0)
     for message in transcript.get("messages", []):
         for block in message.get("content", []):
             if "toolUse" in block:

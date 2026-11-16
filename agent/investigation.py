@@ -56,6 +56,7 @@ class Investigation:
             "hypothesis": report.hypothesis.model_dump(mode="json") if report.hypothesis else None,
             "failure": report.failure,
             "trims": report.trims,
+            "answers_in_text": report.answers_in_text,
             "tool_calls": report.tool_calls,
             "model_calls": [asdict(call) for call in report.model_calls],
             "input_tokens": report.input_tokens,

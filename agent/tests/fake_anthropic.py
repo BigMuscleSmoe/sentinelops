@@ -6,6 +6,14 @@ way the API streams them. Every request is kept, headers and body, to assert on.
 Usage defaults to the worst case the byte bound allows for: one input token
 per byte of the request, and one output token per byte of the reply.
 
+With forces_tools=False the API is one that can't be forced to call a tool, as
+Sonnet 5.5 and Opus 5.5 can't: a request, or a count, whose tool_choice forces
+a tool gets the 400 they give, and takes no scripted reply. Those requests are
+kept like any other.
+
+No script answers a request for native JSON (output_config.format): the agent
+never sends one (providers.StrictAnswerModel), so it gets a 400 that fails the run.
+
 count_tokens requests are kept apart, in count_requests, and each gets the next
 scripted count: a number, a response such as a 500, or an exception for the
 transport to raise. Unscripted, the count is what the next reply will bill if
@@ -27,6 +35,8 @@ import httpx
 from anthropic.lib.credentials import StaticToken
 
 Count = int | httpx.Response | Exception | None
+# The API's own words (its errors page, forced tool use), which Strands matches on.
+FORCED_TOOL_REJECTED = 'tool_choice: type "tool" and "any" are not supported for this model.'
 # Shaped like the real thing, so anything that masks tokens by their look would act on it.
 ACCESS_TOKEN = "sk-ant-oat01-" + "N0tARealToken5w" * 6 + "-AA"
 
@@ -73,7 +83,9 @@ class FakeAnthropic:
         replies: list[Reply | Callable[[dict[str, Any]], Reply]],
         counts: list[Count] | None = None,
         tokens: list[httpx.Response | Exception] | None = None,
+        forces_tools: bool = True,
     ) -> None:
+        self.forces_tools = forces_tools
         self.replies = list(replies)
         self.counts = list(counts or [])
         self.tokens = list(tokens or [])
@@ -96,8 +108,17 @@ class FakeAnthropic:
             "bytes": len(request.content),
             "timeout": request.extensions.get("timeout"),
         }
+        forced = (body.get("tool_choice") or {}).get("type") in ("tool", "any")
+        if "format" in (body.get("output_config") or {}):
+            # Not in the API's words for it, which Strands would take as a reason to try the next mechanism.
+            return httpx.Response(
+                400,
+                json={"type": "error", "error": {"type": "invalid_request_error", "message": "native JSON isn't scripted"}},
+            )
         if request.url.path == "/v1/messages/count_tokens":
             self.count_requests.append(kept)
+            if forced and not self.forces_tools:
+                return _rejected_forced_tool()
             return self._count(len(request.content))
         if request.url.path == "/v1/oauth/token":
             self.token_requests.append(kept)
@@ -116,6 +137,8 @@ class FakeAnthropic:
                 },
             )
         self.requests.append(kept)
+        if forced and not self.forces_tools:
+            return _rejected_forced_tool()
         if not self.replies:
             # A 400, not a 500: the SDK would retry a 500, slowly.
             return httpx.Response(
@@ -156,6 +179,12 @@ class FakeAnthropic:
                         content = "".join(c.get("text", "") for c in content)
                     results.append(content)
         return results
+
+
+def _rejected_forced_tool() -> httpx.Response:
+    return httpx.Response(
+        400, json={"type": "error", "error": {"type": "invalid_request_error", "message": FORCED_TOOL_REJECTED}}
+    )
 
 
 def _stream(reply: Reply, request_bytes: int, n: int) -> bytes:

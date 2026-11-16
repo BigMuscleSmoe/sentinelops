@@ -339,6 +339,22 @@ class StrictAnswerModel(AnthropicModel):
                 tool["strict"] = True
         return request
 
+    def _structured_output_mechanism(self, *args: Any, **kwargs: Any) -> Any:
+        """How Strands asks for the answer when a run ends in text: never as native JSON.
+
+        Sonnet 5.5 and Opus 5.5 answer a forced tool with a 400, and Strands
+        1.62.0 then sends the request again with the next mechanism it knows,
+        native JSON (output_config.format, tool_choice none): text it validates
+        itself, with no trim and no resend, on Pydantic's schema, not the strict
+        one above. Here that mechanism is skipped for the one after it: the same
+        request with tool_choice auto, so the answer still comes as a call to
+        the strict tool and gets the trim, the validation, and the resends every
+        answer gets. A model that takes a forced tool is asked as before.
+        hooks.count_request asks this too, so a count covers the request sent.
+        """
+        mechanism = super()._structured_output_mechanism(*args, **kwargs)
+        return "auto" if mechanism == "native" else mechanism
+
 
 def build_model(settings: Settings, http_client: Any = None, *, credentials: Any = None) -> Any:
     """The Strands model for these settings, signed in with the federated

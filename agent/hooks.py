@@ -254,8 +254,10 @@ def count_request(context: InvokeModelContext) -> dict[str, Any]:
     output_config to the mechanism it picks. Strands 1.62.0 is pinned, and a
     test holds the count's body to the sent one. Only a retry inside stream()
     sends something else: stale thinking dropped, which is smaller, or a forced
-    tool the model rejects, sent again as native JSON, which can be larger. The
-    check after the call catches a count that was low by more than its margin.
+    tool the model rejects, sent again with tool_choice auto, which is smaller
+    too (the mechanism is the model's to pick: providers.StrictAnswerModel never
+    picks native JSON). The check after the call catches a count that was low by
+    more than its margin.
     """
     model = context.model
     messages = [{"role": m["role"], "content": m["content"]} for m in _normalize_messages(context.messages)]

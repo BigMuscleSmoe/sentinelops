@@ -114,6 +114,7 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     assert record["tools_via"] == "local"
     assert record["hypothesis"]["root_cause"] == DIAGNOSIS["root_cause"]
     assert record["trims"] == []  # answers cut, not resent: none here
+    assert record["answers_in_text"] == 0  # answers given as text and asked for again: none here
     assert record["tool_calls"] == ["get_metrics", "get_recent_logs", "get_deploy_history"]
     assert len(record["model_calls"]) == 4 and record["cost_usd"] > 0
 

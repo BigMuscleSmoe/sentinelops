@@ -11,12 +11,13 @@ from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
 from fake_anthropic import ACCESS_TOKEN, FakeAnthropic, Reply, answer, signed_in, text, thinking, tool_use
 from answers import DEPLOY_EVIDENCE, item
+from evals.arms import ARMS
 from guards import Limits
 from hooks import COUNTED_FIELDS, count_margin
-from models import StopReason
+from models import Hypothesis, StopReason
 from pricing import price_for
 from providers import Settings, build_model
-from runner import RunReport, investigate, system_prompt
+from runner import ANSWER_AS_TEXT, RunReport, investigate, system_prompt
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 SETTINGS = Settings()
@@ -62,15 +63,15 @@ class Tools:
         return [get_metrics, get_recent_logs]
 
 
-def run(fake: FakeAnthropic, tools: Tools | None = None, **kwargs) -> RunReport:
-    model = build_model(SETTINGS, http_client=fake.client(), credentials=signed_in())
+def run(fake: FakeAnthropic, tools: Tools | None = None, *, settings: Settings = SETTINGS, price=HAIKU, **kwargs) -> RunReport:
+    model = build_model(settings, http_client=fake.client(), credentials=signed_in())
     return asyncio.run(
         investigate(
             "An alarm fired on checkout-api.",
             model=model,
             tools=(tools or Tools()).all(),
-            price=HAIKU,
-            max_output_tokens=SETTINGS.max_output_tokens,
+            price=price,
+            max_output_tokens=settings.max_output_tokens,
             **kwargs,
         )
     )
@@ -276,21 +277,6 @@ def test_each_call_is_counted_on_the_request_it_sends() -> None:
     # Pinned: a field Strands starts to send has to be sorted into the counted or uncounted ones on purpose.
     sent = {"max_tokens", "messages", "model", "stream", "system", "thinking", "tools"}
     assert [set(r["body"]) for r in fake.requests] == [sent, sent, sent | {"tool_choice"}]
-
-
-def test_an_answer_in_native_json_is_counted_on_the_request_that_asks_for_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    # As Sonnet 5.5 and Opus 5.5 answer, once they've rejected a forced tool in this process.
-    monkeypatch.setitem(_UNSUPPORTED_MECHANISMS, ("anthropic", SETTINGS.model_id), {"forced"})
-    fake = FakeAnthropic(
-        [Reply([text("Done.")], stop_reason="end_turn"), Reply([text(json.dumps(DIAGNOSIS))], stop_reason="end_turn")]
-    )
-
-    report = run(fake)
-
-    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
-    native = fake.requests[1]["body"]
-    assert native["tool_choice"] == {"type": "none"} and native["output_config"]["format"]["type"] == "json_schema"
-    assert fake.count_requests[1]["body"] == {key: value for key, value in native.items() if key in COUNTED_FIELDS}
 
 
 def test_the_model_cannot_report_a_halt() -> None:
@@ -516,3 +502,205 @@ def test_a_resend_ending_in_a_bare_closing_tag_is_trimmed(caplog: pytest.LogCapt
     assert len(fake.requests) == 2
     assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.trims == ["</root_cause>"]
     assert len(guard_events(caplog, "answer_rejected")) == 1
+
+
+# --- a model that can't be forced to call a tool (Sonnet 5.5, Opus 5.5) -------------------
+#
+# Asked for its answer, such a model gets the request with tool_choice auto, never as
+# native JSON, so its answer is a call to the strict tool like any other: trimmed,
+# validated, and sent back at most twice. Text in place of that call is asked for again.
+
+SONNET = price_for("anthropic", "claude-sonnet-5-5")
+SONNET_SETTINGS = Settings(model_id="claude-sonnet-5-5")
+FORCED = {"type": "tool", "name": "Hypothesis"}
+AUTO = {"type": "auto"}
+STRANDS_ASK = "You must format the previous response as structured output."
+DONE = Reply([text("Done.")], stop_reason="end_turn")
+
+
+@pytest.fixture
+def unforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A process that hasn't yet seen the model refuse a forced tool: Strands keeps what it learns for the process."""
+    for model_id in (SETTINGS.model_id, SONNET_SETTINGS.model_id):
+        monkeypatch.setitem(_UNSUPPORTED_MECHANISMS, ("anthropic", model_id), set())
+
+
+def cant_be_forced(replies: list) -> FakeAnthropic:
+    return FakeAnthropic(replies, forces_tools=False)
+
+
+def tool_choices(requests: list[dict]) -> list:
+    return [r["body"].get("tool_choice") for r in requests]
+
+
+def last_text(body: dict) -> str:
+    """The text of a request's last message."""
+    content = body["messages"][-1]["content"]
+    return content if isinstance(content, str) else "".join(block.get("text", "") for block in content)
+
+
+def test_the_ask_for_an_answer_given_as_text_is_these_words() -> None:
+    # Pinned: the model reads it, so a change to it is made on purpose, as a change to the prompt is.
+    assert ANSWER_AS_TEXT == (
+        "No answer was recorded: your reply was text, and an answer is only taken from a call to the "
+        "Hypothesis tool. Call the Hypothesis tool now with what you found."
+    )
+    assert Hypothesis.__name__ in ANSWER_AS_TEXT and ANSWER_AS_TEXT.isascii()
+
+
+def test_a_model_that_cant_be_forced_is_asked_with_auto_and_answers_through_the_strict_tool(unforced: None) -> None:
+    fake = cant_be_forced([Reply([tool_use("get_metrics")]), DONE, answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.answers_in_text == 0
+    assert tool_choices(fake.requests) == [None, None, FORCED, AUTO]
+    forced, again = fake.requests[2]["body"], fake.requests[3]["body"]
+    # The request the API refused, sent again with only its tool_choice changed: no native JSON.
+    assert "output_config" not in again
+    assert {k: v for k, v in again.items() if k != "tool_choice"} == {k: v for k, v in forced.items() if k != "tool_choice"}
+    assert last_text(again) == STRANDS_ASK  # in Strands' words, as a model that can be forced is asked
+    (answer_tool,) = [tool for tool in again["tools"] if tool["name"] == "Hypothesis"]
+    assert answer_tool["strict"] is True and len(again["tools"]) == 3  # every tool still offered
+    # To the guard the refusal and the request sent again are one call, reserved once.
+    assert len(report.model_calls) == 3
+
+
+def test_a_model_that_can_be_forced_is_asked_as_before() -> None:
+    fake = FakeAnthropic([DONE, answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert tool_choices(fake.requests) == [None, FORCED]
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.answers_in_text == 0
+
+
+def test_once_the_refusal_is_seen_the_request_goes_out_with_auto_and_is_counted_as_sent(unforced: None) -> None:
+    fake = cant_be_forced([DONE, answer(LEAKED), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+    # One refusal for the process: the resend of the malformed answer goes out with auto at once.
+    assert tool_choices(fake.requests) == [None, FORCED, AUTO, AUTO]
+    # The count of a forced request is refused as the request is, so that one call
+    # is reserved on the byte bound; after it, each count is of the request sent.
+    assert tool_choices(fake.count_requests) == [None, FORCED, AUTO]
+    assert [call.counted_tokens is None for call in report.model_calls] == [False, True, False]
+    sent = fake.requests[3]["body"]
+    assert fake.count_requests[2]["body"] == {key: value for key, value in sent.items() if key in COUNTED_FIELDS}
+
+
+def test_a_malformed_answer_from_a_model_that_cant_be_forced_is_sent_back_twice_then_the_run_halts(unforced: None) -> None:
+    fake = cant_be_forced([DONE, answer(LEAKED), answer(LEAKED), answer(LEAKED), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.halted_by is StopReason.RESEND_LIMIT
+    assert "resend limit (2 resends of a malformed answer)" in report.hypothesis.not_checked[0]
+    assert len(report.model_calls) == 4 and len(fake.replies) == 1, "no call after the third rejection"
+    rejections = fake.tool_results(len(fake.requests) - 1)
+    assert len(rejections) == 2 and all("holds tool-call markup ('</root_cause>')" in r for r in rejections)
+    assert report.answers_in_text == 0
+
+
+def test_a_leaked_tail_from_a_model_that_cant_be_forced_is_trimmed_not_sent_back(
+    unforced: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.guards")
+    leaked = {**DIAGNOSIS, "root_cause": DIAGNOSIS["root_cause"] + LEAKED_TAIL}
+    fake = cant_be_forced([DONE, answer(leaked)])
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.trims == [LEAKED_TAIL]
+    assert guard_events(caplog, "answer_rejected") == [] and report.answers_in_text == 0
+    assert len(report.model_calls) == 2  # no resend
+
+
+def test_an_answer_in_text_is_asked_for_again_as_a_call_to_the_answer_tool(
+    unforced: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops")
+    said = Reply([text("The 1.43.0 deploy caused it.")], stop_reason="end_turn")
+    fake = cant_be_forced([DONE, said, answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.hypothesis.halted_by is None
+    assert report.answers_in_text == 1
+    assert len(guard_events(caplog, "answer_rejected")) == 1  # counted as a resend
+    runner_events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.runner"]
+    assert runner_events == [{"event": "answer_in_text", "count": 1}]
+    asked = fake.requests[-1]["body"]
+    assert last_text(asked) == ANSWER_AS_TEXT and "tool_choice" not in asked
+    # The conversation is only added to: what was sent before is the start of what's sent now.
+    assert [m["role"] for m in asked["messages"]] == ["user", "assistant", "user", "assistant", "user"]
+    assert asked["messages"][:3] == fake.requests[2]["body"]["messages"]
+    assert [b["text"] for m in report.messages if m["role"] == "assistant" for b in m["content"] if "text" in b] == [
+        "Done.",
+        "The 1.43.0 deploy caused it.",
+    ]
+
+
+def test_a_whole_answer_written_out_as_text_is_not_taken(unforced: None) -> None:
+    # Strands would take text that is one JSON object and validates. It didn't come
+    # through the strict tool, and nothing trims it, so it's asked for again.
+    written = Reply([text(json.dumps(DIAGNOSIS))], stop_reason="end_turn")
+    fake = cant_be_forced([DONE, written, answer({**DIAGNOSIS, "confidence": 0.8})])
+
+    report = run(fake)
+
+    assert report.answers_in_text == 1 and last_text(fake.requests[-1]["body"]) == ANSWER_AS_TEXT
+    assert report.hypothesis.confidence == 0.8  # the tool call's answer, not the text's
+
+
+def test_answers_in_text_count_toward_the_resend_cap(unforced: None) -> None:
+    # Each ask gets text, and then text again when Strands asks in its own words: two calls a refusal.
+    fake = cant_be_forced([DONE] * 6 + [answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.halted_by is StopReason.RESEND_LIMIT and report.answers_in_text == 3
+    assert "resend limit (2 resends of a malformed answer)" in report.hypothesis.not_checked[0]
+    assert len(report.model_calls) == 6 and len(fake.replies) == 1, "no call after the third refusal"
+    assert [last_text(r["body"]) for r in fake.requests].count(ANSWER_AS_TEXT) == 2
+    assert not report.hypothesis.can_open_pr
+
+
+def test_text_and_malformed_answers_share_the_one_cap(unforced: None) -> None:
+    fake = cant_be_forced([DONE, DONE, answer(LEAKED), answer(LEAKED), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.halted_by is StopReason.RESEND_LIMIT
+    assert report.answers_in_text == 1 and len(fake.replies) == 1
+
+
+def test_a_sonnet_run_is_refused_under_the_production_cap_and_finishes_under_its_arms(unforced: None) -> None:
+    def script() -> FakeAnthropic:
+        usage = {"input_tokens": 5_000, "output_tokens": 300}
+        return cant_be_forced(
+            [
+                Reply([tool_use("get_metrics")], **usage),
+                Reply([text("Done.")], stop_reason="end_turn", **usage),
+                Reply([tool_use("Hypothesis", DIAGNOSIS)], **usage),
+            ]
+        )
+
+    fake = script()
+    refused = run(fake, settings=SONNET_SETTINGS, price=SONNET)
+
+    # 16,000 output tokens at $10 a million is $0.16 before any prompt: past $0.10, so nothing is sent.
+    assert refused.hypothesis.halted_by is StopReason.COST_LIMIT and fake.requests == []
+
+    arm = ARMS["sonnet"]
+    fake = script()
+    report = run(fake, settings=SONNET_SETTINGS, price=SONNET, limits=Limits(max_cost_usd=arm.per_run_usd))
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.hypothesis.halted_by is None
+    assert {r["body"]["model"] for r in fake.requests} == {arm.model_id}
+    assert tool_choices(fake.requests) == [None, None, FORCED, AUTO]
+    # 3 calls of 5,000 tokens in at $2 and 300 out at $10, per million
+    assert report.cost_usd == pytest.approx(3 * (0.010 + 0.003))
+    assert all(call.reserved_usd > 0.16 for call in report.model_calls)
