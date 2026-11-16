@@ -180,7 +180,7 @@ def test_a_flag_catches_a_strict_label_only_on_its_own_target_saying_its_own_com
     labels["runs"][r2]["slips"].append(_slip(i2, other))  # flagged, but for something else: not caught
     labels["runs"][r3]["slips"].append(_slip(i3, "contradicted", kind="loose"))  # loose: not in recall
     labels["runs"]["pool-1027-1856-r1"]["slips"] += [_slip(holds, "contradicted"), _slip("s2", "unsupported"), _slip("i1", "unsupported")]
-    report = score.score_sweep(_sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path), committed=_committed)
+    report = score.score_sweep(_sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path, frozen=False), committed=_committed)
     whole = report.summary["all"]
     assert (whole["strict_labels"], whole["caught"], whole["caught_other_complaint"]) == (5, 1, 1)
     assert whole["prose_only"] == 2 and whole["prose_share"] == pytest.approx(2 / 5)
@@ -193,7 +193,7 @@ def test_a_flag_catches_a_strict_label_only_on_its_own_target_saying_its_own_com
     assert "prose-only 2 of 5 strict labels (40%; a judge if 20% or more)" in text
     assert f"pool-1027-1856-r1 s2 unsupported (prose-only): a note" in text
 
-    without_prose = score.score_sweep(_sweep_dir(tmp_path / "b"), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path, recall_includes_prose_only=False), committed=_committed)
+    without_prose = score.score_sweep(_sweep_dir(tmp_path / "b"), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path, frozen=False, recall_includes_prose_only=False), committed=_committed)
     assert without_prose.summary["all"]["strict_recall"] == pytest.approx(1 / 3)
 
 
@@ -205,7 +205,7 @@ def test_precision_is_every_flag_hand_checked_and_a_right_flag_no_label_names_is
     labeled = next((r, i) for r, f in FLAGS.items() for i in f if (r, i) != (run, item_id))
     labels["runs"][labeled[0]]["slips"].append(_slip(labeled[1], "contradicted"))
     report = score.score_sweep(
-        _sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), _write(tmp_path, "flags.json", calls), bar_path=_bar(tmp_path), committed=_committed
+        _sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), _write(tmp_path, "flags.json", calls), bar_path=_bar(tmp_path, frozen=False), committed=_committed
     )
     whole = report.summary["all"]
     assert (whole["flags"], whole["flags_right"], whole["precision"]) == (6, 5, pytest.approx(5 / 6))
@@ -222,7 +222,7 @@ def test_a_flag_check_that_misses_a_flag_or_was_made_on_other_verdicts_is_refuse
     calls["flags"]["deploy-1027-1905-r1"] = {"e1": {"verdict": "contradicted", "call": "right"}}
     with pytest.raises(repo.Refusal) as refused:
         score.score_sweep(
-            _sweep_dir(tmp_path), _write(tmp_path, "audit.json", _clean_audit()), _write(tmp_path, "flags.json", calls), bar_path=_bar(tmp_path), committed=_committed
+            _sweep_dir(tmp_path), _write(tmp_path, "audit.json", _clean_audit()), _write(tmp_path, "flags.json", calls), bar_path=_bar(tmp_path, frozen=False), committed=_committed
         )
     message = str(refused.value)
     assert f"{run} {item_id}: flagged" in message and "not checked" in message
@@ -234,18 +234,23 @@ def test_an_audit_that_doesnt_fit_the_sweep_is_refused_before_scoring(tmp_path: 
     labels = _clean_audit()
     labels["runs"]["pool-1027-1856-r1"]["slips"] = [_slip("e40", "contradicted")]
     with pytest.raises(repo.Refusal, match="the audit doesn't fit the sweep:\n  pool-1027-1856-r1: slip 1: e40 points at nothing"):
-        score.score_sweep(_sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path), committed=_committed)
+        score.score_sweep(_sweep_dir(tmp_path), _write(tmp_path, "audit.json", labels), bar_path=_bar(tmp_path, frozen=False), committed=_committed)
 
 
 # --- the pass bar and the freeze ----------------------------------------------------
 
 
-def test_the_committed_pass_bar_is_r7s_and_not_frozen_yet() -> None:
+def test_the_committed_pass_bar_is_r7s_and_frozen() -> None:
     bar = json.loads(score.PASS_BAR.read_text(encoding="utf-8"))
     assert (bar["precision"], bar["strict_recall"], bar["judge_if_prose_share_at_least"]) == (0.85, 0.70, 0.20)
-    assert bar["recall_includes_prose_only"] is True and bar["frozen"] is False
-    for path in bar["frozen_paths"]:
-        assert (repo.REPO / path).exists(), path
+    assert bar["recall_includes_prose_only"] is True and bar["frozen"] is True
+    # The user's calls (2026-11-15): the 8 paths of 2026-11-13 widened to 26, and the scenarios and windows held to each sweep's commit.
+    assert len(bar["frozen_paths"]) == 26 and bar["frozen_paths"] == sorted(set(bar["frozen_paths"]))
+    assert bar["fixed_from_sweep"] == ["agent/evals/scenarios.py", "tools/tests/fixtures/windows"]
+    assert not {p for p in bar["frozen_paths"] for f in bar["fixed_from_sweep"] if f == p or f.startswith(p + "/") or p.startswith(f + "/")}
+    tracked = set(repo.git("ls-files", "--", *bar["frozen_paths"], *bar["fixed_from_sweep"]).stdout.splitlines())
+    for path in bar["frozen_paths"] + bar["fixed_from_sweep"]:
+        assert any(t == path or t.startswith(path + "/") for t in tracked), f"{path} isn't tracked"
 
 
 FIXED = ("agent/prompts",)
@@ -427,11 +432,17 @@ def test_a_frozen_bar_refuses_a_sweep_that_ran_before_the_freeze(tmp_path: Path,
         _frozen(tmp_path, _all_caught(), _calls(), commit=subprocess.run(["git", "rev-parse", "57455ab"], cwd=repo.REPO, capture_output=True, text=True).stdout.strip())
 
 
-def test_grade_refuses_files_that_arent_committed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_grade_refuses_files_that_arent_committed(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, held_out: None
+) -> None:
+    # The committed bar is frozen: the sweep is a test-split one, and the freeze's own checks
+    # (tested above) are passed over, so the refusal is the audit's.
+    monkeypatch.setattr(score, "check_freeze", lambda *args: None)
     folder = _sweep_dir(tmp_path)
-    assert evals_main(["grade", str(folder), "--audit", str(_write(tmp_path, "audit.json", _clean_audit()))]) == 1
+    audit = _write(tmp_path, "audit.json", _clean_audit())
+    assert evals_main(["grade", str(folder), "--audit", str(audit)]) == 1
     err = capsys.readouterr().err
-    assert err.startswith("Refused: ") and "isn't" in err and "committed" in err
+    assert err.startswith("Refused: ") and "audit.json isn't in the repo, so it isn't committed" in err
 
 
 # --- the labeling packet and the comparison (R8) -------------------------------------
