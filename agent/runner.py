@@ -47,6 +47,9 @@ class RunReport:
     trims: list[str] = field(default_factory=list)
     # Answers given as text and asked for again as a tool call (ANSWER_AS_TEXT).
     answers_in_text: int = 0
+    # The tools called after the run was first asked for its answer; None if it
+    # never was (hooks.GuardHooks.tool_calls_after_ask).
+    tool_calls_after_ask: list[str] | None = None
 
     def summary(self) -> str:
         tools = ", ".join(f"{name} x{n}" for name, n in Counter(self.tool_calls).items()) or "none"
@@ -158,6 +161,7 @@ async def investigate(
         messages=agent.messages,
         trims=list(guard.trims),
         answers_in_text=answers_in_text,
+        tool_calls_after_ask=hooks.tool_calls_after_ask,
     )
 
 

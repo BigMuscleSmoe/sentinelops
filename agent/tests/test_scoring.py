@@ -7,6 +7,7 @@ for each test: what's measured is the arithmetic and the refusals, not the runs.
 
 import asyncio
 import copy
+import dataclasses
 import json
 import subprocess
 from pathlib import Path
@@ -20,7 +21,7 @@ from checker.__main__ import check_run
 from evals import audit, packet, repo, score, sweep
 from evals.__main__ import main as evals_main
 from evals.arms import ARMS, Arm
-from evals.scenarios import BY_ID
+from evals.scenarios import BY_ID, WINDOW_NOTES, Split
 from fake_anthropic import FEDERATION_IDS, FakeAnthropic, Reply, answer, tool_use
 from guards import Limits
 from pricing import price_for
@@ -41,12 +42,18 @@ HALTED = {
 }
 
 
-def _sweep_dir(tmp_path: Path, *, halted: bool = False, error: bool = False, meta: dict[str, Any] | None = None) -> Path:
-    """Trial 3's runs as a sweep folder, optionally with a halted run and an errored one beside them."""
+def _sweep_dir(
+    tmp_path: Path, *, halted: bool = False, error: bool = False, meta: dict[str, Any] | None = None, after_ask: dict[str, Any] | None = None
+) -> Path:
+    """Trial 3's runs as a sweep folder, optionally with a halted run and an errored one beside them.
+
+    Trial 3's transcripts are from before tool_calls_after_ask was recorded: after_ask gives some runs one."""
     folder = tmp_path / TRIAL
     folder.mkdir(parents=True)
     records = []
     for name, run in TRIAL_RUNS.items():
+        if after_ask and name in after_ask:
+            run = {**run, "tool_calls_after_ask": after_ask[name]}
         (folder / f"{name}.json").write_text(json.dumps(run), encoding="utf-8")
         records.append({"run": name, "scenario": run["eval"]["scenario"], "attempt": 1, "status": "answered", "cost_usd": 0.006, "transcript": f"{name}.json"})
     if halted:
@@ -240,10 +247,31 @@ def test_the_committed_pass_bar_is_r7s_and_not_frozen_yet() -> None:
         assert (repo.REPO / path).exists(), path
 
 
-def _frozen(tmp_path: Path, labels: dict[str, Any], calls: dict[str, Any], **meta: Any) -> score.Report:
+FIXED = ("agent/prompts",)
+
+
+def _frozen_bar(tmp_path: Path, fixed: tuple[str, ...] | None = FIXED) -> Path:
+    """The committed bar, frozen over one small path; fixed None leaves fixed_from_sweep out."""
+    bar = {**json.loads(score.PASS_BAR.read_text(encoding="utf-8")), "frozen": True, "frozen_paths": ["agent/prompts"]}
+    bar.pop("fixed_from_sweep", None)
+    if fixed is not None:
+        bar["fixed_from_sweep"] = list(fixed)
+    return _write(tmp_path, "bar.json", bar)
+
+
+def _frozen(
+    tmp_path: Path, labels: dict[str, Any], calls: dict[str, Any], fixed: tuple[str, ...] | None = FIXED, committed: Any = _committed, **meta: Any
+) -> score.Report:
     folder = _sweep_dir(tmp_path, meta={"commit": repo.head(), "dirty": [], **meta})
-    bar = _bar(tmp_path, frozen=True, frozen_paths=["agent/prompts"])
-    return score.score_sweep(folder, _write(tmp_path, "audit.json", labels), _write(tmp_path, "flags.json", calls), bar_path=bar, committed=_committed)
+    return score.score_sweep(
+        folder, _write(tmp_path, "audit.json", labels), _write(tmp_path, "flags.json", calls), bar_path=_frozen_bar(tmp_path, fixed), committed=committed
+    )
+
+
+@pytest.fixture
+def held_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trial 3's alarms as test-split ones: under a frozen bar only a test-split sweep is graded."""
+    monkeypatch.setattr(score, "BY_ID", {k: dataclasses.replace(s, split=Split.TEST) for k, s in BY_ID.items()})
 
 
 def _all_caught() -> dict[str, Any]:
@@ -253,7 +281,7 @@ def _all_caught() -> dict[str, Any]:
     return labels
 
 
-def test_a_frozen_bar_gives_pass_or_fail_on_the_hand_checked_flags(tmp_path: Path) -> None:
+def test_a_frozen_bar_gives_pass_or_fail_on_the_hand_checked_flags(tmp_path: Path, held_out: None) -> None:
     passed = _frozen(tmp_path / "a", _all_caught(), _calls())
     assert passed.verdict == "PASS" and passed.summary["all"]["precision"] == 1.0 and passed.summary["all"]["strict_recall"] == 1.0
 
@@ -277,9 +305,115 @@ def test_a_frozen_bar_gives_pass_or_fail_on_the_hand_checked_flags(tmp_path: Pat
         ({"dirty": ["agent/prompts/system.md"]}, "ran with uncommitted changes: agent/prompts/system.md"),
     ],
 )
-def test_a_frozen_bar_refuses_a_sweep_it_cant_hold_to_the_freeze(tmp_path: Path, meta: dict[str, Any], refusal: str) -> None:
+def test_a_frozen_bar_refuses_a_sweep_it_cant_hold_to_the_freeze(tmp_path: Path, held_out: None, meta: dict[str, Any], refusal: str) -> None:
     with pytest.raises(repo.Refusal, match=refusal):
         _frozen(tmp_path, _all_caught(), _calls(), **meta)
+
+
+def test_a_frozen_bar_grades_only_a_test_split_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(repo.Refusal, match=r"only a test-split sweep is a result: this one holds tuning scenarios \(deploy-1027-1905, "):
+        _frozen(tmp_path / "a", _all_caught(), _calls())
+    # A mixed sweep is refused too, and told which of its scenarios aren't the test split's.
+    mixed = {k: dataclasses.replace(s, split=Split.TEST if k.startswith("deploy") else Split.TUNING) for k, s in BY_ID.items()}
+    monkeypatch.setattr(score, "BY_ID", mixed)
+    with pytest.raises(repo.Refusal, match=r"holds tuning scenarios \(pool-1027-1856, pool-1027-1900, pool-1027-1901\)"):
+        _frozen(tmp_path / "b", _all_caught(), _calls())
+    # A scenario the sweep planned counts, scored or not.
+    monkeypatch.setattr(score, "BY_ID", {k: dataclasses.replace(s, split=Split.TEST) for k, s in BY_ID.items() if k != "pool-1027-1856"})
+    with pytest.raises(repo.Refusal, match="names scenarios that aren't in scenarios.py: pool-1027-1856"):
+        _frozen(tmp_path / "c", _all_caught(), _calls())
+    # Unfrozen, the same sweep is graded, as tuning, whatever its split.
+    monkeypatch.setattr(score, "BY_ID", mixed)
+    report = score.score_sweep(_sweep_dir(tmp_path / "d"), _write(tmp_path, "audit.json", _clean_audit()), bar_path=_bar(tmp_path, frozen=False), committed=_committed)
+    assert report.verdict.startswith("TUNING") and report.split == "mixed"
+
+
+def test_a_frozen_bar_holds_the_scenarios_and_windows_to_the_sweeps_own_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, held_out: None
+) -> None:
+    with pytest.raises(repo.Refusal, match="the frozen bar names no fixed_from_sweep paths"):
+        _frozen(tmp_path / "a", _all_caught(), _calls(), fixed=None)
+
+    # The freeze is some earlier commit, and scenarios.py has changed since the sweep ran.
+    freeze, fixed = "f" * 40, ("agent/evals/scenarios.py", "tools/tests/fixtures/windows")
+    asked = []
+
+    def unchanged(since: str, paths: list[str], until: str | None = None) -> bool:
+        asked.append((since, tuple(paths), until))
+        return tuple(paths) != fixed
+
+    monkeypatch.setattr(score, "unchanged", unchanged)
+    monkeypatch.setattr(score, "git", lambda *args: subprocess.CompletedProcess(args, 0, "", ""))
+    with pytest.raises(repo.Refusal, match="agent/evals/scenarios.py, tools/tests/fixtures/windows changed since the sweep ran on"):
+        _frozen(tmp_path / "b", _all_caught(), _calls(), fixed=fixed, committed=lambda _: freeze)
+    # The frozen paths are held to the freeze; these, to the sweep's own commit and the files as they are now.
+    assert asked == [(freeze, ("agent/prompts",), repo.head()), (freeze, ("agent/prompts",), None), (repo.head(), fixed, None)]
+
+    # Unchanged since the sweep ran, it's graded: rows and windows added before it, after the freeze, are fine.
+    monkeypatch.setattr(score, "unchanged", lambda since, paths, until=None: True)
+    assert _frozen(tmp_path / "c", _all_caught(), _calls(), fixed=fixed, committed=lambda _: freeze).verdict == "PASS"
+
+
+def test_a_test_sweep_can_start_only_where_it_could_be_graded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path.mkdir(exist_ok=True)
+    with pytest.raises(repo.Refusal, match="the test split runs only after the freeze, and the pass bar isn't frozen"):
+        score.check_before_test_sweep(_bar(tmp_path, frozen=False), committed=_committed)
+    frozen = _frozen_bar(tmp_path)
+    monkeypatch.setattr(score, "dirty", lambda: ["agent/runner.py"])
+    with pytest.raises(repo.Refusal, match="uncommitted changes: agent/runner.py"):
+        score.check_before_test_sweep(frozen, committed=_committed)
+    monkeypatch.setattr(score, "dirty", lambda: [])
+    score.check_before_test_sweep(frozen, committed=_committed)  # frozen, clean, on the freeze's own commit
+    with pytest.raises(repo.Refusal, match="names no fixed_from_sweep paths"):
+        score.check_before_test_sweep(_frozen_bar(tmp_path, fixed=None), committed=_committed)
+
+
+# --- the report's groups, the count after the ask, and its notes ----------------------------
+
+
+def test_the_report_groups_runs_by_fault_and_counts_the_tool_calls_after_the_ask(tmp_path: Path) -> None:
+    after = {
+        "pool-1027-1856-r1": [],  # asked, and answered
+        "pool-1027-1900-r1": ["get_metrics", "get_recent_logs"],  # asked, and went on investigating
+        "deploy-1113-0257-r1": None,  # answered unasked
+        "deploy-1027-1905-r1": [],
+    }
+    report = score.score_sweep(
+        _sweep_dir(tmp_path, after_ask=after), _write(tmp_path, "audit.json", _clean_audit()), bar_path=_bar(tmp_path, frozen=False), committed=_committed
+    )
+    summary = report.summary
+    assert list(summary) == ["all", "unseen", "seen", "bad_deploy", "db_pool_exhaustion"]
+    assert (summary["bad_deploy"]["runs"], summary["db_pool_exhaustion"]["runs"]) == (6, 3)
+    assert summary["bad_deploy"]["flags"] + summary["db_pool_exhaustion"]["flags"] == summary["all"]["flags"] == 6
+    whole, pool = summary["all"], summary["db_pool_exhaustion"]
+    assert (whole["asked_recorded"], whole["asked"], whole["calls_after_ask"], whole["runs_with_calls_after_ask"]) == (4, 3, 2, 1)
+    assert (pool["asked_recorded"], pool["asked"], pool["calls_after_ask"], pool["runs_with_calls_after_ask"]) == (2, 2, 2, 1)
+    text = score.render(report)
+    assert f"sweep {TRIAL}, arm haiku (claude-haiku-5-5), the tuning split; audit " in text
+    assert "\nbad_deploy: 6 runs (6 answered)" in text and "\ndb_pool_exhaustion: 3 runs (3 answered)" in text
+    assert "\nunseen: 6 runs" in text and "\nseen: 3 runs" in text
+    assert "  asked for the answer in 3 of 4 runs (5 not recorded); tool calls after the ask: 2, in 1 run(s)" in text
+    assert "  asked for the answer in 2 of 2 runs (1 not recorded); tool calls after the ask: 2, in 1 run(s)" in text  # the pool's
+    assert "notes:" not in text
+
+    # Transcripts from before the count don't read as "never asked".
+    old = score.score_sweep(_sweep_dir(tmp_path / "b"), _write(tmp_path, "audit.json", _clean_audit()), bar_path=_bar(tmp_path, frozen=False), committed=_committed)
+    assert old.summary["all"]["asked_recorded"] == 0
+    assert "  asked for the answer: not recorded (transcripts from before the count)" in score.render(old)
+
+
+def test_the_report_says_where_the_rubric_wasnt_blind_to_a_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    window = "2026-11-14-2357"  # downstream_timeout's held-out window
+    assert (repo.REPO / "tools" / "tests" / "fixtures" / "windows" / window).is_dir()
+    note = WINDOW_NOTES[window]
+    assert "04d0479" in note and "22:28 bad_deploy break" in note and note.isascii()
+    moved = {k: dataclasses.replace(s, seen=False, window=window if k == "deploy-1113-0257" else s.window) for k, s in BY_ID.items()}
+    monkeypatch.setattr(score, "BY_ID", moved)
+    report = score.score_sweep(_sweep_dir(tmp_path), _write(tmp_path, "audit.json", _clean_audit()), bar_path=_bar(tmp_path, frozen=False), committed=_committed)
+    text = score.render(report)
+    assert f"\n\nnotes:\n  window {window}: {note}" in text and text.count("04d0479") == 1
+    # With every run unseen, that group would only repeat the whole: it's left out.
+    assert "\nunseen: " not in text and "\nseen: " not in text and text.count("\nall: 9 runs") == 1
 
 
 def _has_commit(commit: str) -> bool:
@@ -287,7 +421,7 @@ def _has_commit(commit: str) -> bool:
 
 
 @pytest.mark.skipif(not _has_commit("57455ab"), reason="a shallow clone lacks the older commit")
-def test_a_frozen_bar_refuses_a_sweep_that_ran_before_the_freeze(tmp_path: Path) -> None:
+def test_a_frozen_bar_refuses_a_sweep_that_ran_before_the_freeze(tmp_path: Path, held_out: None) -> None:
     with pytest.raises(repo.Refusal, match="before the freeze"):
         _frozen(tmp_path, _all_caught(), _calls(), commit=subprocess.run(["git", "rev-parse", "57455ab"], cwd=repo.REPO, capture_output=True, text=True).stdout.strip())
 

@@ -704,3 +704,61 @@ def test_a_sonnet_run_is_refused_under_the_production_cap_and_finishes_under_its
     # 3 calls of 5,000 tokens in at $2 and 300 out at $10, per million
     assert report.cost_usd == pytest.approx(3 * (0.010 + 0.003))
     assert all(call.reserved_usd > 0.16 for call in report.model_calls)
+
+
+# --- the tool calls a run makes after it's asked for its answer -----------------------------
+#
+# A run that ends its investigation in text is asked for its answer. A model that takes a
+# forced tool can then only answer; one asked with tool_choice auto can go on investigating.
+
+
+def test_a_run_that_answers_unasked_records_no_ask() -> None:
+    fake = FakeAnthropic([Reply([tool_use("get_metrics")]), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.tool_calls == ["get_metrics"] and report.tool_calls_after_ask is None
+
+
+def test_a_forced_model_makes_no_tool_call_after_it_is_asked() -> None:
+    fake = FakeAnthropic([Reply([tool_use("get_metrics")]), DONE, answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    # Asked, so not None; the call before the ask isn't counted, and a forced model can make none after.
+    assert report.tool_calls == ["get_metrics"] and report.tool_calls_after_ask == []
+
+
+def test_the_tool_calls_a_model_asked_with_auto_goes_on_to_make_are_recorded(
+    unforced: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="sentinelops.model")
+    fake = cant_be_forced(
+        [
+            Reply([tool_use("get_metrics")]),
+            DONE,
+            Reply([tool_use("get_recent_logs")]),
+            Reply([tool_use("get_metrics")]),
+            answer(DIAGNOSIS),
+        ]
+    )
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"] and report.answers_in_text == 0
+    assert report.tool_calls == ["get_metrics", "get_recent_logs", "get_metrics"]
+    assert report.tool_calls_after_ask == ["get_recent_logs", "get_metrics"]
+    # Every call after the first ask still asks for the answer, with every tool offered.
+    assert tool_choices(fake.requests) == [None, None, FORCED, AUTO, AUTO, AUTO]
+    events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.model"]
+    assert [e["tool_calls"] for e in events if e["event"] == "asked_for_answer"] == [1]  # logged once, at the first ask
+
+
+def test_a_tool_call_made_after_the_ask_again_counts_too(unforced: None) -> None:
+    said = Reply([text("The 1.43.0 deploy caused it.")], stop_reason="end_turn")
+    fake = cant_be_forced([DONE, said, Reply([tool_use("get_recent_logs")]), answer(DIAGNOSIS)])
+
+    report = run(fake)
+
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+    assert report.answers_in_text == 1 and report.tool_calls_after_ask == ["get_recent_logs"]

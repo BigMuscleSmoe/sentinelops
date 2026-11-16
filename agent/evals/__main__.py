@@ -1,7 +1,7 @@
 """The eval harness's commands (from agent/; see evals/__init__.py).
 
-    uv run python -m evals plan [--runs 3] [--arm haiku|sonnet]
-    uv run python -m evals sweep --go [--runs 3] [--arm haiku] [--scenario ID ...] [--resume DIR] [--pause 10]
+    uv run python -m evals plan [--runs 3] [--arm haiku|sonnet] [--split tuning|test]
+    uv run python -m evals sweep --go [--runs 3] [--arm haiku] [--split tuning] [--scenario ID ...] [--resume DIR] [--pause 10]
     uv run python -m evals packet DIR --out PACKET.md [--run RUN ...]
     uv run python -m evals audit DIR --labels LABELS.json [--some]
     uv run python -m evals flags DIR --out FLAGS.json
@@ -10,8 +10,10 @@
 
 plan calls nothing: it replays each scenario's alarm from its window and prints
 the runs and the cost bound. sweep without --go does the same and stops; with
-it, every run is a real model call, billed to Anthropic. The rest call no model
-and no AWS: packet writes what a labeler reads, with a blank label file beside
+it, every run is a real model call, billed to Anthropic. Both take one split's
+scenarios: the tuning split unless --split test, and a test sweep starts only
+once the pass bar is frozen and the tree could be graded as it stands. The rest
+call no model and no AWS: packet writes what a labeler reads, with a blank label file beside
 it; audit checks a label file against the sweep, refusing a label that points
 at nothing; flags writes every checker flag for the hand check; grade scores the
 sweep against its committed audit and the pass bar; compare sets two labelers'
@@ -27,7 +29,7 @@ from pathlib import Path
 
 from alarm import AlarmEvent
 from evals.arms import ARMS, DEFAULT_ARM, Arm
-from evals.scenarios import BY_ID, SCENARIOS, Scenario, load_window
+from evals.scenarios import BY_ID, SCENARIOS, Scenario, Split, load_window
 from evals.sweep import SWEEPS, plan, run_id, run_sweep
 
 EXIT_OK, EXIT_FAILED, EXIT_STOPPED = 0, 1, 2
@@ -41,6 +43,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.add_argument("--runs", type=int, default=3, help="runs per scenario (default 3)")
         p.add_argument("--scenario", action="append", choices=sorted(BY_ID), help="only these (repeatable)")
         p.add_argument("--arm", choices=sorted(ARMS), default=DEFAULT_ARM, help=f"the agent's model and caps (default {DEFAULT_ARM})")
+        p.add_argument(
+            "--split",
+            choices=[s.value for s in Split],
+            default=Split.TUNING.value,
+            help="which scenarios: tuning (default), or test, the held-out alarms a result is measured on",
+        )
     sweep = sub.choices["sweep"]
     sweep.add_argument("--go", action="store_true", help="make the model calls; without it, only the plan")
     sweep.add_argument("--resume", type=Path, help="a sweep's folder: run what it hasn't, retrying its errors")
@@ -69,11 +77,22 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def chosen(args: argparse.Namespace) -> list[Scenario]:
-    return [BY_ID[i] for i in args.scenario] if args.scenario else list(SCENARIOS)
+    """The split's scenarios, or those named, which must all be in it: a sweep is one split's."""
+    split = Split(args.split)
+    if not args.scenario:
+        return [s for s in SCENARIOS if s.split is split]
+    picked = [BY_ID[i] for i in args.scenario]
+    other = [s.id for s in picked if s.split is not split]
+    if other:
+        raise ValueError(f"not in the {split.value} split: {', '.join(other)} (a sweep is one split's; --split picks it)")
+    return picked
 
 
-def show_plan(scenarios: list[Scenario], runs: int, arm: Arm = ARMS[DEFAULT_ARM]) -> int:
+def show_plan(scenarios: list[Scenario], runs: int, arm: Arm = ARMS[DEFAULT_ARM], split: Split = Split.TUNING) -> int:
     """Replays every alarm from its window, offline, so a sweep can't start on a broken one."""
+    if not scenarios:
+        print(f"The {split.value} split has no scenarios yet.", file=sys.stderr)
+        return EXIT_FAILED
     windows = {}
     for s in scenarios:
         window = windows.setdefault(s.window, load_window(s.window))
@@ -81,11 +100,15 @@ def show_plan(scenarios: list[Scenario], runs: int, arm: Arm = ARMS[DEFAULT_ARM]
         if alarm.fired_at != s.fired_at:
             print(f"{s.id}: the window replays {alarm.fired_at}, not {s.fired_at}", file=sys.stderr)
             return EXIT_FAILED
-        print(f"{s.id:<18} {s.fault.value:<19} {'seen' if s.seen else 'unseen':<6} {s.alarm} at {s.fired_at:%Y-%m-%d %H:%M:%S}Z")
+        print(
+            f"{s.id:<21} {s.fault.value:<19} {s.split.value:<6} {'seen' if s.seen else 'unseen':<6} "
+            f"{s.alarm} at {s.fired_at:%Y-%m-%d %H:%M:%S}Z"
+        )
     todo = plan(scenarios, runs)
     bound = min(arm.cap_usd, len(todo) * arm.per_run_usd)
     print(
-        f"\n{len(todo)} runs ({len(scenarios)} scenarios x {runs}), one at a time, on the {arm.name} arm ({arm.model_id}). "
+        f"\n{len(todo)} runs ({len(scenarios)} scenarios x {runs}) of the {split.value} split, one at a time, "
+        f"on the {arm.name} arm ({arm.model_id}). "
         f"Expected about ${len(todo) * arm.expected_run_usd:.2f}; at most ${bound:.2f} "
         f"(${arm.per_run_usd:.2f} a run, ${arm.cap_usd:.2f} a sweep). No AWS cost: the windows answer every read."
     )
@@ -95,9 +118,9 @@ def show_plan(scenarios: list[Scenario], runs: int, arm: Arm = ARMS[DEFAULT_ARM]
 
 
 def sweep(args: argparse.Namespace) -> int:
-    scenarios = chosen(args)
+    scenarios, split = args.scenarios, Split(args.split)
     arm = ARMS[args.arm]
-    if show_plan(scenarios, args.runs, arm) != EXIT_OK:
+    if show_plan(scenarios, args.runs, arm, split) != EXIT_OK:
         return EXIT_FAILED
     if not args.go:
         print("\nNothing ran: add --go to make the model calls.")
@@ -105,6 +128,15 @@ def sweep(args: argparse.Namespace) -> int:
     if arm.blocked:
         print(f"Refused: the {arm.name} arm is blocked.", file=sys.stderr)
         return EXIT_FAILED
+    if split is Split.TEST:
+        # Before anything is spent: a test sweep that couldn't be graded as it would run now.
+        from evals import score
+
+        try:
+            score.check_before_test_sweep()
+        except score.Refusal as e:
+            print(f"Refused: {e}", file=sys.stderr)
+            return EXIT_FAILED
 
     import os
 
@@ -147,7 +179,7 @@ def sweep(args: argparse.Namespace) -> int:
                 pause_s=args.pause,
             )
         )
-    except ValueError as e:  # a resumed sweep of another arm
+    except ValueError as e:  # a sweep resumed as another arm's or split's, or on another commit
         print(f"Refused: {e}", file=sys.stderr)
         return EXIT_FAILED
     wanted = {run_id(s, n) for s, n in plan(scenarios, args.runs)}
@@ -251,8 +283,14 @@ COMMANDS = {"sweep": sweep, "packet": packet, "audit": check_labels, "flags": fl
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    if args.command in ("plan", "sweep"):
+        try:
+            args.scenarios = chosen(args)
+        except ValueError as e:
+            print(f"Refused: {e}", file=sys.stderr)
+            return EXIT_FAILED
     if args.command == "plan":
-        return show_plan(chosen(args), args.runs, ARMS[args.arm])
+        return show_plan(args.scenarios, args.runs, ARMS[args.arm], Split(args.split))
     return COMMANDS[args.command](args)
 
 

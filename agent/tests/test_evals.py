@@ -19,9 +19,10 @@ import pytest
 
 from alarm import AlarmEvent
 from answers import item
+import evals.__main__ as evals_cli
 from evals import rubrics, score, sweep
 from evals.__main__ import main as evals_main
-from evals.scenarios import BY_ID, SCENARIOS, Fault, load_window
+from evals.scenarios import BY_ID, ERRORS, SCENARIOS, Fault, Scenario, Split, load_window
 from evals.witness import ModelWitness, same_model
 from checked_runs import RUNS
 from checker.__main__ import check_run
@@ -32,6 +33,11 @@ from stubs import FakeSession
 
 # The alarms of step 1's 12 saved runs, which the first grader's rules were written on (kept at 57455ab).
 SEEN = {"deploy-1027-1905", "deploy-1029-0156", "deploy-1112-2000"}
+# The alarms the checker, the rubric, and the answer's wording were tuned on (every sweep through 20261114T221926Z).
+TUNED_ON = {
+    "pool-1027-1856", "pool-1027-1900", "pool-1027-1901", "deploy-1027-1905", "deploy-1029-0156",
+    "deploy-1112-0747", "deploy-1112-0803", "deploy-1112-2000", "deploy-1113-0257",
+}  # fmt: skip
 FEDERATED = Settings.from_env(FEDERATION_IDS)
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 
@@ -90,6 +96,13 @@ def test_each_scenario_replays_offline_and_its_culprit_is_in_deploy_history(scen
 
 def test_seen_marks_exactly_the_alarms_the_first_grader_was_written_on() -> None:
     assert {s.id for s in SCENARIOS if s.seen} == SEEN
+
+
+def test_the_tuning_split_is_the_nine_alarms_tuned_on_and_a_new_row_must_say_its_split() -> None:
+    assert {s.id for s in SCENARIOS if s.split is Split.TUNING} == TUNED_ON
+    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == []  # none until the held-out window's row
+    with pytest.raises(TypeError, match="split"):
+        Scenario("new-0101-0000", "2026-11-13-0257", ERRORS, datetime(2027, 1, 1, tzinfo=UTC), Fault.BAD_DEPLOY, "00:00", seen=False)
 
 
 # --- rubrics ----------------------------------------------------------------------
@@ -557,8 +570,11 @@ def test_a_sweep_replays_each_alarm_through_the_real_loop_and_keeps_every_transc
     saved = json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))
     assert [r["run"] for r in saved["records"]] == ["deploy-1113-0257-r1", "pool-1027-1856-r1"]
     assert (saved["arm"], saved["per_run_usd"], saved["cap_usd"]) == ("haiku", 0.10, 1.00)
+    assert saved["split"] == "tuning" and saved["commit"] == sweep.repo.head()
     transcript = json.loads((tmp_path / "deploy-1113-0257-r1.json").read_text(encoding="utf-8"))
     assert transcript["eval"]["scenario"] == "deploy-1113-0257" and transcript["eval"]["seen"] is False
+    assert transcript["eval"]["split"] == "tuning"
+    assert transcript["tool_calls_after_ask"] is None  # each answered without being asked
     assert transcript["hypothesis"]["root_cause"] == DEPLOY_ANSWER["root_cause"]
     assert transcript["alarm"]["replay"] is True and transcript["tools_via"] == "local"
 
@@ -588,6 +604,66 @@ def test_a_failed_sign_in_is_an_error_and_a_rerun_retries_only_it(tmp_path: Path
     assert (tmp_path / "deploy-1113-0257-r1.attempt2.json").exists()
     # Run again: everything has an outcome, so nothing runs.
     assert _sweep([scenario], 1, FakeAnthropic([]), FakeSession(), tmp_path) == second
+
+
+def test_a_sweep_is_one_splits_and_says_which(tmp_path: Path) -> None:
+    tuning, held_out = BY_ID["deploy-1113-0257"], dataclasses.replace(BY_ID["pool-1027-1856"], split=Split.TEST)
+    with pytest.raises(ValueError, match="a sweep is one split's: these scenarios are test and tuning"):
+        _sweep([tuning, held_out], 1, FakeAnthropic([]), FakeSession(), tmp_path)
+    assert not (tmp_path / "sweep.json").exists()  # refused before anything ran
+
+    fake, sts = _script(1, POOL_ANSWER), _sts(1)
+    _sweep([held_out], 1, fake, sts, tmp_path)
+    saved = json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))
+    transcript = json.loads((tmp_path / "pool-1027-1856-r1.json").read_text(encoding="utf-8"))
+    assert saved["split"] == "test" and transcript["eval"]["split"] == "test"
+
+
+def _begun(folder: Path, **changes: Any) -> dict[str, Any]:
+    """A sweep.json as a tuning Haiku sweep begun on this commit and tree leaves it, changed."""
+    meta = {
+        "sweep": folder.name, "arm": "haiku", "split": "tuning", "commit": sweep.repo.head(),
+        "dirty": sweep.repo.dirty(), "records": [], **changes,
+    }  # fmt: skip
+    (folder / "sweep.json").write_text(json.dumps(meta), encoding="utf-8")
+    return meta
+
+
+@pytest.mark.parametrize(
+    ("changes", "refusal"),
+    [
+        # sweep.json holds one commit for all its runs: resumed elsewhere, it would name the wrong one.
+        ({"commit": "0" * 40}, "ran on 0000000, and HEAD is [0-9a-f]{7}: a sweep is one commit's, so start a new one"),
+        ({"commit": None}, "ran on no recorded commit, and HEAD is [0-9a-f]{7}"),
+        ({"split": "test"}, "is a test sweep, not a tuning one"),
+        ({"arm": "sonnet"}, "is the sonnet arm's sweep, not haiku's"),
+    ],
+)
+def test_a_sweep_is_resumed_only_as_what_it_is(tmp_path: Path, changes: dict[str, Any], refusal: str) -> None:
+    before = _begun(tmp_path, **changes)
+    with pytest.raises(ValueError, match=refusal):
+        _sweep([BY_ID["deploy-1113-0257"]], 1, FakeAnthropic([]), FakeSession(), tmp_path)
+    assert json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8")) == before  # not rewritten, nothing run
+
+
+def test_a_sweep_begun_on_a_clean_tree_isnt_resumed_on_a_changed_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _begun(tmp_path, dirty=[])
+    monkeypatch.setattr(sweep.repo, "dirty", lambda: ["agent/runner.py"])
+    with pytest.raises(ValueError, match="ran on a clean tree, and it has uncommitted changes now: agent/runner.py"):
+        _sweep([BY_ID["deploy-1113-0257"]], 1, FakeAnthropic([]), FakeSession(), tmp_path)
+
+
+def test_a_sweep_on_its_own_commit_resumes_and_one_from_before_the_split_is_a_tuning_one(tmp_path: Path) -> None:
+    meta = _begun(tmp_path)
+    del meta["split"]
+    (tmp_path / "sweep.json").write_text(json.dumps(meta), encoding="utf-8")
+    fake, sts = _script(1), _sts(1)
+
+    records = _sweep([BY_ID["deploy-1113-0257"]], 1, fake, sts, tmp_path)
+
+    assert [r.status for r in records] == ["answered"]
+    saved = json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))
+    assert (saved["split"], saved["commit"]) == ("tuning", meta["commit"])
 
 
 def test_an_answer_from_another_model_is_an_error_not_a_score(tmp_path: Path) -> None:
@@ -633,7 +709,63 @@ def test_a_run_that_ends_without_a_hypothesis_is_an_outcome_and_an_api_failure_a
 def test_without_go_the_sweep_command_only_plans(capsys: pytest.CaptureFixture[str]) -> None:
     assert evals_main(["sweep", "--runs", "3"]) == 2
     out = capsys.readouterr().out
-    assert "27 runs (9 scenarios x 3)" in out and "at most $1.00" in out and "Nothing ran" in out
+    assert "27 runs (9 scenarios x 3) of the tuning split" in out and "at most $1.00" in out and "Nothing ran" in out
+
+
+def _with_one_test_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The commands' scenarios with one alarm in the test split, as the held-out window's row will be."""
+    moved = [dataclasses.replace(s, split=Split.TEST) if s.id == "deploy-1113-0257" else s for s in SCENARIOS]
+    monkeypatch.setattr(evals_cli, "SCENARIOS", moved)
+    monkeypatch.setattr(evals_cli, "BY_ID", {s.id: s for s in moved})
+
+
+@pytest.fixture
+def no_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test of a refusal passes --go: if the refusal ever goes, the test fails here and no run starts."""
+
+    def started(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a sweep started")
+
+    monkeypatch.setattr(evals_cli, "run_sweep", started)
+
+
+def test_a_plan_takes_one_split_the_tuning_one_unless_asked(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    _with_one_test_scenario(monkeypatch)
+    assert evals_main(["plan"]) == 0
+    out = capsys.readouterr().out
+    assert "24 runs (8 scenarios x 3) of the tuning split" in out and "deploy-1113-0257" not in out
+    assert evals_main(["plan", "--split", "test"]) == 0
+    out = capsys.readouterr().out
+    assert "3 runs (1 scenarios x 3) of the test split" in out and "pool-1027-1856" not in out
+    # A named scenario must be in the split asked for.
+    assert evals_main(["plan", "--scenario", "deploy-1113-0257"]) == 1
+    assert "Refused: not in the tuning split: deploy-1113-0257" in capsys.readouterr().err
+    assert evals_main(["plan", "--scenario", "deploy-1113-0257", "--split", "test"]) == 0
+    assert evals_main(["plan", "--scenario", "pool-1027-1856", "--scenario", "deploy-1113-0257", "--split", "test"]) == 1
+    assert "Refused: not in the test split: pool-1027-1856" in capsys.readouterr().err
+
+
+def test_a_split_with_no_scenarios_plans_nothing(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, no_sweep: None
+) -> None:
+    monkeypatch.setattr(evals_cli, "SCENARIOS", [s for s in SCENARIOS if s.split is Split.TUNING])
+    assert evals_main(["sweep", "--go", "--split", "test"]) == 1
+    assert "The test split has no scenarios yet." in capsys.readouterr().err
+
+
+def test_a_test_sweep_is_refused_before_the_freeze_and_before_it_spends(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_sweep: None
+) -> None:
+    _with_one_test_scenario(monkeypatch)
+    bar = tmp_path / "bar.json"
+    bar.write_text(json.dumps({**json.loads(score.PASS_BAR.read_text(encoding="utf-8")), "frozen": False}), encoding="utf-8")
+    monkeypatch.setattr(score, "PASS_BAR", bar)  # whatever the committed bar says by now
+    monkeypatch.chdir(tmp_path)  # a sweep that got past the refusal would write here, not in scratch/
+
+    assert evals_main(["sweep", "--go", "--split", "test"]) == 1
+
+    assert "Refused: the test split runs only after the freeze, and the pass bar isn't frozen" in capsys.readouterr().err
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bar.json"]  # no sweep folder: nothing started
 
 
 # --- the scorer -------------------------------------------------------------------

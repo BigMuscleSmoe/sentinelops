@@ -78,6 +78,9 @@ class GuardHooks(HookProvider):
     the before-call hooks, on the request about to go out, and it's the only
     place that sees the request's tool_choice: forcing the Hypothesis tool adds
     120 tokens on Haiku 5.5.
+
+    It also notes the first call that asks the run for its answer, so the tool
+    calls made after it can be told apart (tool_calls_after_ask).
     """
 
     def __init__(self, guard: RunGuard, price: ModelPrice, max_output_tokens: int) -> None:
@@ -92,6 +95,19 @@ class GuardHooks(HookProvider):
         self._projected: int | None = None
         self._reserved = 0.0
         self._trust_counts = True
+        # How many tool calls the run had made when it was first asked for its answer; None until it is.
+        self.asked_after: int | None = None
+
+    @property
+    def tool_calls_after_ask(self) -> list[str] | None:
+        """The tools the run called after it was first asked for its answer, in order.
+
+        None if it never was asked: it called the answer tool itself. A model
+        that takes a forced tool can only answer once asked, so its list is
+        empty; one asked with tool_choice auto (providers.StrictAnswerModel)
+        can go on investigating, and this is what it called.
+        """
+        return None if self.asked_after is None else list(self.guard.tool_calls[self.asked_after :])
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeModelCallEvent, self.before_model_call)
@@ -142,6 +158,10 @@ class GuardHooks(HookProvider):
         self._limit = prompt_limit(self._bound, self._counted)
         self._reserved = self.price.most_a_call_costs(self._limit, self.max_output_tokens)
         self.guard.check(reserve_usd=self._reserved)
+        if context.structured_output_model is not None and self.asked_after is None:
+            # Strands passes the output model only on a call that asks for the answer.
+            self.asked_after = len(self.guard.tool_calls)
+            self._log("asked_for_answer", tool_calls=self.asked_after)
         return context
 
     async def _count(self, context: InvokeModelContext) -> tuple[int | None, int | None]:

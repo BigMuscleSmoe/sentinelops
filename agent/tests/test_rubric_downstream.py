@@ -13,11 +13,14 @@ import pytest
 from checker.checks import ItemCheck, Verdict
 from checker.resolve import Entry
 from evals import rubrics
-from evals.scenarios import LATENCY, Fault, Scenario
+from evals.scenarios import LATENCY, Fault, Scenario, Split
 
 FIRED = datetime(2026, 11, 15, 22, 29, 5, tzinfo=UTC)
 ONSET = datetime(2026, 11, 15, 22, 28, 29, tzinfo=UTC)  # the break
-SCENARIO = Scenario("downstream-dry-run", "none", LATENCY, FIRED, Fault.DOWNSTREAM_TIMEOUT, None, seen=False, onset=ONSET)
+# Hand-written, and what the rubric's rules were tuned on: never a test scenario.
+SCENARIO = Scenario(
+    "downstream-dry-run", "none", LATENCY, FIRED, Fault.DOWNSTREAM_TIMEOUT, None, seen=False, onset=ONSET, split=Split.TUNING
+)
 ROW = datetime(2026, 11, 15, 22, 28, 40, tzinfo=UTC)
 FIELDS = ("at", "column", "count", "end", "high", "kind", "lines", "low", "note", "seconds", "source", "start", "value")
 

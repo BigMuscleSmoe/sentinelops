@@ -4,11 +4,17 @@ The cause of each is known because the fault controller made it. `seen` marks
 the alarms whose runs the first grader's rules were written on (the 12 saved
 runs of step 1, kept at 57455ab): scores there are in-sample, and are reported
 apart from the others.
+
+`split` says what a scenario is for. The tuning split is every alarm the
+checker, the rubric, and the answer's wording were tuned on: a sweep of it is
+never a result. The test split is held out until the freeze (the grader
+redesign's step 8) and run only after it. A sweep is one split's, and under a
+frozen pass bar only a test-split sweep is graded.
 """
 
 import importlib.util
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -27,6 +33,11 @@ class Fault(StrEnum):
     DOWNSTREAM_TIMEOUT = "downstream_timeout"
 
 
+class Split(StrEnum):
+    TUNING = "tuning"
+    TEST = "test"
+
+
 @dataclass(frozen=True)
 class Scenario:
     id: str
@@ -40,6 +51,8 @@ class Scenario:
     seen: bool
     # When the fault began (the break), for a fault with no culprit record.
     onset: datetime | None = None
+    # Stated on every row, so a new alarm joins no split by default.
+    split: Split = field(kw_only=True)
 
 
 def _at(value: str) -> datetime:
@@ -47,17 +60,26 @@ def _at(value: str) -> datetime:
 
 
 SCENARIOS = [
-    Scenario("pool-1027-1856", "2026-10-27", POOL_WAIT, _at("2026-10-27T18:56:46.774Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False),
-    Scenario("pool-1027-1900", "2026-10-27", LATENCY, _at("2026-10-27T19:00:27.088Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False),
-    Scenario("pool-1027-1901", "2026-10-27", ERRORS, _at("2026-10-27T19:01:07.026Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False),
-    Scenario("deploy-1027-1905", "2026-10-27", ERRORS, _at("2026-10-27T19:05:57.026Z"), Fault.BAD_DEPLOY, "19:05", seen=True),
-    Scenario("deploy-1029-0156", "2026-10-29-live", ERRORS, _at("2026-10-29T01:56:07.026Z"), Fault.BAD_DEPLOY, "01:55", seen=True),
-    Scenario("deploy-1112-0747", "2026-11-12-0747", ERRORS, _at("2026-11-12T07:47:05.004Z"), Fault.BAD_DEPLOY, "07:46", seen=False),
-    Scenario("deploy-1112-0803", "2026-11-12-0747", ERRORS, _at("2026-11-12T08:03:45.006Z"), Fault.BAD_DEPLOY, "08:03", seen=False),
-    Scenario("deploy-1112-2000", "2026-11-12-2000", ERRORS, _at("2026-11-12T20:00:45.006Z"), Fault.BAD_DEPLOY, "20:00", seen=True),
-    Scenario("deploy-1113-0257", "2026-11-13-0257", ERRORS, _at("2026-11-13T02:57:45.007Z"), Fault.BAD_DEPLOY, "02:57", seen=False),
+    Scenario("pool-1027-1856", "2026-10-27", POOL_WAIT, _at("2026-10-27T18:56:46.774Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False, split=Split.TUNING),
+    Scenario("pool-1027-1900", "2026-10-27", LATENCY, _at("2026-10-27T19:00:27.088Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False, split=Split.TUNING),
+    Scenario("pool-1027-1901", "2026-10-27", ERRORS, _at("2026-10-27T19:01:07.026Z"), Fault.DB_POOL_EXHAUSTION, "18:56", seen=False, split=Split.TUNING),
+    Scenario("deploy-1027-1905", "2026-10-27", ERRORS, _at("2026-10-27T19:05:57.026Z"), Fault.BAD_DEPLOY, "19:05", seen=True, split=Split.TUNING),
+    Scenario("deploy-1029-0156", "2026-10-29-live", ERRORS, _at("2026-10-29T01:56:07.026Z"), Fault.BAD_DEPLOY, "01:55", seen=True, split=Split.TUNING),
+    Scenario("deploy-1112-0747", "2026-11-12-0747", ERRORS, _at("2026-11-12T07:47:05.004Z"), Fault.BAD_DEPLOY, "07:46", seen=False, split=Split.TUNING),
+    Scenario("deploy-1112-0803", "2026-11-12-0747", ERRORS, _at("2026-11-12T08:03:45.006Z"), Fault.BAD_DEPLOY, "08:03", seen=False, split=Split.TUNING),
+    Scenario("deploy-1112-2000", "2026-11-12-2000", ERRORS, _at("2026-11-12T20:00:45.006Z"), Fault.BAD_DEPLOY, "20:00", seen=True, split=Split.TUNING),
+    Scenario("deploy-1113-0257", "2026-11-13-0257", ERRORS, _at("2026-11-13T02:57:45.007Z"), Fault.BAD_DEPLOY, "02:57", seen=False, split=Split.TUNING),
 ]
 BY_ID = {s.id: s for s in SCENARIOS}
+
+# What a report says beside the scores of any run on these windows (score.render).
+WINDOW_NOTES = {
+    "2026-11-14-2357": (
+        "the rubric isn't blind to this window's distractor. Its earlier-incident rule (04d0479) was written "
+        "after the window was recorded, knowing it holds the 22:28 bad_deploy break, 88 minutes before the "
+        "onset. Read the rubric's diagnoses here beside the audit's hand diagnoses, which decide."
+    ),
+}
 
 
 def window_module() -> Any:

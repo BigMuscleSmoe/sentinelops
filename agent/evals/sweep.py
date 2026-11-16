@@ -14,8 +14,10 @@ Spend is held three ways: the guard's cap on a run, the sweep's cap (a run
 starts only if the cap still has room for a whole run's worth), and the $10
 monthly limit in the Anthropic Console. Both caps are the arm's (evals/arms.py):
 $0.10 and $1.00 for Haiku, the production cap. sweep.json records the arm and
-the commit the sweep ran on, so a test sweep can be held to the freeze. The
-sweep never grades.
+the commit the sweep ran on, so a test sweep can be held to the freeze. A sweep
+is one split's (tuning or test) and one commit's: one already begun is resumed
+only as the same arm's and split's, on the commit it started on. The sweep
+never grades.
 """
 
 import asyncio
@@ -32,7 +34,7 @@ import httpx
 
 from evals import repo
 from evals.arms import ARMS, DEFAULT_ARM, Arm
-from evals.scenarios import Scenario, load_window, window_module
+from evals.scenarios import Scenario, Split, load_window, window_module
 from evals.witness import ModelWitness, same_model
 from guards import Limits
 from investigation import Refused, investigate_alarm
@@ -209,6 +211,7 @@ async def run_one(
         "window": scenario.window,
         "fault": scenario.fault.value,
         "seen": scenario.seen,
+        "split": scenario.split.value,
         "attempt": attempt,
         "status": record.status,
         "detail": record.detail,
@@ -234,6 +237,30 @@ def load_records(out_dir: Path) -> list[RunRecord]:
     return [RunRecord(**r) for r in json.loads(path.read_text(encoding="utf-8"))["records"]]
 
 
+def _sha(commit: str | None) -> str:
+    return commit[:7] if commit else "no recorded commit"
+
+
+def check_resumed(name: str, was: dict[str, Any], arm: Arm, split: Split, commit: str | None, dirty: list[str]) -> None:
+    """A sweep already begun is resumed only as what it is; raises ValueError otherwise.
+
+    The same arm's and split's, and on the commit it started on: sweep.json
+    holds one commit for all its runs, and a test sweep is held to the freeze
+    by it. A sweep from before the split was recorded is a tuning one.
+    """
+    was_arm, was_split = was.get("arm", DEFAULT_ARM), was.get("split", Split.TUNING.value)
+    if was_arm != arm.name:
+        raise ValueError(f"{name} is the {was_arm} arm's sweep, not {arm.name}'s")
+    if was_split != split.value:
+        raise ValueError(f"{name} is a {was_split} sweep, not a {split.value} one")
+    if was.get("commit") != commit:
+        raise ValueError(
+            f"{name} ran on {_sha(was.get('commit'))}, and HEAD is {_sha(commit)}: a sweep is one commit's, so start a new one"
+        )
+    if dirty and not was.get("dirty"):
+        raise ValueError(f"{name} ran on a clean tree, and it has uncommitted changes now: {', '.join(dirty[:5])}")
+
+
 async def run_sweep(
     scenarios: Sequence[Scenario],
     runs: int,
@@ -253,17 +280,20 @@ async def run_sweep(
     """Each planned run once, skipping runs that already have an outcome, so a rerun
     of the same sweep retries only its errors. Stops before a run the cap can't cover.
 
-    The arm sets both caps; cap_usd and per_run_usd override them, for tests. A
-    resumed sweep must be the same arm's."""
+    The arm sets both caps; cap_usd and per_run_usd override them, for tests. The
+    scenarios must be one split's, and a sweep already begun is resumed only as
+    what it is (check_resumed): ValueError otherwise, before anything runs."""
     cap_usd = arm.cap_usd if cap_usd is None else cap_usd
     per_run_usd = arm.per_run_usd if per_run_usd is None else per_run_usd
     limits = Limits(max_cost_usd=per_run_usd)
+    splits = sorted({s.split for s in scenarios})
+    if len(splits) != 1:
+        raise ValueError("a sweep is one split's: these scenarios are " + (" and ".join(splits) if splits else "none at all"))
+    split = splits[0]
+    commit, dirty = repo.head(), repo.dirty()
     earlier = out_dir / "sweep.json"
     if earlier.exists():
-        was = json.loads(earlier.read_text(encoding="utf-8")).get("arm", DEFAULT_ARM)
-        if was != arm.name:
-            raise ValueError(f"{out_dir.name} is the {was} arm's sweep, not {arm.name}'s")
-    commit, dirty = repo.head(), repo.dirty()
+        check_resumed(out_dir.name, json.loads(earlier.read_text(encoding="utf-8")), arm, split, commit, dirty)
     records = load_records(out_dir)
     done = {r.run for r in records if r.scored}
     attempts = {r.run: r.attempt for r in records}
@@ -295,6 +325,7 @@ async def run_sweep(
             {
                 "sweep": out_dir.name,
                 "arm": arm.name,
+                "split": split.value,
                 "model": settings.model_id,
                 "per_run_usd": per_run_usd,
                 "cap_usd": cap_usd,

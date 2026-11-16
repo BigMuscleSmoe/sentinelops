@@ -58,6 +58,7 @@ class Investigation:
             "trims": report.trims,
             "answers_in_text": report.answers_in_text,
             "tool_calls": report.tool_calls,
+            "tool_calls_after_ask": report.tool_calls_after_ask,
             "model_calls": [asdict(call) for call in report.model_calls],
             "input_tokens": report.input_tokens,
             "cost_usd": round(report.cost_usd, 6),

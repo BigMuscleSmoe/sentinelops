@@ -2,6 +2,7 @@
 
     uv run python -m evals plan [--arm sonnet]     # the runs a sweep would make, and its cost bound
     uv run python -m evals sweep --go              # the sweep: real model calls, billed (from agent/)
+    uv run python -m evals sweep --go --split test # the held-out alarms, once the pass bar is frozen
     uv run python -m evals packet <sweep> --out <packet.md>   # what a labeler reads, and blank labels
     uv run python -m evals grade <sweep> --audit <labels.json> [--flags <flags.json>]
 
