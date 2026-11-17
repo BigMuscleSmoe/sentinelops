@@ -85,6 +85,18 @@ SCENARIOS = [
     Scenario("pool-1116-2101-lat", "2026-11-16-2058", LATENCY, _at("2026-11-16T21:01:38.818Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
     Scenario("pool-1116-2101-err", "2026-11-16-2058", ERRORS, _at("2026-11-16T21:01:46.804Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
     Scenario("deploy-1116-2238", "2026-11-16-2238", ERRORS, _at("2026-11-16T22:38:26.808Z"), Fault.BAD_DEPLOY, "22:37", seen=False, split=Split.TEST),
+    # Test-break session B (the user's go, 2026-11-17), run and recorded as session A was. B1's errors
+    # alarm went OK for 10 s and into ALARM again at 02:35:46; its window ends before that, so the
+    # repeat is in the alarm history only, as A2's. B2's onset is the break's T0, as the fault
+    # controller answered it; payments-api records no change, so no culprit.
+    Scenario("pool-1117-0231", "2026-11-17-0231", POOL_WAIT, _at("2026-11-17T02:31:21.684Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
+    Scenario("pool-1117-0234", "2026-11-17-0231", LATENCY, _at("2026-11-17T02:34:48.814Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
+    Scenario("pool-1117-0235", "2026-11-17-0231", ERRORS, _at("2026-11-17T02:35:26.805Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
+    Scenario(
+        "downstream-1117-0411", "2026-11-17-0411", LATENCY, _at("2026-11-17T04:11:48.817Z"), Fault.DOWNSTREAM_TIMEOUT, None,
+        seen=False, onset=_at("2026-11-17T04:11:07.924Z"), split=Split.TEST,
+    ),
+    Scenario("deploy-1117-0551", "2026-11-17-0551", ERRORS, _at("2026-11-17T05:51:46.805Z"), Fault.BAD_DEPLOY, "05:51", seen=False, split=Split.TEST),
 ]
 BY_ID = {s.id: s for s in SCENARIOS}
 
