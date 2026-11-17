@@ -73,7 +73,7 @@ def test_every_recorded_alarm_is_one_scenario() -> None:
         window = load_window(name)
         replays |= {(name, r.alarm, r.fired_at) for r in window.replays}
     assert {(s.window, s.alarm, s.fired_at) for s in SCENARIOS} == replays
-    assert len(SCENARIOS) == 10 and len(BY_ID) == 10
+    assert len(SCENARIOS) == 15 and len(BY_ID) == 15
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.id)
@@ -109,9 +109,12 @@ def test_seen_marks_exactly_the_alarms_the_first_grader_was_written_on() -> None
 
 def test_the_tuning_split_is_the_nine_alarms_tuned_on_and_a_new_row_must_say_its_split() -> None:
     assert {s.id for s in SCENARIOS if s.split is Split.TUNING} == TUNED_ON
-    # The held-out window's alarm; the fresh breaks' rows join it after the freeze.
-    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == ["downstream-1114-2357"]
-    assert all(s.split is Split.TEST for s in SCENARIOS if s.window == "2026-11-14-2357")
+    # The held-out window's alarm, then the fresh breaks' (session A), recorded after the freeze.
+    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == [
+        "downstream-1114-2357", "deploy-1116-1917", "pool-1116-2058", "pool-1116-2101-lat", "pool-1116-2101-err", "deploy-1116-2238",
+    ]  # fmt: skip
+    test_windows = {"2026-11-14-2357", "2026-11-16-1917", "2026-11-16-2058", "2026-11-16-2238"}
+    assert all(s.split is Split.TEST for s in SCENARIOS if s.window in test_windows)
     with pytest.raises(TypeError, match="split"):
         Scenario("new-0101-0000", "2026-11-13-0257", ERRORS, datetime(2027, 1, 1, tzinfo=UTC), Fault.BAD_DEPLOY, "00:00", seen=False)
 
@@ -740,7 +743,7 @@ def test_a_plan_takes_one_split_the_tuning_one_unless_asked(capsys: pytest.Captu
     assert evals_main(["plan", "--split", "test"]) == 0
     out = capsys.readouterr().out
     assert "downstream-1114-2357  downstream_timeout  test   unseen sentinelops-checkout-latency at 2026-11-14 23:57:37Z" in out
-    assert "3 runs (1 scenarios x 3) of the test split" in out and "pool-1027-1856" not in out
+    assert "18 runs (6 scenarios x 3) of the test split" in out and "pool-1027-1856" not in out
     # A named scenario must be in the split asked for.
     assert evals_main(["plan", "--scenario", "downstream-1114-2357"]) == 1
     assert "Refused: not in the tuning split: downstream-1114-2357" in capsys.readouterr().err

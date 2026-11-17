@@ -76,6 +76,15 @@ SCENARIOS = [
         "downstream-1114-2357", "2026-11-14-2357", LATENCY, _at("2026-11-14T23:57:37.083Z"), Fault.DOWNSTREAM_TIMEOUT, None,
         seen=False, onset=_at("2026-11-14T23:56:55.746Z"), split=Split.TEST,
     ),
+    # Test-break session A (the user's go, 2026-11-16), run and recorded after the freeze: the trigger
+    # off, each fault its full 390 s, 100 minutes apart. A2's errors alarm went OK for 20 s and into
+    # ALARM again at 21:02:26; its window ends before that, so the repeat is in the alarm history
+    # only, as earlier windows keep their re-fires (the user's call).
+    Scenario("deploy-1116-1917", "2026-11-16-1917", ERRORS, _at("2026-11-16T19:17:46.805Z"), Fault.BAD_DEPLOY, "19:17", seen=False, split=Split.TEST),
+    Scenario("pool-1116-2058", "2026-11-16-2058", POOL_WAIT, _at("2026-11-16T20:58:11.690Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
+    Scenario("pool-1116-2101-lat", "2026-11-16-2058", LATENCY, _at("2026-11-16T21:01:38.818Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
+    Scenario("pool-1116-2101-err", "2026-11-16-2058", ERRORS, _at("2026-11-16T21:01:46.804Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
+    Scenario("deploy-1116-2238", "2026-11-16-2238", ERRORS, _at("2026-11-16T22:38:26.808Z"), Fault.BAD_DEPLOY, "22:37", seen=False, split=Split.TEST),
 ]
 BY_ID = {s.id: s for s in SCENARIOS}
 
