@@ -1,6 +1,6 @@
 {
  "name": "2026-11-12-0747",
- "about": "Two live bad_deploy breaks on 2026-11-12, 17 minutes apart. First: break at 07:46:28, errors into ALARM at 07:47:05, cleared by hand at 07:47:35, OK at 07:48:05; its run was refused before any model call (a federation 401). Second: break at 08:03:10, errors into ALARM at 08:03:45, cleared at 08:04:54, OK at 08:05:35; the runtime's run diagnosed it. The second replay sees the first break's deploy and rollback 17 minutes earlier. No other alarm fired.",
+ "about": "Two live bad_deploy breaks on 2026-11-12, 17 minutes apart. First: break at 07:46:28, errors into ALARM at 07:47:05, cleared by hand at 07:47:35, OK at 07:48:05; its run was refused before any model call (a federation 401). Second: break at 08:03:10, errors into ALARM at 08:03:45, cleared at 08:04:54, OK at 08:05:35; the runtime's run diagnosed it. The second replay sees the first break's deploy and rollback 17 minutes earlier. No other alarm fired. One of its two decoys dated before the first alarm, CART_TTL_HOURS 24 to 48 at 02:33:48 and PRODUCT_CACHE_TTL_S 30 to 60 at 04:04:36, was written by the second break at 08:03:10 (each break back-dates its decoy 1 to 6 hours; which one is unrecorded), so a live read at 07:47:05 would have shown one of them, not both; by 08:03:45 both had been written.",
  "recorded_at": "2026-11-13T03:41:56.819940Z",
  "account": "123456789012 stands in for the account ID wherever AWS wrote it.",
  "replays": [

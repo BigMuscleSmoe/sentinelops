@@ -1,6 +1,6 @@
 {
  "name": "2026-10-27",
- "about": "The 2026-10-27 live runs: the db_pool_exhaustion break (pool wait into ALARM at 18:56:46, latency 19:00:27, errors 19:01:07, all OK by 19:02:47), then the bad_deploy break (errors 19:05:57, 3 minutes later; it re-fired at 19:12:57, after the clear). The replays of 2026-10-28 and 29 started from 19:05:57.",
+ "about": "The 2026-10-27 live runs: the db_pool_exhaustion break (pool wait into ALARM at 18:56:46, latency 19:00:27, errors 19:01:07, all OK by 19:02:47), then the bad_deploy break (errors 19:05:57, 3 minutes later; it re-fired at 19:12:57, after the clear). The replays of 2026-10-28 and 29 started from 19:05:57. One of its two decoys, RECOMMENDATIONS_ENABLED false to true at 14:09:25 and CART_TTL_HOURS 24 to 48 at 14:19:02, was written by the bad_deploy break at 19:05 (each break back-dates its decoy 1 to 6 hours; which one is unrecorded), so a live read at the pool alarms (18:56:46, 19:00:27, 19:01:07) would have shown one of them, not both; by 19:05:57 both had been written.",
  "recorded_at": "2026-10-29T18:53:15.399743Z",
  "account": "123456789012 stands in for the account ID wherever AWS wrote it.",
  "replays": [
