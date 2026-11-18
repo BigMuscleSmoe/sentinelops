@@ -1,5 +1,5 @@
 {
- "about": "Hand audit of the Haiku 5.5 test sweep 20261117T192758Z (33 runs: the 11 test scenarios x 3), by Claude, blind: written from each run's transcript only (its alarm prompt, tool output, and Hypothesis, shown by a viewer that reads the transcript and nothing else), before the checker, the rubric, or grading ran on this sweep, and without reading the user's three label files (24d99e4). diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer. slips: claims past the run's own tool output, each {target, kind, complaint, note}. target: e<n> an evidence item, s<n> a root_cause sentence (numbered by evals.audit.sentences), i<n> an inference. kind: strict = the output contradicts it or never showed it; loose = roughly true but past the data. complaint: contradicted; outside_read (about rows, lines, or a period its read doesn't cover); miscited (cites what doesn't exist or isn't what it says); unsupported (no evidence carries it). One label per target and complaint; a run with no slips has []. Kept from the 2026-11-13 audit: strict covers a value outside the rows or lines read, a wrong count or sum, a first or only event claimed from a read that left older lines out, a value given the wrong time or source, and a share with the wrong denominator; a claim about a period the run never read is strict (the user's call, 2026-11-13); loose covers an 'about', 'roughly', or 'near' hiding a wider range, a vague scope, and a span rounded beyond the read; claims the run makes in not_checked are not labeled. New in this audit: (1) Older changes: a claim that a metric stayed flat or clean, had no effect, or showed no change, or that a symptom began only at a time, offered to rule out an older change whose aftermath the run never read, is strict outside_read. A plain onset claim the read shows is not a slip, nor is an argument from timing alone, nor a claim scoped to the rows the run read. (2) Typed items are literal: a lines list cites only its lines (c368a0a), so lines [1, 20] is two lines; a range's low and high must be the least and greatest values in its window or cited lines, and either one wrong is strict contradicted (a range written in prose with 'about', 'roughly', or 'near' is loose); a none must hold no record in its window (one that does is strict contradicted), and a none window that starts or ends exactly on a record is loose contradicted. (3) A source the run never read (m2 when it read only m1) is strict miscited, whatever the values. (4) Form-only faults are not labeled when every stated fact is in the cited record or line: a value under a wrong or nonexistent column (ts, timestamp, value, kind, version), or a compound value such as 'POOL_MAX_SIZE 20->2' or '1.43.0->1.42.0'; a changed key as the column (POOL_MAX_SIZE: '20->2') is the schema's own instruction. (5) Uncited but true: an inference whose rests_on doesn't carry it, or a true figure no item cites, is not a slip if the run's output shows it. (6) Durations are checked against the deploy records' timestamps; one further off than its 'about' allows (about 2 hours for 1 h 26 min, about 75 minutes for 1 h 34 min) is strict contradicted, and a rounding such as about four hours for 3 h 46 min is not labeled. (7) Traffic named as a contributing factor rather than the cause doesn't make a diagnosis partly. (8) A '-' metrics row (no payments calls that minute) doesn't contradict 'timeouts are 0 in every row'.",
+ "about": "Hand audit of the Haiku 5.5 test sweep 20261117T192758Z (33 runs: the 11 test scenarios x 3), by Claude, blind: written from each run's transcript only (its alarm prompt, tool output, and Hypothesis, shown by a viewer that reads the transcript and nothing else), before the checker, the rubric, or grading ran on this sweep, and without reading the user's three label files (24d99e4). Convention 9 was added on 2026-11-18, after this audit was committed (bf3fffd), and every run was re-checked against it. diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer. slips: claims past the run's own tool output, each {target, kind, complaint, note}. target: e<n> an evidence item, s<n> a root_cause sentence (numbered by evals.audit.sentences), i<n> an inference. kind: strict = the output contradicts it or never showed it; loose = roughly true but past the data. complaint: contradicted; outside_read (about rows, lines, or a period its read doesn't cover); miscited (cites what doesn't exist or isn't what it says); unsupported (no evidence carries it). One label per target and complaint; a run with no slips has []. Kept from the 2026-11-13 audit: strict covers a value outside the rows or lines read, a wrong count or sum, a first or only event claimed from a read that left older lines out, a value given the wrong time or source, and a share with the wrong denominator; a claim about a period the run never read is strict (the user's call, 2026-11-13); loose covers an 'about', 'roughly', or 'near' hiding a wider range, a vague scope, and a span rounded beyond the read; claims the run makes in not_checked are not labeled. New in this audit: (1) Older changes: a claim that a metric stayed flat or clean, had no effect, or showed no change, or that a symptom began only at a time, offered to rule out an older change whose aftermath the run never read, is strict outside_read. A plain onset claim the read shows is not a slip, nor is an argument from timing alone, nor a claim scoped to the rows the run read. (2) Typed items are literal: a lines list cites only its lines (c368a0a), so lines [1, 20] is two lines; a range's low and high must be the least and greatest values in its window or cited lines, and either one wrong is strict contradicted (a range written in prose with 'about', 'roughly', or 'near' is loose); a none must hold no record in its window (one that does is strict contradicted), and a none window that starts or ends exactly on a record is loose contradicted. (3) A source the run never read (m2 when it read only m1) is strict miscited, whatever the values. (4) Form-only faults are not labeled when every stated fact is in the cited record or line: a value under a wrong or nonexistent column (ts, timestamp, value, kind, version), or a compound value such as 'POOL_MAX_SIZE 20->2' or '1.43.0->1.42.0'; a changed key as the column (POOL_MAX_SIZE: '20->2') is the schema's own instruction. (5) Uncited but true: an inference whose rests_on doesn't carry it, or a true figure no item cites, is not a slip if the run's output shows it. (6) Durations are checked against the deploy records' timestamps; one further off than its 'about' allows (about 2 hours for 1 h 26 min, about 75 minutes for 1 h 34 min) is strict contradicted, and a rounding such as about four hours for 3 h 46 min is not labeled. (7) Traffic named as a contributing factor rather than the cause doesn't make a diagnosis partly. (8) A '-' metrics row (no payments calls that minute) doesn't contradict 'timeouts are 0 in every row'. (9) Universal claims over a cut read (the user's call, 2026-11-18, made during the audit of the Sonnet sweep 20261118T050147Z-sonnet and applied to every run of both audits): a claim with an explicit universal ('every', 'all', 'each', 'whenever', 'no' or 'none', 'only', 'confined to') about log lines, made where the read that bears on it shows only the newest N of M found, is strict outside_read, unless the sentence limits itself to what was shown ('every failure shown', 'every sampled line', 'in the newest lines', 'in the 30-line sample', or a count equal to the lines shown, as in 'all 20 shown' or 'all 30 failures' when 30 are shown). Not covered: a generic plural with no quantifier ('promo checkouts succeed', 'failures run on 1.42.0'); a statement of a configured limit's effect ('only 2 connections serve all requests', 'each request failed once its wait passed 1500 ms'); 'all' over a list of things, or 'on all three routes' (each route has a failure, which the shown lines carry); a claim that a read leaving nothing out carries (convention 5: 'no failed requests' over a cut read when every metrics row has err% 0.0, or 'only no-promo requests fail' when the error read left no line out); and a typed item's own fields, which are literal (convention 2), so only its note is checked. Each label it adds says '(convention 9)'. Applied with it, as agreed with the user the same day: a first, only, or count claim about deploy records ('the first 1.43.0 deploy', 'twice before', 'the third time') from a history that says 'Older records exist' is strict outside_read under the first-or-only rule above, while a recency claim over that newest-first history ('the most recent change', 'the only change that fits the onset') is not, since every record it left out is older than every record shown; a rollback or revert record read as precedent ('a known problem', or a hedged 'suggests the same defect') is not labeled, but a reason for it asserted where no record gives one ('for the same reason', 'has a recurring defect') is strict unsupported.",
  "sweep": "20261117T192758Z",
  "labeler": "Claude",
  "blind": true,
@@ -25,12 +25,18 @@
      "kind": "loose",
      "complaint": "contradicted",
      "note": "The note's 'eleven quiet minutes at 272 to 732 ms': m1 shows 14 quiet rows, 23:42 to 23:55, at 272 to 732."
+    },
+    {
+     "target": "s2",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'Each POST /checkout now spends roughly 0.7 to 1.6 s waiting on payments-api': l1 shows only the newest 40 of 210 lines (convention 9)."
     }
    ]
   },
   "deploy-1116-1917-r1": {
    "diagnosis": "right",
-   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo as the mechanism; payments-api and the config changes cleared.",
+   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo as the mechanism; payments-api and the config changes cleared. Convention 9: e8's and i2's 'successful checkouts show no timeouts' is carried by m1, whose payments_timeouts are 0 (or '-') in every row (convention 5).",
    "slips": [
     {
      "target": "e1",
@@ -43,12 +49,24 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'with no matching error change' after the 18:05 change: the run read metrics from 19:02 only."
+    },
+    {
+     "target": "s1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'fails every checkout whose cart has no promo': l1 shows only the newest 20 of 43 error lines, l2 the newest 40 of 217 lines (convention 9)."
+    },
+    {
+     "target": "e5",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing request had a cart with no promo': l1 shows only the newest 20 of 43 error lines (convention 9)."
     }
    ]
   },
   "pool-1116-2058-r1": {
    "diagnosis": "right",
-   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for the 2 connections as the mechanism; payments-api and the earlier changes cleared.",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for the 2 connections as the mechanism; payments-api and the earlier changes cleared. Convention 9: e9's 'no failed requests' over l1 (15 of 225 lines) is carried by m1, whose err% is 0.0 in every row (convention 5).",
    "slips": []
   },
   "pool-1116-2101-lat-r1": {
@@ -66,6 +84,12 @@
      "kind": "strict",
      "complaint": "miscited",
      "note": "Cites source m2; the run read one metrics table, m1 (its payments_p99_ms 20:41-21:01 is 53.2 to 331, as the item says)."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing line was served with pool_max_size=2 on version 1.42.0': l1 shows only the newest 8 of 51 error lines (convention 9)."
     }
    ]
   },
@@ -114,6 +138,18 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'the errors began only after the 22:37 redeploy', said of the time since the 19:23 rollback: the run read metrics from 22:23 only (its own not_checked says the 19:17-19:23 run is unread)."
+    },
+    {
+     "target": "s1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'raises a TypeError in pricing.py apply_promo whenever a cart has no promo': l1 shows only the newest 20 of 28 error lines, l2 the newest 30 of 41 lines (convention 9)."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failure is raised in apply_promo': l1 shows only the newest 20 of 28 error lines (convention 9)."
     }
    ]
   },
@@ -192,6 +228,12 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'the pool wait only rises at 02:30', said of the time since the 00:07 change: the run read metrics from 02:20 only."
+    },
+    {
+     "target": "i1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every error is a pool-acquire timeout': l1 shows only the newest 30 of 39 error lines (convention 9)."
     }
    ]
   },
@@ -234,6 +276,30 @@
      "kind": "strict",
      "complaint": "contradicted",
      "note": "'rolled back at 22:44 the next day': d1 puts the 22:37:51 deploy and the 22:44:22 rollback on the same day, 2026-11-16, 6.5 minutes apart."
+    },
+    {
+     "target": "e5",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failure is the same TypeError': l1 shows only the newest 20 of 22 error lines (convention 9)."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'all failing carts had no promo': l1 shows only the newest 20 of 22 error lines (convention 9)."
+    },
+    {
+     "target": "i1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'are confined to 1.43.0': l1 shows only the newest 20 of 22 error lines (convention 9)."
+    },
+    {
+     "target": "i3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'1.42.0 had no failures in the window and 1.43.0 is the only version in the failing lines': l1 shows only the newest 20 of 22 error lines (convention 9)."
     }
    ]
   },
@@ -264,6 +330,30 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'the metrics were clean for over an hour after it' (the 18:05 change): the run read metrics from 19:02 only."
+    },
+    {
+     "target": "s2",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'Every checkout without a promo fails with a 500': l1 shows only the newest 20 of 43 error lines, l2 the newest 30 of 217 lines (convention 9)."
+    },
+    {
+     "target": "e5",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing line was served by 1.43.0': l1 shows only the newest 20 of 43 error lines (convention 9)."
+    },
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing checkout had no promo': l1 shows only the newest 20 of 43 error lines (convention 9)."
+    },
+    {
+     "target": "i1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing line is 1.43.0 in apply_promo': l1 shows only the newest 20 of 43 error lines (convention 9)."
     }
    ]
   },
@@ -294,6 +384,12 @@
      "kind": "strict",
      "complaint": "contradicted",
      "note": "'deploy 1.43.0 is 3h40m before onset': d1 puts it at 19:17:18, 1 h 40 min before the 20:57 onset."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'failures all on the version that carries the pool change': l1 shows only the newest 15 of 51 error lines (convention 9)."
     }
    ]
   },
@@ -316,7 +412,7 @@
   },
   "pool-1117-0231-r2": {
    "diagnosis": "right",
-   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections as concurrency rose as the mechanism; payments-api, the database, and the earlier changes cleared.",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections as concurrency rose as the mechanism; payments-api, the database, and the earlier changes cleared. Convention 9: s4's 'No requests failed' over l1 (15 of 196 lines) is carried by m1 and m2, whose err% is 0.0 in every row (convention 5).",
    "slips": [
     {
      "target": "e13",
@@ -437,6 +533,18 @@
      "kind": "loose",
      "complaint": "contradicted",
      "note": "none over d1 from 04:26:26.186 to 05:51:12.756: the window starts and ends on records (the 04:26 change and the 1.43.0 deploy); nothing falls between them."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failure is raised from apply_promo': l1 shows only the newest 20 of 22 error lines (convention 9)."
+    },
+    {
+     "target": "e8",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing request had no promo': l1 shows only the newest 20 of 22 error lines (convention 9)."
     }
    ]
   },
@@ -478,7 +586,7 @@
      "target": "e4",
      "kind": "strict",
      "complaint": "outside_read",
-     "note": "'failures start at 19:17:24.866 in l2 (first failing line)': l2 shows only the newest 40 of 51 lines."
+     "note": "'failures start at 19:17:24.866 in l2 (first failing line)': l2 shows only the newest 40 of 51 lines. Its 'all on version 1.43.0' falls under convention 9 as well: l1 shows only the newest 30 of 43 error lines."
     },
     {
      "target": "e13",
@@ -491,6 +599,24 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'the errors begin at the 1.43.0 deploy, not here' (18:05): the run read metrics from 19:02 only."
+    },
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing request has has_promo false': l2 shows only the newest 40 of 51 lines (convention 9)."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every successful (200) request has has_promo true, so only carts without a promo fail': l2 shows only the newest 40 of 51 lines (convention 9)."
+    },
+    {
+     "target": "i2",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'so only has_promo=false carts fail': l1 shows only the newest 30 of 43 error lines, l2 the newest 40 of 51 lines (convention 9)."
     }
    ]
   },
@@ -527,6 +653,12 @@
      "kind": "strict",
      "complaint": "contradicted",
      "note": "'about 2 hours before the symptom': d1 puts the change at 19:31:26, 1 h 26 min before the 20:57 onset."
+    },
+    {
+     "target": "e5",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every request line shows the pool max at 2 with active connections at 2 when waiting': l1 shows only the newest 30 of 225 lines (convention 9)."
     }
    ]
   },
@@ -599,6 +731,12 @@
      "kind": "strict",
      "complaint": "outside_read",
      "note": "'the metrics are clean for the hour after it' (the 18:05 change): the run read metrics from 20:46 only."
+    },
+    {
+     "target": "e7",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the failing requests all ran with the 2-connection pool': l1 shows only the newest 30 of 31 error lines (convention 9)."
     }
    ]
   },
@@ -611,6 +749,12 @@
      "kind": "strict",
      "complaint": "contradicted",
      "note": "'about 75 minutes before onset': d1 puts the change at 21:04:05, 1 h 34 min before the 22:37:51 deploy and the 22:37 onset."
+    },
+    {
+     "target": "s1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'crashes in checkout/pricing.py apply_promo ... whenever a cart has no promo': l1 shows only the newest 20 of 28 error lines, l2 the newest 40 of 210 lines (convention 9)."
     }
    ]
   },
@@ -677,6 +821,12 @@
      "kind": "loose",
      "complaint": "contradicted",
      "note": "'the only change before the symptom': d1 shows nine earlier changes, which e9-e12 discuss; true only of the minutes before it."
+    },
+    {
+     "target": "e8",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'every failing request ran against the 2-connection pool': l1 shows only the newest 30 of 39 error lines (convention 9)."
     }
    ]
   },
@@ -695,12 +845,18 @@
      "kind": "loose",
      "complaint": "contradicted",
      "note": "'/products and /cart/items stay near 60-100 ms': l1's lines on those routes run 23.4 to 121.5."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'pool_max_size 20 on all lines': l1 shows only the newest 40 of 212 lines (convention 9)."
     }
    ]
   },
   "deploy-1117-0551-r3": {
    "diagnosis": "right",
-   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api and the pool cleared.",
+   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api and the pool cleared. Convention 9: e9's 'only no-promo requests fail' over l2 (40 of 46 lines) is carried by l1, which left no error line out and shows each with has_promo=false (convention 5).",
    "slips": [
     {
      "target": "e2",
