@@ -2,7 +2,7 @@
 
 SentinelOps is an incident response agent I built on AWS. When a CloudWatch alarm fires on a small demo service, an agent on Bedrock AgentCore reads the service's metrics, logs, and deploy history, then answers with a root cause backed by typed evidence, each piece citing the exact tool result it came from. It reads and reasons; it can't change anything. Every investigation is bounded in code (tool calls, tokens, dollars, and time), and everything is deployed with Terraform from GitHub Actions.
 
-- **55 of 55 diagnoses right** on held-out incidents, including two where the right answer was "not my service".
+- **55 of 55 runs diagnosed correctly** across 11 held-out incidents, including two where the right answer was "not my service".
 - **A pre-registered evaluation that failed** on recall. I reported it as is and found the cause.
 - **Hard limits in code** on tool calls, tokens, cost, and time, and no stored credentials in the agent or CI.
 
@@ -103,7 +103,7 @@ I wanted a result I couldn't adjust after the fact, so I committed the pass bar 
 
 **What was tested.** 11 alarms in 7 recorded windows, none of them replayed, swept, or tuned on before the test: 3 bad deploys, 6 pool exhaustion alarms, and 2 slow downstreams. Six windows came from live breaks after the freeze. The seventh was recorded earlier and held out. Each run replays the recorded tool data, so every run of an alarm sees the same data. I ran two models: Claude Haiku 5.5, the production model, 3 runs an alarm, and Claude Sonnet 5.5, 2 runs an alarm.
 
-**Diagnoses: 55 of 55 right.** All 33 Haiku runs and all 22 Sonnet runs named the right cause, scored both by a code rubric and by a blind audit, which agreed on every run. None was confidently wrong.
+**55 of 55 runs diagnosed correctly, across 11 incidents.** All 33 Haiku runs and all 22 Sonnet runs named the right cause, scored both by a code rubric and by a blind audit, which agreed on every run. None was confidently wrong.
 
 **The bar is about the evidence, not the diagnosis.** A code checker recomputes every typed evidence item from the tool result it cites and flags the ones that don't hold. A blind audit, done from the transcripts before any checker output was seen, labels every strict slip: a claim the run's own data doesn't support, such as a wrong number or a claim about data it never read.
 
@@ -124,12 +124,13 @@ I wanted a result I couldn't adjust after the fact, so I committed the pass bar 
 - **A claim about a period the run never read.** An older change gets ruled out with "flat until 02:30", when the metrics the run pulled start an hour later. The typed range covers only the rows it read, so the range holds and the note is unsupported.
 - **A universal over a read that left lines out.** A note says every failing request shared some trait, beside an item over the 20 log lines shown, out of 43 found. The item holds over what it cites; the note claims all 43.
 
-**Two precision readings.** A form-only flag marks an item whose facts all hold but whose typing is wrong, such as a value filed under the wrong column. I count those as right, since the item really is wrong as typed, the same way I called them during tuning, before this sweep. But I made the call for this sweep after seeing its flags, so the table shows both readings. Haiku clears the precision bar only under mine. Sonnet's 4 flags are too few to say anything: one flag moves its precision 25 points.
+**Two precision readings.** A form-only flag marks an item whose facts all hold but whose typing is wrong, such as a value filed under the wrong column. I count those as right, since the item really is wrong as typed, the same way I called them during tuning, before this sweep. But I made the call for this sweep after seeing its flags, so the table shows both readings. Haiku clears the precision bar only under the first reading. Sonnet's 4 flags are too few to say anything: one flag moves its precision 25 points.
 
 **Haiku vs Sonnet.** Haiku's 33 runs cost $0.20 in all, a mean of $0.0060 a run. Sonnet's 22 cost $2.15, a mean of $0.0975, about 16 times as much. For that, Sonnet got the same diagnoses with nearly as many strict slips a run (2.77 against 3.03). Its typed fields were almost always right; its slips sat in the notes. Production stays on Haiku, and the $0.10 cap rules Sonnet out anyway: the guard reserves $0.16 for its worst-case call.
 
 **Caveats.**
 
+- Three fault types on one small service: 55 of 55 shows the agent handles these well, not that it generalizes to new kinds of failure.
 - The slip labels come from one labeler: Claude, working from the transcripts alone, blind to the checker. Claude also hand-checked the flags. I labeled 3 runs blind for the diagnosis and agreed on all 3.
 - The intervals treat every item as independent, but slips cluster within runs, so the true intervals are wider. Even so, neither model's recall interval comes near 70%.
 
