@@ -9,8 +9,11 @@ baseline in `evals/gate/` (`tests/test_baseline_gate.py`):
   system prompt and the alarm message, the tool specs, the answer tool's schema
   (as sent, strict), and the model settings (the rest of the request: model,
   max_tokens, thinking, and so on). A change to any of them fails CI until a new
-  sweep runs, on the user's go, and its baseline is built and committed with the
-  change. Strands builds the request, so an upgrade that changes it fails too.
+  sweep's baseline lands with it. Strands builds the request, so an upgrade that
+  changes it fails too. The order: commit the change; run a sweep on that commit,
+  on the user's go (a tuning sweep, so the test alarms aren't re-run); build the
+  baseline from it and commit that; push both commits together, since CI runs on
+  the pushed head only.
   Not covered here: what a tool prints (pinned by `tools/tests/test_recorded_output.py`)
   and the guard's budget line on tool results.
 - **The rubric on the committed answers.** Every answer's rubric items,
@@ -29,7 +32,11 @@ Usage, from agent/ (no model, no AWS):
 
 `build` refuses a sweep that ran with uncommitted changes, one whose run-shaping
 paths (the pass bar's `frozen_paths`) differ now from its commit, so the capture
-wouldn't be what its runs were sent, and one with a wrong diagnosis.
+wouldn't be what its runs were sent, and, strict for now (the user's calls,
+2026-11-18), one that isn't whole or isn't right: any run whose last attempt
+didn't answer (halted, errored, refused, or no Hypothesis), any scenario of its
+split it holds no run of, or any wrong diagnosis. A run retried after an error
+counts by its last attempt, as the sweep scores it.
 """
 
 import argparse
@@ -45,11 +52,12 @@ from typing import Any
 import httpx
 
 from checker.__main__ import RunCheck, check_run
+from checker.trial import final_records
 from evals import audit as audits
 from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.repo import REPO, Refusal, check_committed, unchanged
 from evals.rubrics import score as rubric_score
-from evals.scenarios import BY_ID
+from evals.scenarios import BY_ID, Split
 from evals.score import PASS_BAR, load_sweep
 
 GATE = Path(__file__).with_name("gate")
@@ -195,11 +203,23 @@ def build(folder: Path, flags_path: Path | None = None, out: Path = GATE) -> dic
         raise Refusal(f"what shapes a run (the pass bar's frozen_paths) changed since the sweep ran on {commit[:7]}")
     arm = ARMS[meta.get("arm", DEFAULT_ARM)]
 
+    # Whole: every run answered, by its last attempt (load_sweep drops errored runs, so read the records).
+    final = final_records(meta)
+    unanswered = sorted(f"{r['run']} ({r['status']})" for r in final if r["status"] != "answered")
+    if unanswered:
+        raise Refusal(f"a baseline holds a sweep whose every run answered; not answered: {', '.join(unanswered)}")
+    unread = sorted(r["run"] for r in sweep.records if sweep.checks[r["run"]] is None)
+    if unread:
+        raise Refusal(f"answered runs with no transcript or no Hypothesis to check: {', '.join(unread)}")
+    split = Split(meta.get("split", Split.TUNING.value))
+    swept = {r["scenario"] for r in final}
+    missing = sorted(s.id for s in BY_ID.values() if s.split is split and s.id not in swept)
+    if missing:
+        raise Refusal(f"a baseline holds every {split.value} scenario; the sweep has no run of {', '.join(missing)}")
+
     runs: dict[str, dict[str, Any]] = {}
     pins: dict[str, dict[str, Any]] = {}
     for record in sweep.records:
-        if record["status"] != "answered" or sweep.checks[record["run"]] is None:
-            continue
         name = record["run"]
         kept = strip(sweep.transcripts[name])
         check = check_run(name, kept)

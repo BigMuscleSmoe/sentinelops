@@ -5,12 +5,17 @@ committed answer must score on the rubric as pinned, every diagnosis right; and
 the checker's verdicts on those answers are pinned, the flags a floor under the
 typed slips (evals/baseline.py says why a floor, not a count).
 
-When the first test fails on purpose (a prompt, schema, tool, or model change):
-run a sweep on the user's go, grade it, and rebuild the baseline from it
-(`uv run python -m evals.baseline build ...`) in the same commit as the change.
+When the first test fails on purpose (a prompt, schema, tool, or model change),
+the baseline can't land in the same commit: `build` refuses a sweep run with
+uncommitted changes. So: commit the change (that commit fails here alone); run
+a sweep on that commit, on the user's go (a tuning sweep, so the test alarms
+aren't re-run); build the baseline from it (`uv run python -m evals.baseline
+build ...`) and commit that; push both commits together, since CI runs on the
+pushed head only.
 """
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,7 +25,7 @@ from checker.__main__ import check_run
 from evals import audit as audits
 from evals import baseline as gate
 from evals.arms import ARMS
-from evals.repo import REPO
+from evals.repo import REPO, Refusal
 
 BASELINE, REQUEST, RUNS = gate.load()
 ARM = ARMS[BASELINE["arm"]]
@@ -40,8 +45,8 @@ def test_what_the_model_is_sent_is_as_the_baseline_was_sent(sent_now: dict[str, 
     changed = gate.changed_parts(sent_now, REQUEST)
     assert not changed, (
         f"changed since sweep {BASELINE['sweep']}'s baseline: {', '.join(changed)}. "
-        "A change to what the model is sent needs a new sweep (on the user's go) and its baseline "
-        "(python -m evals.baseline build) committed with it."
+        "A change to what the model is sent needs a new sweep's baseline: commit the change, sweep on "
+        "that commit (on the user's go), build and commit the baseline, push both (this file's docstring)."
     )
 
 
@@ -95,21 +100,117 @@ def test_every_flag_in_the_floor_carries_its_hand_call() -> None:
             assert call == {"call": entry["call"], "form_only": entry["note"].startswith("form:")}
 
 
-def test_the_floor_counts_as_the_report_gives_them() -> None:
-    # agent/evals/reports/2026-11-18-test-sweeps.md: 37 flags on 455 items, 35 right (95%),
-    # 29 with the 6 form-only flags counted false (78%).
-    calls = [c for pin in BASELINE["runs"].values() for c in (pin.get("calls") or {}).values()]
+def assert_floor_counts(baseline: dict[str, Any]) -> None:
+    """The floor's counts from the pins; the hand calls' counts only on a baseline built with --flags."""
+    pins = baseline["runs"].values()
+    floor = baseline["floor"]
+    flagged = sum(v in gate.FLAGGED for pin in pins for v in pin["verdicts"].values())
+    assert (floor["runs"], floor["items"], floor["flags"]) == (
+        len(baseline["runs"]),
+        sum(len(pin["verdicts"]) for pin in pins),
+        flagged,
+    )
+    if baseline["flags_checked"] is None:
+        # A tuning sweep's flags may go unchecked: the verdict pins still catch any checker change.
+        assert set(floor) == {"runs", "items", "flags"}
+        assert all("calls" not in pin for pin in pins)
+        return
+    calls = [c for pin in pins for c in (pin.get("calls") or {}).values()]
     right = sum(c["call"] == "right" for c in calls)
     form = sum(c["call"] == "right" and c["form_only"] for c in calls)
-    floor = BASELINE["floor"]
-    assert (floor["flags"], floor["right"], floor["form_only_right"], floor["right_with_form_only_false"]) == (
-        len(calls),
-        right,
-        form,
-        right - form,
-    )
+    assert len(calls) == flagged
+    assert (floor["right"], floor["form_only_right"], floor["right_with_form_only_false"]) == (right, form, right - form)
+
+
+def test_the_floor_counts_as_the_report_gives_them() -> None:
+    assert_floor_counts(BASELINE)
     if BASELINE["sweep"] == "20261117T192758Z":
-        assert (floor["runs"], floor["items"], floor["flags"], floor["right"], floor["form_only_right"]) == (33, 455, 37, 35, 6)
+        # agent/evals/reports/2026-11-18-test-sweeps.md: 37 flags on 455 items, 35 right (95%),
+        # 29 with the 6 form-only flags counted false (78%).
+        assert (BASELINE["floor"]["runs"], BASELINE["floor"]["items"]) == (33, 455)
+        assert (BASELINE["floor"]["flags"], BASELINE["floor"]["right"], BASELINE["floor"]["form_only_right"]) == (37, 35, 6)
+
+
+# --- build: it refuses a sweep that isn't whole (fake sweeps from the committed runs) ----
+
+
+def answered_records() -> list[dict[str, Any]]:
+    return [
+        {"run": name, "scenario": run["eval"]["scenario"], "attempt": 1, "status": "answered", "transcript": f"{name}.json"}
+        for name, run in sorted(RUNS.items())
+    ]
+
+
+def write_sweep(folder: Path, records: list[dict[str, Any]], *, skip_transcripts: tuple[str, ...] = ()) -> Path:
+    """A sweep folder as evals sweep writes one, its transcripts the committed kept runs."""
+    folder.mkdir(parents=True)
+    for record in records:
+        if record["transcript"] not in skip_transcripts:
+            (folder / record["transcript"]).write_text(json.dumps(RUNS[record["run"]]), encoding="utf-8")
+    meta = {
+        "sweep": BASELINE["sweep"],
+        "arm": BASELINE["arm"],
+        "split": "test",
+        "commit": BASELINE["commit"],
+        "dirty": [],
+        "records": records,
+    }
+    (folder / "sweep.json").write_text(json.dumps(meta), encoding="utf-8")
+    return folder
+
+
+@pytest.fixture
+def fresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Not what these tests are about, and CI's shallow clone lacks the sweep's commit.
+    monkeypatch.setattr(gate, "unchanged", lambda commit, paths: True)
+
+
+@pytest.mark.usefixtures("fresh")
+def test_a_whole_sweep_builds_and_a_run_retried_to_an_answer_counts_by_its_last_attempt(tmp_path: Path) -> None:
+    records = answered_records()
+    retried = records[0]["run"]
+    records.insert(0, {**records[0], "attempt": 1, "status": "error", "transcript": f"{retried}.json"})
+    records[1] = {**records[1], "attempt": 2, "transcript": f"{retried}.attempt2.json"}
+    built = gate.build(write_sweep(tmp_path / "sweep", records), None, tmp_path / "gate")
+    assert {name: {k: v for k, v in pin.items() if k != "calls"} for name, pin in BASELINE["runs"].items()} == built["runs"]
+    assert built["flags_checked"] is None
+    assert_floor_counts(built)
+
+
+@pytest.mark.usefixtures("fresh")
+@pytest.mark.parametrize("status", ["halted", "error", "model_refused", "no_hypothesis"])
+def test_a_sweep_with_a_run_that_didnt_answer_is_refused(tmp_path: Path, status: str) -> None:
+    records = answered_records()
+    records[3]["status"] = status
+    with pytest.raises(Refusal, match=rf"not answered: {records[3]['run']} \({status}\)"):
+        gate.build(write_sweep(tmp_path / "sweep", records), None, tmp_path / "gate")
+    assert not (tmp_path / "gate").exists()
+
+
+@pytest.mark.usefixtures("fresh")
+def test_a_sweep_whose_retry_still_errored_is_refused(tmp_path: Path) -> None:
+    records = answered_records()
+    run = records[0]["run"]
+    records.append({**records[0], "attempt": 2, "status": "error", "transcript": f"{run}.attempt2.json"})
+    with pytest.raises(Refusal, match=rf"not answered: {run} \(error\)"):
+        gate.build(write_sweep(tmp_path / "sweep", records), None, tmp_path / "gate")
+
+
+@pytest.mark.usefixtures("fresh")
+def test_an_answered_run_with_no_transcript_is_refused(tmp_path: Path) -> None:
+    records = answered_records()
+    lost = records[5]
+    with pytest.raises(Refusal, match=rf"no transcript or no Hypothesis to check: {lost['run']}"):
+        gate.build(write_sweep(tmp_path / "sweep", records, skip_transcripts=(lost["transcript"],)), None, tmp_path / "gate")
+
+
+@pytest.mark.usefixtures("fresh")
+def test_a_sweep_missing_one_of_its_splits_scenarios_is_refused(tmp_path: Path) -> None:
+    records = answered_records()
+    dropped = records[0]["scenario"]
+    kept = [r for r in records if r["scenario"] != dropped]
+    with pytest.raises(Refusal, match=rf"every test scenario; the sweep has no run of {dropped}$"):
+        gate.build(write_sweep(tmp_path / "sweep", kept), None, tmp_path / "gate")
 
 
 # --- the gate itself: it sees each part change, and keeps nothing it shouldn't -----
