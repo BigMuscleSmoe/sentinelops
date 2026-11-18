@@ -1,8 +1,5 @@
-# Project docs, kept local until release. Root-anchored so runbooks/ and
+# Private project docs, kept local. Root-anchored so runbooks/ and
 # agent/prompts/ stay tracked. To publish one, delete its line.
-/README.md
-/ARCHITECTURE.md
-/COSTS.md
 /BUILD_PLAN.md
 /CLAUDE.md
 /PROJECT_STATUS.md
