@@ -1,0 +1,99 @@
+sweep 20261118T050147Z-sonnet, arm sonnet (claude-sonnet-5-5), the test split; audit 61c03c3, flags checked e15a0ee
+verdict: FAIL
+
+all: 22 runs (22 answered), diagnoses right 22, confidently wrong 0, rubric agrees with the audit on 22
+  strict recall 1 of 61 (2%; bar 70%); on checkable labels 2%; 1 more flagged with another complaint
+  prose-only 18 of 61 strict labels (30%; a judge if 20% or more)
+  flags 4 on 341 items; right 3 (75%; bar 85%); audit misses 1
+  loose labels 4, 0 of them flagged
+  per answered run: 2.77 strict slips, 0.18 flags, median $0.0885, mean $0.0975
+  asked for the answer in 0 of 22 runs; tool calls after the ask: 0, in 0 run(s)
+bad_deploy: 6 runs (6 answered), diagnoses right 6, confidently wrong 0, rubric agrees with the audit on 6
+  strict recall 0 of 30 (0%; bar 70%); on checkable labels 0%; 1 more flagged with another complaint
+  prose-only 14 of 30 strict labels (47%; a judge if 20% or more)
+  flags 1 on 106 items; right 1 (100%; bar 85%); audit misses 0
+  loose labels 1, 0 of them flagged
+  per answered run: 5.00 strict slips, 0.17 flags, median $0.1349, mean $0.1348
+  asked for the answer in 0 of 6 runs; tool calls after the ask: 0, in 0 run(s)
+db_pool_exhaustion: 12 runs (12 answered), diagnoses right 12, confidently wrong 0, rubric agrees with the audit on 12
+  strict recall 1 of 26 (4%; bar 70%); on checkable labels 4%; 0 more flagged with another complaint
+  prose-only 3 of 26 strict labels (12%; a judge if 20% or more)
+  flags 3 on 167 items; right 2 (67%; bar 85%); audit misses 1
+  loose labels 2, 0 of them flagged
+  per answered run: 2.17 strict slips, 0.25 flags, median $0.0810, mean $0.0778
+  asked for the answer in 0 of 12 runs; tool calls after the ask: 0, in 0 run(s)
+downstream_timeout: 4 runs (4 answered), diagnoses right 4, confidently wrong 0, rubric agrees with the audit on 4
+  strict recall 0 of 5 (0%; bar 70%); on checkable labels 0%; 0 more flagged with another complaint
+  prose-only 1 of 5 strict labels (20%; a judge if 20% or more)
+  flags 0 on 68 items; right 0 (-; bar 85%); audit misses 0
+  loose labels 1, 0 of them flagged
+  per answered run: 1.25 strict slips, 0.00 flags, median $0.1038, mean $0.1007
+  asked for the answer in 0 of 4 runs; tool calls after the ask: 0, in 0 run(s)
+
+notes:
+  window 2026-11-14-2357: the rubric isn't blind to this window's distractor. Its earlier-incident rule (04d0479) was written after the window was recorded, knowing it holds the 22:28 bad_deploy break, 88 minutes before the onset. Read the rubric's diagnoses here beside the audit's hand diagnoses, which decide.
+
+strict labels not caught:
+  deploy-1116-1917-r1 e3 outside_read: 'first error line 19:17:25': l1 shows only the newest 30 of 43 error lines, so its [1] at 19:17:25.810 need not be the first.
+  deploy-1116-1917-r1 s2 outside_read (prose-only): 'so every POST /checkout without a promo raises a TypeError and returns 500': l1 shows only the newest 30 of 43 error lines, l2 the newest 40 of 217 lines (convention 9).
+  deploy-1116-1917-r1 e5 outside_read: 'all failures are served by the new version': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r1 e6 outside_read: 'all failing checkouts are carts without a promo': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r1 e7 outside_read: 'the successful POST /checkout requests all had a promo, so only promo-less carts fail': l2 shows only the newest 40 of 217 lines (convention 9).
+  deploy-1116-1917-r1 i1 outside_read (prose-only): 'every failure is served by 1.43.0': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r1 i2 outside_read (prose-only): 'only has_promo=false requests fail': l1 shows only the newest 30 of 43 error lines, l2 the newest 40 of 217 lines (convention 9).
+  pool-1116-2058-r1 e1 contradicted: '24 s before the alarm window's first breaching datapoint': the alarm's first breaching datapoint is the 20:57:40 period, which starts 5.6 s after the 20:57:34.402 change.
+  pool-1116-2101-lat-r1 e13 outside_read: 'Every failing request logs pool_max_size=2 with pool_active_connections at 2 and a 1500 ms wait': l1 shows only the newest 30 of 51 error lines (convention 9).
+  pool-1116-2101-err-r1 e12 outside_read: 'errors only began later', said of the time since the 19:23 rollback: the run read metrics from 20:46 only.
+  pool-1116-2101-err-r1 e14 outside_read: 'metrics were clean until 20:57', said of the time since the 18:05 change: the run read metrics from 20:46 only.
+  pool-1116-2101-err-r1 e8 outside_read: 'All failures are on 1.42.0': l1 shows only the newest 30 of 31 error lines (convention 9).
+  deploy-1116-2238-r1 e14 outside_read: 'errors were zero afterwards', said of the time since the 18:05 change: the run read metrics from 22:28 only.
+  deploy-1116-2238-r1 s3 outside_read (prose-only): 'Every such checkout returns a 500': the checkouts without a promo, failed or not, are in l2, which shows only the newest 40 of 210 lines (convention 9).
+  deploy-1116-2238-r1 e7 outside_read: 'successful POST /checkout requests all have a promo': l2 shows only the newest 40 of 210 lines (convention 9).
+  deploy-1116-2238-r1 e8 outside_read: 'GET /products and POST /cart/items all succeed (200/201); only POST /checkout fails': l2 shows only the newest 40 of 210 lines (convention 9).
+  pool-1117-0231-r1 s2 unsupported (prose-only): 'At normal traffic that was fine, but request volume then rose sharply': no read shows the order; the 02:30 row, which holds the 02:30:52 change, already has 54 requests and pool wait 99.8 ms (its own not_checked says the order is unknown at 60 s rows).
+  pool-1117-0231-r1 e13 outside_read: 'metrics stayed healthy for the next two hours' after the 00:07 change: the run read metrics from 02:16 only.
+  pool-1117-0235-r1 e13 outside_read: 'metrics were clean until 02:34', said of the time since the 00:07 change: the run read metrics from 02:20 only.
+  pool-1117-0235-r1 e2 outside_read: 'every failure is a pool-acquire timeout (wait_for_connection in db.py), none is a payments or DB error': l1 shows only the newest 30 of 39 error lines (convention 9).
+  pool-1117-0235-r1 e4 outside_read: 'pool fully in use on every failing request': l1 shows only the newest 30 of 39 error lines (convention 9).
+  downstream-1117-0411-r1 e16 outside_read: 'latency was normal for over an hour after the revert' (02:37): the run read metrics from 03:56 only.
+  downstream-1117-0411-r1 e18 outside_read: 'with metrics normal until 04:11', said of the time since the 00:07 change: the run read metrics from 03:56 only.
+  downstream-1117-0411-r1 i2 outside_read (prose-only): 'metrics were normal for over an hour after it' (the 02:37 change): the run read metrics from 03:56 only.
+  deploy-1117-0551-r1 s4 outside_read (prose-only): 'rolled back at 22:44 on 11-16 after its first deploy': d1 shows only the 10 most recent records ('Older records exist'), so the 22:37:51 deploy need not be 1.43.0's first.
+  deploy-1117-0551-r1 e14 outside_read: '0% errors followed' the 04:26 change: the run read metrics from 05:36 only.
+  deploy-1117-0551-r1 e20 outside_read: 'the first 1.43.0 deploy' (22:37:51): d1 shows only the 10 most recent records ('Older records exist'), so it need not be the first.
+  deploy-1116-1917-r2 s1 outside_read (prose-only): 'every POST /checkout without a promo returns 500': l1 shows only the newest 30 of 43 error lines and l2 the newest 40 of 217 lines (convention 9).
+  deploy-1116-1917-r2 s3 outside_read (prose-only): 'rolled back twice before': d1 shows only the 10 most recent records ('Older records exist'), so there may be more.
+  deploy-1116-1917-r2 s3 unsupported (prose-only): 'for the same reason': no read shows why the 11-13 and 11-14 rollbacks were made.
+  deploy-1116-1917-r2 e5 outside_read: 'all failures are served by 1.43.0': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r2 e6 outside_read: 'every failing checkout has no promo': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r2 e7 outside_read: 'failures are confined to POST /checkout': l1 shows only the newest 30 of 43 error lines and l2 the newest 40 of 217 (convention 9).
+  deploy-1116-1917-r2 e9 contradicted: '(the 19:17 row is blank)': m1's 19:17 row shows payments_timeouts 0; the blank rows are 19:07 and 19:11.
+  deploy-1116-1917-r2 e11 contradicted: 'failures return in under a millisecond': l1 shows failures at 0.7, 3.5, 3.7, 4.1, and 4.2 ms.
+  deploy-1116-1917-r2 e12 outside_read: 'errors are 0 for the following 70 minutes at least in m1', of the 18:05 change: m1 spans 19:07-19:17 only.
+  deploy-1116-1917-r2 i1 outside_read (prose-only): 'the version on every failing line': l1 shows only the newest 30 of 43 error lines (convention 9).
+  deploy-1116-1917-r2 i3 contradicted (prose-only): 'failures return in under a millisecond': l1 shows failures at 0.7, 3.5, 3.7, 4.1, and 4.2 ms.
+  deploy-1116-1917-r2 i4 outside_read (prose-only): 'The two earlier deploys of 1.43.0': d1 shows only the 10 most recent records ('Older records exist'), so there may be more.
+  pool-1116-2058-r2 e10 outside_read: 'every request log line shows the live pool max size is 2': l2 shows only the newest 30 of 225 lines (convention 9).
+  pool-1116-2058-r2 e11 outside_read: 'all requests are served by 1.42.0': l2 shows only the newest 30 of 225 lines (convention 9).
+  pool-1116-2058-r2 e12 outside_read: 'pool wait was healthy afterwards' (after the 19:23 rollback): the run read metrics from 20:43 only.
+  pool-1116-2058-r2 e13 outside_read: 'pool wait was healthy until 20:57', said of the time since the 18:05 change: the run read metrics from 20:43 only.
+  pool-1116-2101-err-r2 e8 outside_read: 'every failure shows pool_max_size=2 with 2 active connections': l1 shows only the newest 30 of 31 error lines (convention 9).
+  pool-1116-2101-err-r2 e13 outside_read: 'all failures served by 1.42.0': l1 shows only the newest 30 of 31 error lines (convention 9).
+  pool-1116-2101-err-r2 e16 outside_read: 'service ran clean until 20:57', said of the time since the 19:23 rollback: the run read metrics from 20:46 only.
+  pool-1116-2101-err-r2 e18 outside_read: 'errors were 0 afterward', of the 18:05 change: the run read metrics from 20:46 only.
+  pool-1116-2101-err-r2 i1 outside_read (prose-only): 'every failure is a pool-acquire timeout at pool_max_size=2': l1 shows only the newest 30 of 31 error lines (convention 9).
+  deploy-1116-2238-r2 s3 outside_read (prose-only): 'the third time 1.43.0 has been deployed and then rolled back': d1 shows only the 10 most recent records ('Older records exist'), so there may be more.
+  deploy-1116-2238-r2 i5 outside_read (prose-only): 'rolled back twice before': d1 shows only the 10 most recent records ('Older records exist'), so there may be more.
+  deploy-1116-2238-r2 i5 unsupported (prose-only): '1.43.0 has a recurring defect': no read shows why the earlier rollbacks were made (its own not_checked says the reasons aren't in the records).
+  pool-1117-0231-r2 e12 outside_read: 'pool wait stayed near zero after it' (the 00:07 change): the run read metrics from 02:16 only.
+  pool-1117-0234-r2 e14 outside_read: 'the metrics were healthy until 02:30', said of the time since the 00:07 change: the run read metrics from 02:24 only.
+  pool-1117-0235-r2 s2 unsupported (prose-only): 'Traffic was already rising' when the pool was cut: no read shows the order; the 02:30 row (54 requests) holds the 02:30:52 change, and 60 s rows can't split it.
+  pool-1117-0235-r2 e3 outside_read: 'each failing request had both connections in use': l1 shows only the newest 30 of 39 error lines (convention 9).
+  pool-1117-0235-r2 e4 outside_read: 'every failure waited the full 1500 ms for a connection': l1 shows only the newest 30 of 39 error lines (convention 9).
+  pool-1117-0235-r2 e17 outside_read: 'with error rate 0 until 02:34', said of the time since the 00:07 change: the run read metrics from 02:20 only.
+  downstream-1117-0411-r2 e17 outside_read: 'latency was normal through 04:10', said of the time since the 00:07 change: the run read metrics from 03:56 only.
+  downstream-1117-0411-r2 e18 outside_read: 'all logs show 1.42.0': l2 shows only the newest 40 of 212 lines (convention 9).
+  deploy-1117-0551-r2 e16 outside_read: 'after 1.43.0 was first deployed at 22:37': d1 shows only the 10 most recent records ('Older records exist'), so the 22:37:51 deploy need not be 1.43.0's first.
+
+flags called right that no label names (audit misses):
+  pool-1116-2101-err-r2 e9 (contradicted)
