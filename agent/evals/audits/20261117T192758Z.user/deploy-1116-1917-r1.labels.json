@@ -1,0 +1,13 @@
+{
+    "about": "Label each run blind, from this packet only. diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer. slips: claims past the run's own tool output, each {target, kind, complaint, note}. target: e<n> an evidence item, s<n> a root_cause sentence, i<n> an inference, as the packet numbers them. kind: strict = the output contradicts it or never showed it; loose = roughly true but past the data (an 'about' hiding a wider range, a vague scope). complaint: contradicted, outside_read (about rows, lines, or a period its read doesn't cover), miscited (cites what doesn't exist or isn't what it says), unsupported (no evidence carries it). One label per target and complaint; a run with no slips has [].",
+    "sweep": "20261117T192758Z",
+    "labeler": "Steven",
+    "blind": true,
+    "runs": {
+        "deploy-1116-1917-r1": {
+            "diagnosis": "right",
+            "note": "Diagnosis only; claims not checked",
+            "slips": []
+        }
+    }
+}
