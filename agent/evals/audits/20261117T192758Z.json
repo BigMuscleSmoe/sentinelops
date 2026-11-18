@@ -1,0 +1,714 @@
+{
+ "about": "Hand audit of the Haiku 5.5 test sweep 20261117T192758Z (33 runs: the 11 test scenarios x 3), by Claude, blind: written from each run's transcript only (its alarm prompt, tool output, and Hypothesis, shown by a viewer that reads the transcript and nothing else), before the checker, the rubric, or grading ran on this sweep, and without reading the user's three label files (24d99e4). diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer. slips: claims past the run's own tool output, each {target, kind, complaint, note}. target: e<n> an evidence item, s<n> a root_cause sentence (numbered by evals.audit.sentences), i<n> an inference. kind: strict = the output contradicts it or never showed it; loose = roughly true but past the data. complaint: contradicted; outside_read (about rows, lines, or a period its read doesn't cover); miscited (cites what doesn't exist or isn't what it says); unsupported (no evidence carries it). One label per target and complaint; a run with no slips has []. Kept from the 2026-11-13 audit: strict covers a value outside the rows or lines read, a wrong count or sum, a first or only event claimed from a read that left older lines out, a value given the wrong time or source, and a share with the wrong denominator; a claim about a period the run never read is strict (the user's call, 2026-11-13); loose covers an 'about', 'roughly', or 'near' hiding a wider range, a vague scope, and a span rounded beyond the read; claims the run makes in not_checked are not labeled. New in this audit: (1) Older changes: a claim that a metric stayed flat or clean, had no effect, or showed no change, or that a symptom began only at a time, offered to rule out an older change whose aftermath the run never read, is strict outside_read. A plain onset claim the read shows is not a slip, nor is an argument from timing alone, nor a claim scoped to the rows the run read. (2) Typed items are literal: a lines list cites only its lines (c368a0a), so lines [1, 20] is two lines; a range's low and high must be the least and greatest values in its window or cited lines, and either one wrong is strict contradicted (a range written in prose with 'about', 'roughly', or 'near' is loose); a none must hold no record in its window (one that does is strict contradicted), and a none window that starts or ends exactly on a record is loose contradicted. (3) A source the run never read (m2 when it read only m1) is strict miscited, whatever the values. (4) Form-only faults are not labeled when every stated fact is in the cited record or line: a value under a wrong or nonexistent column (ts, timestamp, value, kind, version), or a compound value such as 'POOL_MAX_SIZE 20->2' or '1.43.0->1.42.0'; a changed key as the column (POOL_MAX_SIZE: '20->2') is the schema's own instruction. (5) Uncited but true: an inference whose rests_on doesn't carry it, or a true figure no item cites, is not a slip if the run's output shows it. (6) Durations are checked against the deploy records' timestamps; one further off than its 'about' allows (about 2 hours for 1 h 26 min, about 75 minutes for 1 h 34 min) is strict contradicted, and a rounding such as about four hours for 3 h 46 min is not labeled. (7) Traffic named as a contributing factor rather than the cause doesn't make a diagnosis partly. (8) A '-' metrics row (no payments calls that minute) doesn't contradict 'timeouts are 0 in every row'.",
+ "sweep": "20261117T192758Z",
+ "labeler": "Claude",
+ "blind": true,
+ "runs": {
+  "downstream-1114-2357-r1": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown named as the cause (upstream), checkout waiting on its calls and 504s at the 2000 ms timeout as the mechanism; pool and deploys cleared.",
+   "slips": [
+    {
+     "target": "s2",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'Each POST /checkout now spends roughly 0.7 to 1.6 s waiting on payments-api': l1's checkout lines show upstream_latency_ms 255.5 to 1629.6, three of the eight under 0.5 s ([5] 255.5, [22] 324.7, [19] 456.7)."
+    },
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "The note puts the eight lines' upstream_latency_ms between 255 and 1063; cited line [4] shows 1629.6."
+    },
+    {
+     "target": "e1",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "The note's 'eleven quiet minutes at 272 to 732 ms': m1 shows 14 quiet rows, 23:42 to 23:55, at 272 to 732."
+    }
+   ]
+  },
+  "deploy-1116-1917-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo as the mechanism; payments-api and the config changes cleared.",
+   "slips": [
+    {
+     "target": "e1",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "The note puts the deploy 'about 28 s before the first alarm datapoint'; the alarm's first breaching datapoint is the 19:17:10 period, which holds the 19:17:18 deploy. 28 s is to the alarm firing (19:17:46)."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'with no matching error change' after the 18:05 change: the run read metrics from 19:02 only."
+    }
+   ]
+  },
+  "pool-1116-2058-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for the 2 connections as the mechanism; payments-api and the earlier changes cleared.",
+   "slips": []
+  },
+  "pool-1116-2101-lat-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections, waits reaching the 1500 ms limit, as the mechanism; the database and payments-api cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "none over d2 from 2026-11-14 20:00 to 2026-11-16 20:57:33: d2 shows eight records there (2026-11-14 20:28:41, 22:28:29, 22:29:53; 2026-11-16 16:03:56, 18:05:34, 19:17:18, 19:23:49, 19:31:26)."
+    },
+    {
+     "target": "e8",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites source m2; the run read one metrics table, m1 (its payments_p99_ms 20:41-21:01 is 53.2 to 331, as the item says)."
+    }
+   ]
+  },
+  "pool-1116-2101-err-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range db_query_p50_ms 20:46-21:01, high 71.1: m1's 20:49 row shows 88.2."
+    },
+    {
+     "target": "i3",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'the 500 rate stayed at 0% while waits were 250-500 ms': m1's pool_wait_p99_ms in those rows is 254, 403, 533, 508."
+    },
+    {
+     "target": "e15",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'errors did not start until 20:57', said of the time since the 19:17 deploy: the run read metrics from 20:46 only."
+    }
+   ]
+  },
+  "deploy-1116-2238-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 redeploy at 22:37:51 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo as the mechanism; the pool changes, the earlier 1.43.0 run, and payments-api cleared.",
+   "slips": [
+    {
+     "target": "e4",
+     "kind": "strict",
+     "complaint": "unsupported",
+     "note": "'the errors begin about 0.1 s before the minute ends': no read shows when the errors began within 22:37 (m1's 22:37 row has 9.1%; l1's first error line is 22:38:07.246). The deploy itself is 8 s before the minute ends."
+    },
+    {
+     "target": "e17",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "Calls 19:17:18 the 'first 1.43.0 deploy'; d1 shows an earlier one at 2026-11-14 22:28:29 (the answer's own e21)."
+    },
+    {
+     "target": "i4",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the errors began only after the 22:37 redeploy', said of the time since the 19:23 rollback: the run read metrics from 22:23 only (its own not_checked says the 19:17-19:23 run is unread)."
+    }
+   ]
+  },
+  "pool-1117-0231-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests at up to 8 concurrent queueing for 2 connections as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e15",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the wait began only at 02:30:52', said of the time since the 00:07 change: the run read metrics from 02:16 only."
+    }
+   ]
+  },
+  "pool-1117-0234-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections, waits making up most of the latency, as the mechanism; payments-api, the database, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_time_ms over l1's 30 lines, high 1388.0: the highest is 1372.0 ([21]); 1388 is no line's wait."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites source m2; the run read one metrics table, m1 (whose payments_p99_ms 02:19-02:34 is 61.1 to 336, as the item says)."
+    },
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites source m2, which the run never read; and its count of 30 rows with payments_timeouts 0 matches no table: m1 has 15 such rows (02:24 is a dash)."
+    },
+    {
+     "target": "e18",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'made about 9 hours earlier': d1 puts the earlier 20->2 change at 2026-11-16 20:57:34, 5 h 33 min before the 02:30:52 change."
+    },
+    {
+     "target": "e15",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the service has run 1.42.0 with stable latency since' the 22:44 rollback: the run read metrics from 02:19 only."
+    },
+    {
+     "target": "e16",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no latency change follows' the 00:31 change: the run read metrics from 02:19 only."
+    },
+    {
+     "target": "e17",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'metrics stay flat until 02:30', said of the time since the 00:07 change: the run read metrics from 02:19 only."
+    }
+   ]
+  },
+  "pool-1117-0235-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e17",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no effect on pool or latency' of the 00:31 change: the run read metrics from 02:20 only."
+    },
+    {
+     "target": "e18",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the pool wait only rises at 02:30', said of the time since the 00:07 change: the run read metrics from 02:20 only."
+    }
+   ]
+  },
+  "downstream-1117-0411-r1": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown named as the cause (upstream); checkout's calls waiting on it up to the 2000 ms timeout, with 504 UpstreamTimeouts, as the mechanism; the pool changes and checkout's own work cleared.",
+   "slips": [
+    {
+     "target": "e8",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range upstream_latency_ms over l2's 30 lines, low 184.6: the lowest is 180.4 ([26]); 184.6 is no line's value."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "none over d1 from 2026-11-16 22:44:22 to 04:11:48: d1 shows five records there (22:44:22, 00:07:15, 00:31:06, 02:30:52, 02:37:23), two of which the note itself names."
+    }
+   ]
+  },
+  "deploy-1117-0551-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo (pricing.py:15) returning 500 on POST /checkout, on carts without a promo (e7), as the mechanism; payments-api, the pool, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'lands 9 s before the first error line': l1 shows only the newest 20 of 22 error lines, so its [1] at 05:51:21.679 need not be the first."
+    },
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "Calls l1's [1] the 'first failing line'; l1 shows only the newest 20 of 22."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'rolled back at 22:44 the next day': d1 puts the 22:37:51 deploy and the 22:44:22 rollback on the same day, 2026-11-16, 6.5 minutes apart."
+    }
+   ]
+  },
+  "downstream-1114-2357-r2": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown at 23:56 named as the cause (upstream); checkout's calls hitting the 2000 ms timeout with 504 UpstreamTimeouts as the mechanism; checkout's pool, DB, and deploys cleared.",
+   "slips": [
+    {
+     "target": "e8",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range upstream_latency_ms over l2's lines 1-3 and 5-10, high 1062.4 (note: '255-1063 ms'): cited line [2] shows 1629.6."
+    }
+   ]
+  },
+  "deploy-1116-1917-r2": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo, returning 500, as the mechanism; payments-api and the config changes cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'lands about 30 s before the first failure in the log sample': l1's earliest error line is 19:17:33.993, 15.5 s after the 19:17:18.464 deploy (l2's earliest, 19:17:44.209, is 25.7 s after)."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the metrics were clean for over an hour after it' (the 18:05 change): the run read metrics from 19:02 only."
+    }
+   ]
+  },
+  "pool-1116-2058-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for the 2 connections as the mechanism; payments-api, the database, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_time_ms over cited lines [1, 5, 7, 10], low 0.0: those lines show 50.6, 70.2, 96.2, 42.0 (the note's own '42 to 96 ms')."
+    },
+    {
+     "target": "e15",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the pool wait was flat until 20:57', said of the time since the 18:05 change: the run read metrics from 20:43 only."
+    }
+   ]
+  },
+  "pool-1116-2101-lat-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections past the 1500 ms limit as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'deploy 1.43.0 is 3h40m before onset': d1 puts it at 19:17:18, 1 h 40 min before the 20:57 onset."
+    }
+   ]
+  },
+  "pool-1116-2101-err-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'errors don't start until 20:57', said of the time since the 19:23 rollback: the run read metrics from 20:46 only."
+    }
+   ]
+  },
+  "deploy-1116-2238-r2": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 redeploy at 22:37:51 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo code, returning 500, as the mechanism; the pool changes, payments-api, and the config changes cleared.",
+   "slips": []
+  },
+  "pool-1117-0231-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections as concurrency rose as the mechanism; payments-api, the database, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no pool wait then in the metrics window', of the 22:37-22:44 1.43.0 run: the run's metrics start at 02:16."
+    },
+    {
+     "target": "e15",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'made about 3.5 hours earlier': d1 puts the earlier cut at 2026-11-16 20:57:34, 5 h 33 min before the 02:30:52 change."
+    }
+   ]
+  },
+  "pool-1117-0234-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections up to the 1500 ms limit as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no pool effect' of the 00:31 change: the run read metrics from 02:24 only."
+    }
+   ]
+  },
+  "pool-1117-0235-r2": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared. The traffic rise is called a second factor, not a cause (i4).",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_p99_ms 02:29-02:30, low 0.4 high 0.5: m1 shows 0.5 at 02:29 and 99.8 at 02:30."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range concurrent_requests over cited lines [1, 20], high 42: those lines show 29 and 34 (42 is on [16] and [17], uncited; the list likely means lines 1 to 20)."
+    },
+    {
+     "target": "e2",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "none over d1 from 02:30:52.100 to the alarm: the window starts on the POOL_MAX_SIZE record itself; nothing falls after it."
+    },
+    {
+     "target": "i4",
+     "kind": "loose",
+     "complaint": "unsupported",
+     "note": "'Traffic alone would not produce errors with a pool of 20': no read shows a pool of 20 under this load."
+    }
+   ]
+  },
+  "downstream-1117-0411-r2": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown at 04:11 named as the cause (upstream); checkout's calls waiting on it, with 504 UpstreamTimeouts at 2000 ms, as the mechanism; checkout's pool, DB, and changes cleared.",
+   "slips": [
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'pool wait stayed at 0.4-0.5 ms afterward' (after 02:37): the run read metrics from 03:56 only."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no latency change is visible at 02:30 in the window I checked': the window checked starts at 03:56."
+    },
+    {
+     "target": "e9",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range upstream_latency_ms, low 181.0: cited line [36] shows 180.4."
+    },
+    {
+     "target": "s1",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'payments-api p99 went from roughly 40-170 ms': m1's rows before 04:11 run 49.4 to 244 (04:02 244, 03:56 173)."
+    }
+   ]
+  },
+  "deploy-1117-0551-r2": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo (pricing.py:15) on carts without a promo, returning 500, as the mechanism; payments-api, the pool, and the config changes cleared.",
+   "slips": [
+    {
+     "target": "e2",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'with clean metrics until 05:51', said of the time since the 02:30, 02:37 and 04:26 changes: the run read metrics from 05:36 only."
+    },
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "range err% 05:36-05:50 cited to m2, which spans 05:46-05:51 only (the earlier rows are m1's)."
+    },
+    {
+     "target": "e4",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "range payments_p99_ms 05:36-05:50, low 47.9 high 247, cited to m2, which spans 05:46-05:51 (101 to 163 there); 47.9 and 247 are m1's 05:36 and 05:44 rows."
+    },
+    {
+     "target": "i3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the metrics stayed clean until the 1.43.0 deploy', said of the hours since the config changes: the run read metrics from 05:36 only."
+    },
+    {
+     "target": "e2",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "none over d1 from 04:26:26.186 to 05:51:12.756: the window starts and ends on records (the 04:26 change and the 1.43.0 deploy); nothing falls between them."
+    }
+   ]
+  },
+  "downstream-1114-2357-r3": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown from 23:56 named as the cause (upstream); checkout's calls waiting on it, with 504 UpstreamTimeouts at 2000 ms, as the mechanism; checkout's pool, DB, and deploys cleared. The traffic rise is left open as a possible load on payments-api, not blamed (i3).",
+   "slips": [
+    {
+     "target": "e12",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'db_query_ms stays in the 170-650 ms range': l2's lines run 169.7 ([6]) to 654.6 ([19]); rounded past the read."
+    }
+   ]
+  },
+  "deploy-1116-1917-r3": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api, the pool, and the config changes cleared.",
+   "slips": [
+    {
+     "target": "s4",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'Roughly half of checkout requests fail': l2 shows 33 of its 40 POST /checkout lines failing (83%); m1's 18.7% is of all requests."
+    },
+    {
+     "target": "e1",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'about 7 s before the first failing request in the logs': l2 shows only the newest 40 of 51 lines, so its [1] at 19:17:24.866 need not be the first."
+    },
+    {
+     "target": "e4",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites l1's line [4] at 19:17:25.810; l1's [4] is at 19:17:26.946 (19:17:25.810 is l2's [4])."
+    },
+    {
+     "target": "e4",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'failures start at 19:17:24.866 in l2 (first failing line)': l2 shows only the newest 40 of 51 lines."
+    },
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'errors start at the deploy and not hours earlier', of the 16:03 change: the run read metrics from 19:02 only."
+    },
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the errors begin at the 1.43.0 deploy, not here' (18:05): the run read metrics from 19:02 only."
+    }
+   ]
+  },
+  "pool-1116-2058-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_time_ms over its cited lines, low 42.0 (note: '40-190 ms'): cited line [5] shows 20.0."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'pool wait was flat until 20:57', said of the time since the 19:31 change: the run read metrics from 20:38 only."
+    },
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the service has been on 1.42.0 with pool wait normal since' the 19:23 rollback: the run read metrics from 20:38 only."
+    },
+    {
+     "target": "i3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "Rules out the 19:17-19:31 changes 'because pool wait was flat until the POOL_MAX_SIZE change': the run read metrics from 20:38 only."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'about 2 hours before the symptom': d1 puts the change at 19:31:26, 1 h 26 min before the 20:57 onset."
+    }
+   ]
+  },
+  "pool-1116-2101-lat-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections, waits reaching the 1500 ms limit, as the mechanism; the database, payments-api, and the 1.42.0 version cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_p99_ms 20:56-21:00, high 508.0: m1's 20:59 row shows 533."
+    },
+    {
+     "target": "e9",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_time_ms 21:01:38.006-21:01:38.596, high 958.9: l2's [8] at 21:01:38.556 shows 961.1."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites source m2; the run read one metrics table, m1 (its payments_p99_ms 20:41-21:01 is 53.2 to 331, as the item says)."
+    },
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "miscited",
+     "note": "Cites source m2; the run read one metrics table, m1 (its payments_timeouts are 0 throughout, as the item says)."
+    },
+    {
+     "target": "i3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "Rules out 1.42.0 because it 'ran for about 90 minutes before the symptom at pool size 20' (from 19:23): the run read metrics from 20:41 only."
+    },
+    {
+     "target": "i1",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'db_query_p50 stays near 60-90 ms': m1's db_query_p50_ms runs 45.3 to 90.3 (64.0 to 71.1 from 20:57)."
+    }
+   ]
+  },
+  "pool-1116-2101-err-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range db_query_p50_ms 20:46-21:01, high 71.1: m1's 20:49 row shows 88.2."
+    },
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "none over d1 from 19:23:50 to 20:57:33: d1 shows the CART_TTL_HOURS change at 19:31:26 in it."
+    },
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the metrics are clean for the hour after it' (the 19:23 rollback): the run read metrics from 20:46 only."
+    },
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the metrics are clean for the hour after it' (the 18:05 change): the run read metrics from 20:46 only."
+    }
+   ]
+  },
+  "deploy-1116-2238-r3": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 22:37:51 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api, the pool, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'about 75 minutes before onset': d1 puts the change at 21:04:05, 1 h 34 min before the 22:37:51 deploy and the 22:37 onset."
+    }
+   ]
+  },
+  "pool-1117-0231-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections as the mechanism; the database, payments-api, and the code cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_p99_ms 02:16-02:29, low 0.4: m1's 02:23 row shows 0.1 (and 02:24 shows 0.3)."
+    }
+   ]
+  },
+  "pool-1117-0234-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections, waits reaching the 1500 ms limit, as the mechanism; payments-api and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e4",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_active_max 02:30-02:34, low 1.0: m1 shows 2 in every one of those rows."
+    },
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no latency rise appears before 02:30', said of the time since the 00:31 change: the run read metrics from 02:19 only."
+    },
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'latency was normal until 02:30', said of the time since the 00:07 change: the run read metrics from 02:19 only."
+    }
+   ]
+  },
+  "pool-1117-0235-r3": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections and failing with the pool's 1500 ms TimeoutError as the mechanism; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e2",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range pool_wait_p99_ms 02:29-02:35, low 0.4: m1's lowest row in that span is 0.5 (02:29)."
+    },
+    {
+     "target": "e10",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "Dismisses the 20:57 change 'with no alarm noted': the run read nothing from 20:57-21:04 (metrics from 02:20 only)."
+    },
+    {
+     "target": "e11",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'no effect on request handling', said of the 00:31 change: the run read metrics from 02:20 only."
+    },
+    {
+     "target": "e1",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'the only change before the symptom': d1 shows nine earlier changes, which e9-e12 discuss; true only of the minutes before it."
+    }
+   ]
+  },
+  "downstream-1117-0411-r3": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown at 04:11 named as the cause (upstream); checkout's calls waiting on it as the mechanism; checkout's pool, errors, other routes, and changes cleared.",
+   "slips": [
+    {
+     "target": "e6",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "range latency_ms over its cited lines, low 36.4 high 107.3: cited [26] shows 23.4 and cited [34] shows 121.5."
+    },
+    {
+     "target": "s3",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'/products and /cart/items stay near 60-100 ms': l1's lines on those routes run 23.4 to 121.5."
+    }
+   ]
+  },
+  "deploy-1117-0551-r3": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api and the pool cleared.",
+   "slips": [
+    {
+     "target": "e2",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "none over d1 from 04:26:26.186 to 05:51:12: the window starts on a record (the 04:26 RECOMMENDATIONS_ENABLED change)."
+    }
+   ]
+  }
+ }
+}
