@@ -1,0 +1,180 @@
+{
+ "about": "Hand audit of the Sonnet 5.5 test sweep 20261118T050147Z-sonnet (11 of its 22 runs: r1 of each of the 11 test scenarios, chosen before any answer was read), by Claude, blind: written from each run's transcript only (its alarm prompt, tool output, and Hypothesis, shown by a viewer that reads the transcript and nothing else), before the checker, the rubric, or grading ran on this sweep. Its conventions are the Haiku audit's (20261117T192758Z, bf3fffd), restated word for word below, with none added; 'New in this audit' there means new since the 2026-11-13 audit. diagnosis: right = names the injected fault's cause and mechanism and blames nothing else; partly = one of those missing; wrong = blames something else; none = no answer. slips: claims past the run's own tool output, each {target, kind, complaint, note}. target: e<n> an evidence item, s<n> a root_cause sentence (numbered by evals.audit.sentences), i<n> an inference. kind: strict = the output contradicts it or never showed it; loose = roughly true but past the data. complaint: contradicted; outside_read (about rows, lines, or a period its read doesn't cover); miscited (cites what doesn't exist or isn't what it says); unsupported (no evidence carries it). One label per target and complaint; a run with no slips has []. Kept from the 2026-11-13 audit: strict covers a value outside the rows or lines read, a wrong count or sum, a first or only event claimed from a read that left older lines out, a value given the wrong time or source, and a share with the wrong denominator; a claim about a period the run never read is strict (the user's call, 2026-11-13); loose covers an 'about', 'roughly', or 'near' hiding a wider range, a vague scope, and a span rounded beyond the read; claims the run makes in not_checked are not labeled. New in this audit: (1) Older changes: a claim that a metric stayed flat or clean, had no effect, or showed no change, or that a symptom began only at a time, offered to rule out an older change whose aftermath the run never read, is strict outside_read. A plain onset claim the read shows is not a slip, nor is an argument from timing alone, nor a claim scoped to the rows the run read. (2) Typed items are literal: a lines list cites only its lines (c368a0a), so lines [1, 20] is two lines; a range's low and high must be the least and greatest values in its window or cited lines, and either one wrong is strict contradicted (a range written in prose with 'about', 'roughly', or 'near' is loose); a none must hold no record in its window (one that does is strict contradicted), and a none window that starts or ends exactly on a record is loose contradicted. (3) A source the run never read (m2 when it read only m1) is strict miscited, whatever the values. (4) Form-only faults are not labeled when every stated fact is in the cited record or line: a value under a wrong or nonexistent column (ts, timestamp, value, kind, version), or a compound value such as 'POOL_MAX_SIZE 20->2' or '1.43.0->1.42.0'; a changed key as the column (POOL_MAX_SIZE: '20->2') is the schema's own instruction. (5) Uncited but true: an inference whose rests_on doesn't carry it, or a true figure no item cites, is not a slip if the run's output shows it. (6) Durations are checked against the deploy records' timestamps; one further off than its 'about' allows (about 2 hours for 1 h 26 min, about 75 minutes for 1 h 34 min) is strict contradicted, and a rounding such as about four hours for 3 h 46 min is not labeled. (7) Traffic named as a contributing factor rather than the cause doesn't make a diagnosis partly. (8) A '-' metrics row (no payments calls that minute) doesn't contradict 'timeouts are 0 in every row'.",
+ "sweep": "20261118T050147Z-sonnet",
+ "labeler": "Claude",
+ "blind": true,
+ "runs": {
+  "downstream-1114-2357-r1": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown from about 23:56 named as the cause (upstream); calls reaching checkout's 2000 ms upstream timeout, slowing POST /checkout and returning 504s, as the mechanism; checkout's pool, database, and changes cleared.",
+   "slips": []
+  },
+  "deploy-1116-1917-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 19:17:18 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api, the pool, and the config changes cleared.",
+   "slips": [
+    {
+     "target": "e3",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'first error line 19:17:25': l1 shows only the newest 30 of 43 error lines, so its [1] at 19:17:25.810 need not be the first."
+    },
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'rolled back about a minute later': d1 puts the 1.43.0 deploy at 22:28:29.583 and the rollback at 22:29:53.515, 1 min 24 s later."
+    }
+   ]
+  },
+  "pool-1116-2058-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections as the mechanism, with the traffic rise named only as the concurrency that queued; nothing else blamed.",
+   "slips": [
+    {
+     "target": "e1",
+     "kind": "strict",
+     "complaint": "contradicted",
+     "note": "'24 s before the alarm window's first breaching datapoint': the alarm's first breaching datapoint is the 20:57:40 period, which starts 5.6 s after the 20:57:34.402 change."
+    }
+   ]
+  },
+  "pool-1116-2101-lat-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections up to the 1500 ms acquire timeout as the mechanism; the traffic ramp named as a co-factor, not the cause; the database, payments-api, and the earlier changes cleared. e4's 'metrics were healthy long after it' is true of the 20:46-20:56 rows read and claims nothing of the unread hours, so it isn't labeled.",
+   "slips": [
+    {
+     "target": "i3",
+     "kind": "loose",
+     "complaint": "unsupported",
+     "note": "'with 20 connections the same load would probably have been served': no read shows a pool of 20 under this load, and concurrency reached 38 in the 21:01 row."
+    }
+   ]
+  },
+  "pool-1116-2101-err-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 20:57:34 named as the cause; requests queueing for 2 connections and failing with the 1500 ms pool-acquire TimeoutError as the mechanism; the traffic rise named as a factor, not the cause; the database, payments-api, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e12",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'errors only began later', said of the time since the 19:23 rollback: the run read metrics from 20:46 only."
+    },
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'metrics were clean until 20:57', said of the time since the 18:05 change: the run read metrics from 20:46 only."
+    }
+   ]
+  },
+  "deploy-1116-2238-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 22:37:51 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; the pool, payments-api, and the earlier changes cleared. e8's value '2xx' over lines showing 200 and 201 is form only (convention 4), so it isn't labeled.",
+   "slips": [
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'errors were zero afterwards', said of the time since the 18:05 change: the run read metrics from 22:28 only."
+    }
+   ]
+  },
+  "pool-1117-0231-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections as the mechanism, with the traffic rise named as what exposed it; the database and payments-api cleared.",
+   "slips": [
+    {
+     "target": "s2",
+     "kind": "strict",
+     "complaint": "unsupported",
+     "note": "'At normal traffic that was fine, but request volume then rose sharply': no read shows the pool at 2 under normal traffic; the 02:30 row, which holds the 02:30:52 change, already has 54 requests, and every earlier row ran with a pool of 20."
+    },
+    {
+     "target": "i3",
+     "kind": "strict",
+     "complaint": "unsupported",
+     "note": "'A pool of 2 was not a problem at 12 req/min': it rests on e2, whose rows (02:16-02:29) ran before the change, with a pool of 20; no row shows a pool of 2 at 12 requests a minute."
+    },
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'metrics stayed healthy for the next two hours' after the 00:07 change: the run read metrics from 02:16 only."
+    }
+   ]
+  },
+  "pool-1117-0234-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections up to the 1500 ms acquire timeout as the mechanism, with the traffic ramp as what exposed it; the database, payments-api, and the earlier changes cleared. e13's 'shows the pool size of 2 was a known problem' reads the 21:04 on-call revert record, not the unread 20:57-21:04 metrics, so it isn't labeled.",
+   "slips": []
+  },
+  "pool-1117-0235-r1": {
+   "diagnosis": "right",
+   "note": "The POOL_MAX_SIZE 20->2 change at 02:30:52 named as the cause; requests queueing for 2 connections and failing with 500 at the 1500 ms acquire timeout as the mechanism, the traffic ramp as an aggravating factor; the database, payments-api, and the earlier changes cleared. e12's 'a precedent for it being harmful' reads the 21:04 on-call revert record, so it isn't labeled.",
+   "slips": [
+    {
+     "target": "e13",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'metrics were clean until 02:34', said of the time since the 00:07 change: the run read metrics from 02:20 only."
+    },
+    {
+     "target": "e13",
+     "kind": "loose",
+     "complaint": "contradicted",
+     "note": "'metrics were clean until 02:34': true of err%, but m1's pool_wait_p99_ms is 99.8 to 918 and p99_ms reaches 1125 in the 02:30-02:33 rows."
+    }
+   ]
+  },
+  "downstream-1117-0411-r1": {
+   "diagnosis": "right",
+   "note": "payments-api's slowdown at 04:11 named as the cause; checkout calls waiting on it up to the 2000 ms timeout, ending in UpstreamTimeout, as the mechanism; the pool, the database, and the earlier changes cleared.",
+   "slips": [
+    {
+     "target": "e16",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'latency was normal for over an hour after the revert' (02:37): the run read metrics from 03:56 only."
+    },
+    {
+     "target": "e18",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'with metrics normal until 04:11', said of the time since the 00:07 change: the run read metrics from 03:56 only."
+    },
+    {
+     "target": "i2",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'metrics were normal for over an hour after it' (the 02:37 change): the run read metrics from 03:56 only."
+    }
+   ]
+  },
+  "deploy-1117-0551-r1": {
+   "diagnosis": "right",
+   "note": "The 1.43.0 deploy at 05:51:12 named as the cause; the TypeError in apply_promo on carts without a promo, returning 500, as the mechanism; payments-api, the pool, and the earlier changes cleared. i4's 'zero errors for 15 minutes after them' rests on e2's 05:36-05:50 rows, so it is scoped to the rows read and isn't labeled.",
+   "slips": [
+    {
+     "target": "s4",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'rolled back at 22:44 on 11-16 after its first deploy': d1 shows only the 10 most recent records ('Older records exist'), so the 22:37:51 deploy need not be 1.43.0's first."
+    },
+    {
+     "target": "e14",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'0% errors followed' the 04:26 change: the run read metrics from 05:36 only."
+    },
+    {
+     "target": "e20",
+     "kind": "strict",
+     "complaint": "outside_read",
+     "note": "'the first 1.43.0 deploy' (22:37:51): d1 shows only the 10 most recent records ('Older records exist'), so it need not be the first."
+    }
+   ]
+  }
+ }
+}
