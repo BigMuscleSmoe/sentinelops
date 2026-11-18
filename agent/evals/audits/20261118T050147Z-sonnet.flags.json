@@ -1,0 +1,131 @@
+{
+ "about": "Every checker flag on this sweep, hand-checked against its cited result: call right if the item is wrong as typed, false_flag if it holds; note why. Committed before the report is read. Form-only flags (a wrong or nonexistent column, or a value that isn't the field's own, while every stated fact holds in the cited result; each note starts 'form:') are called right, as wrong as typed (the user's call, 2026-11-18). That is the reading of the redesign's step 4, whose hand check pins 7 such column flags as wrong as typed (eafed0b, tests/fixtures/checker/verdicts.json: a version under timestamp, a log field named as a metrics column, and 5 'changed key' columns), and of step 6, whose tuning sweep 20261114T221926Z (run at 5f0d3f9) had a change typed under version and three records in one column called wrong as typed; both predate this sweep. The audits' convention 4 leaves them unlabeled, so on a target no label names each is also an audit miss.",
+ "sweep": "20261118T050147Z-sonnet",
+ "checker": "61c03c399b979bcb9c54fd9a1e1e66b70fd4302c",
+ "flags": {
+  "deploy-1116-2238-r1": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "31 of 31 lines have another status: l2[1] has 201",
+    "item": {
+     "kind": "all",
+     "source": "l2",
+     "column": "status",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      9,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      37,
+      39,
+      40
+     ],
+     "value": "2xx",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "GET /products and POST /cart/items all succeed (200/201); only POST /checkout fails"
+    },
+    "call": "right",
+    "note": "form: the typed value '2xx' (a status class) isn't the field's value, though every stated fact is in the cited lines, all 200 or 201 (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   }
+  },
+  "pool-1117-0231-r1": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "1 of 15 rows have another payments_timeouts: m1 02:24:00 has null",
+    "item": {
+     "kind": "all",
+     "source": "m1",
+     "column": "payments_timeouts",
+     "at": null,
+     "start": "02:17:00",
+     "end": "02:31:00",
+     "lines": null,
+     "value": "0",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no payments-api timeouts, so the cause is not upstream"
+    },
+    "call": "false_flag",
+    "note": "holds: every row is 0 but 02:24, a '-' row (no payments calls that minute, so no timeouts); the audit's convention 8."
+   }
+  },
+  "pool-1116-2101-err-r2": {
+   "e9": {
+    "verdict": "contradicted",
+    "reason": "30 of 30 lines have another route: l1[1] has GET /products/{id}",
+    "item": {
+     "kind": "all",
+     "source": "l1",
+     "column": "route",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "3 routes",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "placeholder removed"
+    },
+    "call": "right",
+    "note": "form: the typed value '3 routes' isn't the field's value, though every stated fact is in the cited lines, which hold three routes (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   }
+  },
+  "pool-1117-0234-r2": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "db_query_p50_ms runs 61.7 to 64.9 over 5 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "02:30:00",
+     "end": "02:34:00",
+     "lines": null,
+     "value": null,
+     "low": 61.7,
+     "high": 64.8,
+     "count": null,
+     "seconds": null,
+     "note": "DB query time flat, so the DB itself is not slow"
+    },
+    "call": "right",
+    "note": "high 64.8: m1's 02:31 row is 64.9."
+   }
+  }
+ }
+}

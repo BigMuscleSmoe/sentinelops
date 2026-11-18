@@ -1,0 +1,1032 @@
+{
+ "about": "Every checker flag on this sweep, hand-checked against its cited result: call right if the item is wrong as typed, false_flag if it holds; note why. Committed before the report is read. Form-only flags (a wrong or nonexistent column, or a value that isn't the field's own, while every stated fact holds in the cited result; each note starts 'form:') are called right, as wrong as typed (the user's call, 2026-11-18). That is the reading of the redesign's step 4, whose hand check pins 7 such column flags as wrong as typed (eafed0b, tests/fixtures/checker/verdicts.json: a version under timestamp, a log field named as a metrics column, and 5 'changed key' columns), and of step 6, whose tuning sweep 20261114T221926Z (run at 5f0d3f9) had a change typed under version and three records in one column called wrong as typed; both predate this sweep. The audits' convention 4 leaves them unlabeled, so on a target no label names each is also an audit miss.",
+ "sweep": "20261117T192758Z",
+ "checker": "61c03c399b979bcb9c54fd9a1e1e66b70fd4302c",
+ "flags": {
+  "pool-1116-2101-lat-r1": {
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "8 in the window, the first d2 2026-11-16T19:31:26.364Z with kind config",
+    "item": {
+     "kind": "none",
+     "source": "d2",
+     "column": "kind",
+     "at": null,
+     "start": "2026-11-14T20:00:00.000Z",
+     "end": "2026-11-16T20:57:33.000Z",
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no deploy or config change in the window before 20:57:34, so the pool change is the only candidate that fits the 20:57 onset"
+    },
+    "call": "right",
+    "note": "the none's window (11-14 20:00 to 11-16 20:57:33) holds 8 records, the first the 19:31:26 config change."
+   },
+   "e8": {
+    "verdict": "unresolved",
+    "reason": "no result labeled m2",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "20:41:00",
+     "end": "21:01:00",
+     "lines": null,
+     "value": null,
+     "low": 53.2,
+     "high": 331.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency stays in its normal range, and payments_timeouts is 0 throughout"
+    },
+    "call": "right",
+    "note": "cites m2, which the run never read (it read m1 only)."
+   }
+  },
+  "pool-1116-2101-err-r1": {
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "db_query_p50_ms runs 52.2 to 88.2 over 16 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "20:46:00",
+     "end": "21:01:00",
+     "lines": null,
+     "value": null,
+     "low": 52.2,
+     "high": 71.1,
+     "count": null,
+     "seconds": null,
+     "note": "database query time stays flat, so the DB itself is not slow; the wait is for a connection slot"
+    },
+    "call": "right",
+    "note": "high 71.1: m1's 20:46-21:01 rows reach 88.2."
+   }
+  },
+  "pool-1117-0234-r1": {
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_time_ms runs 984.3 to 1372 over 30 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "pool_wait_time_ms",
+     "at": null,
+     "start": "02:34:46.961Z",
+     "end": "02:34:48.723Z",
+     "lines": null,
+     "value": null,
+     "low": 984.3,
+     "high": 1388.0,
+     "count": null,
+     "seconds": null,
+     "note": "in the newest log lines, pool wait is about 1000 to 1400 ms, most of each request's latency"
+    },
+    "call": "right",
+    "note": "high 1388.0: the lines in the window reach 1372."
+   },
+   "e12": {
+    "verdict": "unresolved",
+    "reason": "no result labeled m2",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "02:19:00",
+     "end": "02:34:00",
+     "lines": null,
+     "value": null,
+     "low": 61.1,
+     "high": 336.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency stays in its normal band through the incident; no upstream degradation"
+    },
+    "call": "right",
+    "note": "cites m2, which the run never read."
+   },
+   "e13": {
+    "verdict": "unresolved",
+    "reason": "no result labeled m2",
+    "item": {
+     "kind": "count",
+     "source": "m2",
+     "column": "payments_timeouts",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "0",
+     "low": null,
+     "high": null,
+     "count": 30,
+     "seconds": null,
+     "note": "no payments timeouts in the window (dashes at 02:24 are missing data, not timeouts)"
+    },
+    "call": "right",
+    "note": "cites m2, which the run never read."
+   }
+  },
+  "pool-1117-0235-r1": {
+   "e1": {
+    "verdict": "contradicted",
+    "reason": "ts at d1 2026-11-17T02:30:52.100Z is 2026-11-17T02:30:52.100Z",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "ts",
+     "at": "2026-11-17T02:30:52.100Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "POOL_MAX_SIZE 20->2",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "config change by maya, 'Size the checkout DB pool to the new replica's connection limit', only config change in the window before the errors"
+    },
+    "call": "right",
+    "note": "form: the typed column 'ts' (value 'POOL_MAX_SIZE 20->2') isn't the field's value, though every stated fact is in the cited record (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   }
+  },
+  "downstream-1117-0411-r1": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "upstream_latency_ms runs 180.4 to 1947.8 over 30 lines",
+    "item": {
+     "kind": "range",
+     "source": "l2",
+     "column": "upstream_latency_ms",
+     "at": null,
+     "start": "04:11:19.664Z",
+     "end": "04:11:48.682Z",
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+     ],
+     "value": null,
+     "low": 184.6,
+     "high": 1947.8,
+     "count": null,
+     "seconds": null,
+     "note": "upstream (payments-api) time swings widely; the slowest requests are almost entirely upstream time"
+    },
+    "call": "right",
+    "note": "low 184.6: the cited lines go down to 180.4."
+   },
+   "e12": {
+    "verdict": "contradicted",
+    "reason": "4 in the window, the first d1 2026-11-17T02:37:23.000Z",
+    "item": {
+     "kind": "none",
+     "source": "d1",
+     "column": null,
+     "at": null,
+     "start": "2026-11-16T22:44:22.000Z",
+     "end": "2026-11-17T04:11:48.000Z",
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no checkout-api deploy or config change in the 5 hours before the alarm; the latest records are the 02:30 and 02:37 pool-size change and its revert, which are about 1.5 hours before onset and restored POOL_MAX_SIZE to 20"
+    },
+    "call": "right",
+    "note": "the none's window (11-16 22:44:22 to 04:11:48) holds 4 records, the first the 02:37:23 revert; its note names two of them."
+   }
+  },
+  "deploy-1117-0551-r1": {
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "stack at l1[1] is [\"checkout/app.py:72 in handle\", \"checkout/app.py:136 in _checkout\", \"checkout/pricing.py:11 in price_cart\", \"checkout/pricing.py:15 in apply_promo\"]",
+    "item": {
+     "kind": "value",
+     "source": "l1",
+     "column": "stack",
+     "at": "2026-11-17T05:51:21.679Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      1
+     ],
+     "value": "checkout/app.py:72 in handle > checkout/app.py:136 in _checkout > checkout/pricing.py:11 in price_cart > checkout/pricing.py:15 in apply_promo",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "first failing line; the failure is in the new promo pricing code path, inside checkout-api"
+    },
+    "call": "false_flag",
+    "note": "holds: l1[1]'s stack is the four frames the value lists, in order, joined with ' > '."
+   }
+  },
+  "downstream-1114-2357-r2": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "upstream_latency_ms runs 255.5 to 1629.6 over 9 lines",
+    "item": {
+     "kind": "range",
+     "source": "l2",
+     "column": "upstream_latency_ms",
+     "at": null,
+     "start": "23:57:29.903Z",
+     "end": "23:57:36.739Z",
+     "lines": [
+      1,
+      2,
+      3,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+     ],
+     "value": null,
+     "low": 255.5,
+     "high": 1062.4,
+     "count": null,
+     "seconds": null,
+     "note": "successful checkouts are slow because the payments-api call takes 255-1063 ms on these lines"
+    },
+    "call": "right",
+    "note": "high 1062.4: the cited lines reach 1629.6."
+   }
+  },
+  "pool-1116-2058-r2": {
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_time_ms runs 42 to 96.2 over 4 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "pool_wait_time_ms",
+     "at": null,
+     "start": "20:58:09.987Z",
+     "end": "20:58:11.501Z",
+     "lines": [
+      1,
+      5,
+      7,
+      10
+     ],
+     "value": null,
+     "low": 0.0,
+     "high": 96.2,
+     "count": null,
+     "seconds": null,
+     "note": "requests queue for a connection (waits 42 to 96 ms in the sampled lines)"
+    },
+    "call": "right",
+    "note": "low 0.0: the cited lines run 42 to 96.2."
+   }
+  },
+  "pool-1116-2101-err-r2": {
+   "e1": {
+    "verdict": "unresolved",
+    "reason": "d1 has no column or field 'value'",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "value",
+     "at": "2026-11-16T20:57:34.402Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "POOL_MAX_SIZE 20->2",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "config change by maya: 'Size the checkout DB pool to the new replica's connection limit'; the only change at the time the symptom starts"
+    },
+    "call": "right",
+    "note": "form: the typed column 'value' (value 'POOL_MAX_SIZE 20->2') isn't the field's value, though every stated fact is in the cited record (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   }
+  },
+  "deploy-1116-2238-r2": {
+   "e2": {
+    "verdict": "contradicted",
+    "reason": "timestamp at l2[4] is 2026-11-16T22:37:54.283Z",
+    "item": {
+     "kind": "value",
+     "source": "l2",
+     "column": "timestamp",
+     "at": "2026-11-16T22:37:54.283Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      4
+     ],
+     "value": "TypeError: 'NoneType' object is not subscriptable",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "first failing request, on 1.43.0, 2.4 s after the deploy; stack is checkout/pricing.py:11 price_cart -> pricing.py:15 apply_promo"
+    },
+    "call": "right",
+    "note": "form: the typed column 'timestamp' (value the error message) isn't the field's value, though every stated fact is in the cited line (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   }
+  },
+  "pool-1117-0235-r2": {
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_p99_ms runs 0.5 to 99.8 over 2 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "02:29:00",
+     "end": "02:30:00",
+     "lines": null,
+     "value": null,
+     "low": 0.4,
+     "high": 0.5,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait normal before the change (see 02:30 row for the jump)"
+    },
+    "call": "right",
+    "note": "high 0.5: the window ends on the 02:30 row, 99.8."
+   },
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "concurrent_requests runs 29 to 34 over 2 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "concurrent_requests",
+     "at": null,
+     "start": "02:35:21.462Z",
+     "end": "02:35:24.858Z",
+     "lines": [
+      1,
+      20
+     ],
+     "value": null,
+     "low": 29.0,
+     "high": 42.0,
+     "count": null,
+     "seconds": null,
+     "note": "about 30 to 42 requests in flight against a pool of 2"
+    },
+    "call": "right",
+    "note": "lines [1, 20] cite two lines, which run 29 to 34, not 42."
+   }
+  },
+  "downstream-1117-0411-r2": {
+   "e9": {
+    "verdict": "contradicted",
+    "reason": "upstream_latency_ms runs 180.4 to 1947.8 over 38 lines",
+    "item": {
+     "kind": "range",
+     "source": "l2",
+     "column": "upstream_latency_ms",
+     "at": null,
+     "start": "04:11:13",
+     "end": "04:11:48",
+     "lines": [
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+     ],
+     "value": null,
+     "low": 181.0,
+     "high": 1948.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments call latency varies widely; the slow successful requests (e.g. line 22: latency 2323.5 ms, upstream 1947.8 ms) are mostly time spent waiting on payments-api"
+    },
+    "call": "right",
+    "note": "low 181.0: cited line [36] is 180.4."
+   }
+  },
+  "deploy-1117-0551-r2": {
+   "e3": {
+    "verdict": "outside_read",
+    "reason": "05:36:00 outside m2's read (05:46:00 to 05:51:46)",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "err%",
+     "at": null,
+     "start": "05:36:00",
+     "end": "05:50:00",
+     "lines": null,
+     "value": null,
+     "low": 0.0,
+     "high": 0.0,
+     "count": null,
+     "seconds": null,
+     "note": "error rate was 0 in every minute before the alarm window; the 05:51 minute is partial (350 req, 12.6%)"
+    },
+    "call": "right",
+    "note": "05:36-05:50 cited to m2, which starts at 05:46 (it holds on m1)."
+   },
+   "e4": {
+    "verdict": "outside_read",
+    "reason": "05:36:00 outside m2's read (05:46:00 to 05:51:46)",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "05:36:00",
+     "end": "05:50:00",
+     "lines": null,
+     "value": null,
+     "low": 47.9,
+     "high": 247.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency did not change; payments_timeouts is 0 in every row, so the upstream is not the cause"
+    },
+    "call": "right",
+    "note": "05:36-05:50 cited to m2, which starts at 05:46 (it holds on m1)."
+   }
+  },
+  "downstream-1114-2357-r3": {
+   "e12": {
+    "verdict": "outside_read",
+    "reason": "23:57:07 outside l2's read (23:57:16.247 to 23:57:37)",
+    "item": {
+     "kind": "range",
+     "source": "l2",
+     "column": "upstream_latency_ms",
+     "at": null,
+     "start": "23:57:07",
+     "end": "23:57:36",
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+     ],
+     "value": null,
+     "low": 141.5,
+     "high": 2000.0,
+     "count": null,
+     "seconds": null,
+     "note": "slow successful checkouts spend most of their latency waiting on payments-api, and db_query_ms stays in the 170-650 ms range"
+    },
+    "call": "right",
+    "note": "the window starts 23:57:07, before l2's first shown line (23:57:16.247; the newest 30 of 40)."
+   }
+  },
+  "deploy-1116-1917-r3": {
+   "e4": {
+    "verdict": "contradicted",
+    "reason": "l1[4] is at 19:17:26.946, not 2026-11-16T19:17:25.810Z",
+    "item": {
+     "kind": "value",
+     "source": "l1",
+     "column": "timestamp",
+     "at": "2026-11-16T19:17:25.810Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      4
+     ],
+     "value": "TypeError: 'NoneType' object is not subscriptable",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "failures start at 19:17:24.866 in l2 (first failing line), all on version 1.43.0"
+    },
+    "call": "right",
+    "note": "l1's [4] is at 19:17:26.946, not 19:17:25.810 (which is l2's [4])."
+   },
+   "e5": {
+    "verdict": "outside_read",
+    "reason": "19:17:16 outside l2's read (19:17:24.866 to 19:17:46)",
+    "item": {
+     "kind": "count",
+     "source": "l2",
+     "column": "error_type",
+     "at": null,
+     "start": "19:17:16",
+     "end": "19:17:46",
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      17,
+      18,
+      19,
+      21,
+      23,
+      24,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      37,
+      39
+     ],
+     "value": "TypeError",
+     "low": null,
+     "high": null,
+     "count": 33,
+     "seconds": null,
+     "note": "33 of the 40 request lines are TypeError 500s, all on POST /checkout, version 1.43.0"
+    },
+    "call": "right",
+    "note": "the count's window starts 19:17:16, l2's search start, before its first shown line (19:17:24.866; the newest 40 of 51); the 33 lines it lists are right."
+   }
+  },
+  "pool-1116-2058-r3": {
+   "e1": {
+    "verdict": "unresolved",
+    "reason": "d1 has no column or field 'value'",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "value",
+     "at": "2026-11-16T20:57:34.402Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "POOL_MAX_SIZE 20->2",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "config change by maya, 'Size the checkout DB pool to the new replica's connection limit'; its time matches the start of the symptom"
+    },
+    "call": "right",
+    "note": "form: the typed column 'value' (value 'POOL_MAX_SIZE 20->2') isn't the field's value, though every stated fact is in the cited record (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   },
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_time_ms runs 20 to 191.2 over 9 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "pool_wait_time_ms",
+     "at": null,
+     "start": "20:58:07.882Z",
+     "end": "20:58:11.501Z",
+     "lines": [
+      8,
+      22,
+      16,
+      20,
+      5,
+      25,
+      7,
+      2,
+      3
+     ],
+     "value": null,
+     "low": 42.0,
+     "high": 191.2,
+     "count": null,
+     "seconds": null,
+     "note": "several requests wait 40-190 ms for a connection, on routes that are otherwise fast"
+    },
+    "call": "right",
+    "note": "low 42.0: the cited lines go down to 20."
+   }
+  },
+  "pool-1116-2101-lat-r3": {
+   "e1": {
+    "verdict": "unresolved",
+    "reason": "d1 has no column or field 'value'",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "value",
+     "at": "2026-11-16T20:57:34.402Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "POOL_MAX_SIZE 20->2",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "the only config change in the window just before the symptom, and its time matches the first pool-wait rise at 20:57"
+    },
+    "call": "right",
+    "note": "form: the typed column 'value' (value 'POOL_MAX_SIZE 20->2') isn't the field's value, though every stated fact is in the cited record (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   },
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_p99_ms runs 0.4 to 533 over 5 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "20:56:00",
+     "end": "21:00:00",
+     "lines": null,
+     "value": null,
+     "low": 0.4,
+     "high": 508.0,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait is about 0.4 ms at 20:56 and jumps to 254 ms at 20:57, the minute of the config change, then climbs to 508 ms by 21:00"
+    },
+    "call": "right",
+    "note": "high 508: the 20:56-21:00 rows reach 533."
+   },
+   "e7": {
+    "verdict": "unresolved",
+    "reason": "2 entries at 2026-11-16T21:01:21.646Z in l1; cite one",
+    "item": {
+     "kind": "value",
+     "source": "l1",
+     "column": "error_type",
+     "at": "2026-11-16T21:01:21.646Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "TimeoutError",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "failures are 'acquiring connection from pool (waited 1500 ms, pool_max_size=2)' raised at checkout/db.py:19 wait_for_connection"
+    },
+    "call": "false_flag",
+    "note": "holds: both l1 lines at 21:01:21.646 ([1] and [2]) are TimeoutError."
+   },
+   "e9": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_time_ms runs 301.9 to 961.1 over 10 lines",
+    "item": {
+     "kind": "range",
+     "source": "l2",
+     "column": "pool_wait_time_ms",
+     "at": null,
+     "start": "21:01:38.006Z",
+     "end": "21:01:38.596Z",
+     "lines": null,
+     "value": null,
+     "low": 301.9,
+     "high": 958.9,
+     "count": null,
+     "seconds": null,
+     "note": "successful requests also spend 300-960 ms waiting for a connection, with pool_max_size=2"
+    },
+    "call": "right",
+    "note": "high 958.9: the window's lines reach 961.1."
+   },
+   "e10": {
+    "verdict": "unresolved",
+    "reason": "no result labeled m2",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "20:41:00",
+     "end": "21:01:00",
+     "lines": null,
+     "value": null,
+     "low": 53.2,
+     "high": 331.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency stays in its normal range, so it is not the slow dependency"
+    },
+    "call": "right",
+    "note": "cites m2, which the run never read."
+   },
+   "e11": {
+    "verdict": "unresolved",
+    "reason": "no result labeled m2",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "payments_timeouts",
+     "at": null,
+     "start": "20:41:00",
+     "end": "21:01:00",
+     "lines": null,
+     "value": null,
+     "low": 0.0,
+     "high": 0.0,
+     "count": null,
+     "seconds": null,
+     "note": "no payments-api timeouts in the window"
+    },
+    "call": "right",
+    "note": "cites m2, which the run never read."
+   }
+  },
+  "pool-1116-2101-err-r3": {
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "db_query_p50_ms runs 52.2 to 88.2 over 16 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "20:46:00",
+     "end": "21:01:00",
+     "lines": null,
+     "value": null,
+     "low": 52.2,
+     "high": 71.1,
+     "count": null,
+     "seconds": null,
+     "note": "per-query database time stays flat, so the database itself is not slow; queuing for connections is the problem"
+    },
+    "call": "right",
+    "note": "high 71.1: m1's 20:46-21:01 rows reach 88.2."
+   },
+   "e11": {
+    "verdict": "contradicted",
+    "reason": "1 in the window, the first d1 2026-11-16T19:31:26.364Z",
+    "item": {
+     "kind": "none",
+     "source": "d1",
+     "column": null,
+     "at": null,
+     "start": "19:23:50.000Z",
+     "end": "20:57:33.000Z",
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no deploy or config change between the 1.42.0 rollback and the pool change, so the pool change is the only change that precedes the incident"
+    },
+    "call": "right",
+    "note": "the none's window (19:23:50 to 20:57:33) holds the 19:31:26 CART_TTL_HOURS change."
+   }
+  },
+  "pool-1117-0231-r3": {
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_p99_ms runs 0.1 to 0.5 over 14 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "02:16:00",
+     "end": "02:29:00",
+     "lines": null,
+     "value": null,
+     "low": 0.4,
+     "high": 0.5,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait negligible for 14 minutes before the change"
+    },
+    "call": "right",
+    "note": "low 0.4: the 02:23 row is 0.1."
+   }
+  },
+  "pool-1117-0234-r3": {
+   "e4": {
+    "verdict": "contradicted",
+    "reason": "pool_active_max runs 2 to 2 over 5 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_active_max",
+     "at": null,
+     "start": "02:30:00",
+     "end": "02:34:00",
+     "lines": null,
+     "value": null,
+     "low": 1.0,
+     "high": 2.0,
+     "count": null,
+     "seconds": null,
+     "note": "connections in use never go above 2, the new pool size"
+    },
+    "call": "right",
+    "note": "low 1.0: every row from 02:30 to 02:34 is 2."
+   }
+  },
+  "pool-1117-0235-r3": {
+   "e1": {
+    "verdict": "unresolved",
+    "reason": "d1 has no column or field 'value'",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "value",
+     "at": "2026-11-17T02:30:52.100Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "POOL_MAX_SIZE 20->2",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "the only change before the symptom; config by maya, 'Size the checkout DB pool to the new replica's connection limit'; its time fits the pool wait starting at 02:30"
+    },
+    "call": "right",
+    "note": "form: the typed column 'value' (value 'POOL_MAX_SIZE 20->2') isn't the field's value, though every stated fact is in the cited record (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in step 4 (eafed0b) and step 6 (sweep 20261114T221926Z, at 5f0d3f9), which predate this sweep."
+   },
+   "e2": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_p99_ms runs 0.5 to 1498 over 7 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "02:29:00",
+     "end": "02:35:00",
+     "lines": null,
+     "value": null,
+     "low": 0.4,
+     "high": 1498.0,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait was 0.1-0.5 ms through 02:29, then rose to 99.8 at 02:30 and 1498 at 02:35 as queuing built"
+    },
+    "call": "right",
+    "note": "low 0.4: the window starts on the 02:29 row, 0.5."
+   }
+  },
+  "downstream-1117-0411-r3": {
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "latency_ms runs 23.4 to 121.5 over 34 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "latency_ms",
+     "at": null,
+     "start": "04:11:43",
+     "end": "04:11:48",
+     "lines": [
+      1,
+      2,
+      3,
+      5,
+      6,
+      7,
+      8,
+      9,
+      11,
+      12,
+      13,
+      14,
+      15,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37
+     ],
+     "value": null,
+     "low": 36.4,
+     "high": 107.3,
+     "count": null,
+     "seconds": null,
+     "note": "non-checkout routes (GET /products, POST /cart/items) stay around 40-110 ms during the incident"
+    },
+    "call": "right",
+    "note": "range 36.4 to 107.3: the cited lines run 23.4 to 121.5."
+   }
+  }
+ }
+}
