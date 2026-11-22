@@ -14,7 +14,7 @@ Pool exhaustion arrives in stages, and the early signs come minutes before any r
 - p99 latency degrades steadily while the error rate stays flat. A 0% error rate does not rule this out
 - `pool_active_connections` is pegged at `pool_max_size`, and `concurrent_requests` is well above it
 
-**Later: requests start timing out, typically 3–6 minutes after the wait first rises**
+**Later: requests start timing out, typically 3 to 6 minutes after the wait first rises**
 
 - Error rate on `/checkout` climbs above 5% and keeps rising
 - Logs contain `TimeoutError: acquiring connection from pool`
@@ -39,7 +39,7 @@ If latency climbs while errors stay flat, check where the time goes before decid
 
 **Immediate:** raise `POOL_MAX_SIZE` to 2x observed peak concurrency, redeploy. Takes effect in ~90 seconds.
 
-**If connections are leaking:** the fix is in code, not config. Look for a code path that acquires a connection and returns early without releasing it — usually an error branch missing a `finally` block or a context manager.
+**If connections are leaking:** the fix is in code, not config. Look for a code path that acquires a connection and returns early without releasing it: usually an error branch missing a `finally` block or a context manager.
 
 **Do not** raise the pool size past the database's `max_connections` limit divided by instance count. That converts a service outage into a database outage.
 
