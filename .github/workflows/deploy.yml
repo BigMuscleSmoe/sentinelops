@@ -44,6 +44,10 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - run: terraform fmt -check -recursive
+      # The plan reads the runbook sections' manifest, so validate needs it too.
+      - name: Build the runbook sections
+        working-directory: .
+        run: python3 tools/build_runbooks.py
       - run: terraform init -backend=false -input=false
       - run: terraform validate
 
@@ -85,6 +89,13 @@ jobs:
         working-directory: agent
         run: python3 build_runtime.py
 
+      # The knowledge base's documents, one per runbook section, which the apply
+      # uploads, and their manifest, which the plan reads. Stdlib only; a runbook
+      # that breaks the format fails the deploy here, before anything changes.
+      - name: Build the runbook sections
+        working-directory: .
+        run: python3 tools/build_runbooks.py
+
       - run: terraform fmt -check -recursive
       - run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       # Federation's IDs for the runtime, as one line of JSON: masked here, and
@@ -114,3 +125,14 @@ jobs:
           cat health.json
           jq -e --arg version "$version" \
             '.status == "ok" and .service == "checkout-api" and .version == $version' health.json
+
+      # Sync the knowledge base with the sections just uploaded, then check it
+      # holds exactly this build: every section scanned, none failed, and one
+      # search returning all of them and nothing else, each tagged with this
+      # build's corpus digest. Prints counts and the digest, never an ID.
+      - name: Ingest the runbooks
+        working-directory: tools
+        run: |
+          kb_id=$(terraform -chdir=../infra output -raw runbooks_knowledge_base_id)
+          ds_id=$(terraform -chdir=../infra output -raw runbooks_data_source_id)
+          uv run --locked python ingest_runbooks.py --knowledge-base-id "$kb_id" --data-source-id "$ds_id"

@@ -74,6 +74,25 @@ $7 per 1,000 queries. **Don't enable it.** This project doesn't need the open we
 
 $0.005 per 1,000 `ListTools`, `InvokeTool`, and `Ping` calls (the AgentCore pricing page, read 2026-10-29). Semantic search costs $0.025 per 1,000 searches plus $0.02 per 100 indexed tools a month, so it stays off: three tools need no search. Identity is free through Runtime or Gateway. A run makes about ten billed calls, ~$0.00005: the agent opens an MCP session per tool call, and in each `mcp` lists the tools before calling one (measured 2026-10-30). The tool Lambdas behind it fit in the free tier.
 
+### The runbook knowledge base (Bedrock, on S3 Vectors)
+
+35 documents, one per runbook section (36 KB of text in all), embedded with Titan Text Embeddings V2 into an S3 Vectors index of 35 vectors, about 0.2 MB with their text. **Under a cent a month at any use this project makes of it.**
+
+| What bills | Price, us-east-1 | Here |
+|---|---|---|
+| Titan Text Embeddings V2 | $0.00002 per 1,000 input tokens, on demand | Embedding the whole corpus again: under $0.001 (at most a token a byte). A search embeds only its query, a few dozen tokens |
+| S3 Vectors storage | $0.06 per GB-month | Under $0.0001 a month |
+| S3 Vectors uploads | $0.20 per GB put | Under $0.0001 for the whole index |
+| S3 Vectors queries | $2.50 per million, plus $0.004 per TB processed (the first 100K vectors' rate) | $0.0025 per 1,000 searches |
+| The documents' bucket | S3 Standard | 70 objects, 42 KB |
+
+Titan's price is from AWS's Price List API, effective 2026-11-01 (read 2026-11-22; the Bedrock pricing page draws its table by script). S3 Vectors' are from the S3 pricing page's worked examples, which use us-east-1 (read 2026-11-21 and 2026-11-22).
+
+- **The knowledge base itself shows no charge.** The Price List API (AmazonBedrock, us-east-1, all 1,105 products, read 2026-11-22) has one knowledge-base line, $2 per 1,000 `GenerateQuery` calls for SQL retrieval, which this doesn't use; none for a vector knowledge base, an ingestion job, or `Retrieve`. The first bill is the check.
+- **Each deploy** runs one ingestion job and one search. A job embeds only what changed, but an edit to any runbook changes every section's metadata file (each holds the corpus digest), so all 35 are indexed again: under $0.001.
+- **Not a Managed Knowledge Base,** AWS's recommended default: $1.00 per 1,000 `Retrieve` calls and $5.00 per GB of raw data a month (the Bedrock pricing page, read 2026-11-12). Still small at this scale, but 400 times the query fee above, for a job this one does.
+- **Never OpenSearch Serverless** (below).
+
 ### Memory, Code Interpreter
 
 Consumption-based, small at demo scale. Not worth optimizing until they show up in Cost Explorer.
@@ -84,7 +103,7 @@ Lambda, DynamoDB, S3, EventBridge, API Gateway, CloudFront, Cognito: under $5/mo
 
 High-resolution (10-second) alarms and metrics for the demo cost more than standard ones, but at a handful of alarms it's a few dollars a month at most.
 
-**S3 Vectors for the knowledge base: cents.** OpenSearch Serverless doing the same job is roughly $700/month. This single choice is the difference between a portfolio project and a bill you can't pay. Do not let a tutorial talk you into OpenSearch.
+**S3 Vectors for the knowledge base: under a cent a month** (above). OpenSearch Serverless doing the same job is roughly $700/month. This single choice is the difference between a portfolio project and a bill you can't pay. Do not let a tutorial talk you into OpenSearch.
 
 ## The sneaky ones
 

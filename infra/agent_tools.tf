@@ -5,9 +5,9 @@
 locals {
   tools_dir = "${path.module}/../tools"
   # Everything in tools/ but the package. The tests hold the recorded windows,
-  # megabytes of the live stack the functions never read; build_runbooks.py
-  # runs before a plan and is never imported.
-  tools_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__", "build_runbooks.py"]
+  # megabytes of the live stack the functions never read. The runbook scripts
+  # run before a plan and after an apply, and are never imported.
+  tools_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__", "build_runbooks.py", "ingest_runbooks.py"]
 
   # Each Gateway target by name, with the tool its function runs. Gateway names
   # the tools <target>___<tool>.

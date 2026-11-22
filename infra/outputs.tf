@@ -34,3 +34,12 @@ output "trigger_function_name" {
 output "local_sign_in_role_arn" {
   value = aws_iam_role.local_sign_in.arn
 }
+
+# For the deploy's ingestion step and the runbook search's checks.
+output "runbooks_knowledge_base_id" {
+  value = aws_bedrockagent_knowledge_base.runbooks.id
+}
+
+output "runbooks_data_source_id" {
+  value = aws_bedrockagent_data_source.runbooks.data_source_id
+}
