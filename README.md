@@ -149,11 +149,11 @@ The full write-up, with per-fault numbers and how to reproduce the grade: [`agen
 
 ## What's next
 
-- **Runbooks and search** (Phase 3). Five more runbooks, written by hand from the service's actual behavior (two are done), a Bedrock Knowledge Base on S3 Vectors, a `search_runbooks` tool, and checks that a cited runbook was really retrieved.
-- **The grader's next iteration**, under a new freeze, with fresh test windows and a new blind audit. It adds evidence kinds for "unchanged over a period" and "every matching line", a check for claims left in notes, and audit labels that record where each slip sits.
+- **Runbooks and search** (Phase 3). Four more runbooks, drafted from the service's actual behavior and reviewed one at a time (three of seven are done), a Bedrock Knowledge Base on S3 Vectors, a `search_runbooks` tool, and a check in code that a cited runbook was really retrieved in that run. Then the CI gate's baseline is rebuilt from a tuning sweep.
 - **Synthesized windows** for the memory leak and a few trap cases.
 - **Remediation** (Phase 4). A read-only repo tool, a patch drafted inside the guarded session, and a Lambda Durable Function with no model calls that validates the patch and opens one PR per fault mode.
 - **The frontend** (Phase 5). A live trace of each run, a "Break the service" button, and a mobile layout.
+- **One full evaluation cycle, after Phases 4 and 5**, so it measures the near-final agent. It brings the grader's next iteration (evidence kinds for "unchanged over a period" and "every matching line", a check for claims left in notes, and audit labels that record where each slip sits), a new pass bar and freeze, fresh test windows, and a new blind audit.
 - **A public demo** (Phase 6), once there's something to click.
 
 ## Running it locally
