@@ -30,7 +30,7 @@ If the failures are 504s with `UpstreamTimeout` and err% stays flat, the failing
 
 If the change at the onset is a `kind: config` record, whose `changes` name a config key rather than `version`, the cause is that config change, not a release. A smaller pool, for example, fails requests by making them wait for a connection (see `db-pool-exhaustion.md`).
 
-If the deploy's time doesn't fit, it's a coincidence. The failures start within a period or two of the new version's first requests, not before the deploy and not long after it. A deploy from hours before the onset, or one already rolled back, did not start failures that began just now.
+For failures that leave lines with stack traces, a deploy whose time doesn't fit is a coincidence: those failures start within a period or two of the new version's first requests, not before the deploy and not long after it. A deploy from hours before the onset, or one already rolled back, did not start such failures that began just now. Failures that leave no lines and come with a steady stream of cold starts are different: a release that leaks memory can come hours before its first failures (see `memory-leak.md`).
 
 If the same error appears on the old version's lines, before the deploy or beside it, the release didn't cause it.
 
