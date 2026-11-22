@@ -24,11 +24,11 @@ A release with a bug fails every request that takes the broken code path, from t
 
 ## What this is not
 
-If latency climbs first and errors follow minutes later, this is not a deploy: the service is running out of something. Check `pool_wait_p99_ms` (see `db-pool-exhaustion.md`) and `db_query_p50_ms` (see `slow-database.md`).
+If latency climbs first and errors follow minutes later, this is not a release failing its own code: the service is running out of something. Check `pool_wait_p99_ms` (see `db-pool-exhaustion.md`) and `db_query_p50_ms` (see `slow-database.md`). A release can still be behind a slow query (see `slow-database.md`).
 
 If the failures are 504s with `UpstreamTimeout` and err% stays flat, the failing step is the payments-api call, not this release (see `downstream-timeout.md`).
 
-If the change at the onset is a `kind: config` record, whose `changes` name a config key rather than `version`, the cause is that config change, not a release. A smaller pool, for example, fails requests by making them wait for a connection (see `db-pool-exhaustion.md`).
+If the change at the onset is a `kind: config` record, whose `changes` name a config key rather than `version`, the release isn't the suspect. The config change is the suspect if its key acts on the failing step: `POOL_MAX_SIZE` on the pool, where a smaller pool fails requests by making them wait for a connection (see `db-pool-exhaustion.md`), or `PAYMENTS_TIMEOUT_MS` on the payments call (see `downstream-timeout.md`). A key with no part in the failing step didn't cause it.
 
 For failures that leave lines with stack traces, a deploy whose time doesn't fit is a coincidence: those failures start within a period or two of the new version's first requests, not before the deploy and not long after it. A deploy from hours before the onset, or one already rolled back, did not start such failures that began just now. Failures that leave no lines and come with a steady stream of cold starts are different: a release that leaks memory can come hours before its first failures (see `memory-leak.md`).
 

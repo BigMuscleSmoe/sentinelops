@@ -28,6 +28,8 @@ If error rate spikes instantly with no latency ramp, this is not pool exhaustion
 
 If latency climbs while errors stay flat, check where the time goes before deciding. Early pool exhaustion looks like that too, but its time is in `pool_wait_time_ms`. If `pool_wait_time_ms` is flat and the time is in an upstream call (`upstream_latency_ms`), the problem is downstream, not here (see `downstream-timeout.md`).
 
+If `db_query_ms` rises with the wait, the queries are slow and the pool fills behind them: don't resize it (see `slow-database.md`).
+
 ## Diagnosis
 
 1. Check `pool_active_connections` and `pool_wait_time_ms` metrics in the `checkout-api` namespace.
@@ -41,7 +43,7 @@ If latency climbs while errors stay flat, check where the time goes before decid
 
 **If connections are leaking:** the fix is in code, not config. Look for a code path that acquires a connection and returns early without releasing it: usually an error branch missing a `finally` block or a context manager.
 
-**Do not** raise the pool size past the database's `max_connections` limit divided by instance count. That converts a service outage into a database outage.
+**Do not** raise the pool size past the database's `max_connections` (every instance shares the one pool). That converts a service outage into a database outage.
 
 ## Prevention
 

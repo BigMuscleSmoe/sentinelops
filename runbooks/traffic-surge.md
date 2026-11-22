@@ -18,7 +18,7 @@ More requests arrive than usual. On its own that isn't a failure. The service sc
 **At the edges: what the service never sees**
 
 - API Gateway throttles requests at the stage's default route settings: a rate limit of 30 requests a second, with up to 60 at once. Requests past them are throttled before they reach checkout-api, and callers get `429 Too Many Requests` from API Gateway. They leave no log line and no metric here: nothing in `req`, nothing in err%. A `req` that flattens while callers report errors is the sign
-- checkout-api is capped at 80 concurrent executions. Past that, Lambda refuses the invocation before the code runs (see `lambda-throttling.md`)
+- checkout-api is capped at 80 concurrent executions. Past that, Lambda refuses the invocation before the code runs. With API Gateway's throttle in front, traffic alone rarely reaches the cap: requests have to be slow too (see `lambda-throttling.md`)
 
 ## What this is not
 
@@ -30,9 +30,9 @@ If only `POST /checkout` slows, with `payments_p99_ms` up, the time is in paymen
 
 If err% steps up to a steady share at once, with stack traces and a new version on the failing lines, it's a bad deploy that the traffic only made louder (see `bad-deploy.md`).
 
-If callers see errors that leave no line in this service's logs, the requests were refused before the code ran: by API Gateway's throttle (429s, above) or by Lambda's concurrency cap (see `lambda-throttling.md`).
+If callers see errors that leave no line in this service's logs, the requests were refused before the code ran, by API Gateway's throttle (429s, above) or by Lambda's concurrency cap (see `lambda-throttling.md`), or killed before they finished (see `memory-leak.md`).
 
-Traffic is the trigger, not the cause, whenever something else changed at the onset: a config value, a release, a dependency. A surge is the cause only when nothing else changed and the extra traffic alone reached one of the limits above.
+Traffic is the trigger, not the cause, whenever something else that acts on what failed changed at the onset: a config value, a release, a dependency. A surge is the cause only when nothing that acts on what failed changed, and the extra traffic alone reached one of the limits above.
 
 ## Diagnosis
 

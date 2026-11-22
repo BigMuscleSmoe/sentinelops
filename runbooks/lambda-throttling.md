@@ -21,7 +21,7 @@ checkout-api runs one request per Lambda instance, and the function is capped at
 
 ## What this is not
 
-If `concurrent_max` stays well under 80, Lambda is not throttling. Errors that callers see but this service never logs come instead from API Gateway's own throttle, which answers `429 Too Many Requests` (see `traffic-surge.md`).
+If `concurrent_max` stays well under 80, Lambda is not throttling. Errors that callers see but this service never logs come instead from API Gateway's own throttle, which answers `429 Too Many Requests` (see `traffic-surge.md`), or from instances killed as their memory runs out (see `memory-leak.md`).
 
 If failures leave lines here (500s with stack traces, 504s with `upstream_timeout`), those requests ran: the service failed them, Lambda didn't refuse them. Start from the failing lines (see `bad-deploy.md`, `downstream-timeout.md`, `db-pool-exhaustion.md`).
 
