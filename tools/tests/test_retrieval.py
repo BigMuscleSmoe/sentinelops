@@ -10,7 +10,7 @@ from collections import Counter
 
 import build_runbooks as rb
 import pytest
-from retrieval import keyword_rank, load_queries, score
+from retrieval import BAR, keyword_rank, load_queries, load_recorded, recorded_hits, score
 from test_runbooks import STAGING
 
 from sentinelops_tools.runbooks import Hit, hits_from_retrieve, rank
@@ -59,6 +59,31 @@ def test_no_query_holds_a_figure_or_what_only_the_staging_knows() -> None:
         assert figures == [], (q["id"], figures)
         staged = [p for p in STAGING if re.search(p, text, flags=re.IGNORECASE)]
         assert staged == [], (q["id"], staged)
+
+
+# The recording
+
+
+def test_the_recording_is_of_this_corpus_and_these_queries() -> None:
+    """A runbook or query edit fails here until the set is recorded again (python -m tests.retrieval record)."""
+    recording = load_recorded()
+    corpus = rb.load()
+    assert recording["corpus"] == corpus.digest
+    queries = load_queries()
+    assert list(recording["searches"]) == [q["id"] for q in queries]
+    documents = sorted(section.file for section in corpus.sections)
+    for q in queries:
+        search = recording["searches"][q["id"]]
+        assert search["query"] == q["query"]
+        assert sorted(h["document"] for h in search["hits"]) == documents
+
+
+def test_the_recorded_ranking_meets_the_bar() -> None:
+    """Top-2 over every fitting query, both rounds together: 90% before any agent run (decision 14)."""
+    recording = load_recorded()
+    queries = load_queries()
+    ranked = {q["id"]: rank(recorded_hits(recording, q["id"])) for q in queries}
+    assert score(queries, ranked)["top2"] >= BAR
 
 
 # The ranking
