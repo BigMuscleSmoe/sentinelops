@@ -1,33 +1,32 @@
 {
  "about": "The CI gate's baseline (evals/baseline.py): the sweep's answered runs, each with its rubric items and every evidence item's checker verdict pinned, the flagged ones with their hand calls. The floor: the flags called right are typed slips the checker sees, a floor under the run's slips, not their count. request.json is what a run on this arm sends the model first; CI fails when it changes, until a new sweep's baseline is committed with the change.",
- "sweep": "20261117T192758Z",
+ "sweep": "20261123T173506Z",
  "arm": "haiku",
  "model": "claude-haiku-5-5",
- "commit": "d0a6ad4557b33d8f129139f4a1cbf130dd21ec9e",
- "flags_checked": "agent/evals/audits/20261117T192758Z.flags.json",
+ "commit": "860ad97b90b2c1356e32b9fadcdbaddaf61bfb9e",
+ "flags_checked": "agent/evals/audits/20261123T173506Z.flags.json",
  "floor": {
-  "runs": 33,
-  "items": 455,
-  "flags": 37,
-  "right": 35,
-  "form_only_right": 6,
-  "right_with_form_only_false": 29
+  "runs": 20,
+  "items": 308,
+  "flags": 23,
+  "right": 21,
+  "form_only_right": 8,
+  "right_with_form_only_false": 13
  },
  "runs": {
-  "downstream-1114-2357-r1": {
-   "scenario": "downstream-1114-2357",
+  "pool-1027-1856-r1": {
+   "scenario": "pool-1027-1856",
    "rubric": {
     "names_culprit": true,
     "names_mechanism": true,
     "blames_no_other": true,
     "location": true,
-    "pr_gate_value": false,
+    "pr_gate_value": true,
     "pr_gate": true,
     "runbook": true,
-    "evidence_change": false,
+    "evidence_change": true,
     "evidence_failure": true,
-    "evidence_symptom": false,
-    "evidence_health": true
+    "evidence_symptom": true
    },
    "verdicts": {
     "e1": "holds",
@@ -43,7 +42,381 @@
     "e11": "holds",
     "e12": "holds",
     "e13": "holds",
-    "e14": "holds"
+    "e14": "holds",
+    "e15": "holds",
+    "e16": "holds",
+    "e17": "holds"
+   }
+  },
+  "pool-1027-1900-r1": {
+   "scenario": "pool-1027-1900",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": false
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "contradicted",
+    "e14": "holds",
+    "e15": "holds"
+   },
+   "calls": {
+    "e13": {
+     "call": "right",
+     "form_only": false
+    }
+   }
+  },
+  "pool-1027-1901-r1": {
+   "scenario": "pool-1027-1901",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "contradicted",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "contradicted",
+    "e15": "holds"
+   },
+   "calls": {
+    "e6": {
+     "call": "right",
+     "form_only": false
+    },
+    "e14": {
+     "call": "false_flag",
+     "form_only": false
+    }
+   }
+  },
+  "deploy-1027-1905-r1": {
+   "scenario": "deploy-1027-1905",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds"
+   }
+  },
+  "deploy-1029-0156-r1": {
+   "scenario": "deploy-1029-0156",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds",
+    "e15": "holds",
+    "e16": "holds",
+    "e17": "holds"
+   }
+  },
+  "deploy-1112-0747-r1": {
+   "scenario": "deploy-1112-0747",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "contradicted",
+    "e11": "holds",
+    "e12": "loose",
+    "e13": "loose",
+    "e14": "loose",
+    "e15": "loose"
+   },
+   "calls": {
+    "e10": {
+     "call": "false_flag",
+     "form_only": false
+    }
+   }
+  },
+  "deploy-1112-0803-r1": {
+   "scenario": "deploy-1112-0803",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "contradicted",
+    "e3": "contradicted",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "contradicted",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds",
+    "e15": "loose",
+    "e16": "loose",
+    "e17": "loose",
+    "e18": "loose",
+    "e19": "loose",
+    "e20": "loose"
+   },
+   "calls": {
+    "e2": {
+     "call": "right",
+     "form_only": false
+    },
+    "e3": {
+     "call": "right",
+     "form_only": false
+    },
+    "e10": {
+     "call": "right",
+     "form_only": false
+    }
+   }
+  },
+  "deploy-1112-2000-r1": {
+   "scenario": "deploy-1112-2000",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "contradicted",
+    "e14": "holds",
+    "e15": "contradicted",
+    "e16": "contradicted",
+    "e17": "holds",
+    "e18": "contradicted"
+   },
+   "calls": {
+    "e13": {
+     "call": "right",
+     "form_only": true
+    },
+    "e15": {
+     "call": "right",
+     "form_only": true
+    },
+    "e16": {
+     "call": "right",
+     "form_only": true
+    },
+    "e18": {
+     "call": "right",
+     "form_only": true
+    }
+   }
+  },
+  "deploy-1113-0257-r1": {
+   "scenario": "deploy-1113-0257",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": true,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "contradicted",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "holds",
+    "e9": "holds",
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "contradicted",
+    "e14": "holds",
+    "e15": "contradicted"
+   },
+   "calls": {
+    "e3": {
+     "call": "right",
+     "form_only": false
+    },
+    "e13": {
+     "call": "right",
+     "form_only": false
+    },
+    "e15": {
+     "call": "right",
+     "form_only": false
+    }
+   }
+  },
+  "downstream-1114-2357-r1": {
+   "scenario": "downstream-1114-2357",
+   "rubric": {
+    "names_culprit": true,
+    "names_mechanism": true,
+    "blames_no_other": true,
+    "location": true,
+    "pr_gate_value": false,
+    "pr_gate": true,
+    "runbook": true,
+    "evidence_change": true,
+    "evidence_failure": true,
+    "evidence_symptom": false,
+    "evidence_health": true
+   },
+   "verdicts": {
+    "e1": "holds",
+    "e2": "holds",
+    "e3": "holds",
+    "e4": "holds",
+    "e5": "holds",
+    "e6": "holds",
+    "e7": "holds",
+    "e8": "contradicted",
+    "e9": "holds",
+    "e10": "contradicted",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "holds"
+   },
+   "calls": {
+    "e8": {
+     "call": "right",
+     "form_only": false
+    },
+    "e10": {
+     "call": "right",
+     "form_only": false
+    }
    }
   },
   "deploy-1116-1917-r1": {
@@ -72,7 +445,12 @@
     "e9": "holds",
     "e10": "holds",
     "e11": "holds",
-    "e12": "holds"
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds",
+    "e15": "holds",
+    "e16": "holds",
+    "e17": "holds"
    }
   },
   "pool-1116-2058-r1": {
@@ -95,13 +473,29 @@
     "e3": "holds",
     "e4": "holds",
     "e5": "holds",
-    "e6": "holds",
+    "e6": "contradicted",
     "e7": "holds",
     "e8": "holds",
     "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds"
+    "e10": "contradicted",
+    "e11": "unresolved",
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds"
+   },
+   "calls": {
+    "e6": {
+     "call": "right",
+     "form_only": false
+    },
+    "e10": {
+     "call": "right",
+     "form_only": false
+    },
+    "e11": {
+     "call": "right",
+     "form_only": true
+    }
    }
   },
   "pool-1116-2101-lat-r1": {
@@ -121,24 +515,20 @@
    "verdicts": {
     "e1": "holds",
     "e2": "holds",
-    "e3": "contradicted",
+    "e3": "holds",
     "e4": "holds",
     "e5": "holds",
     "e6": "holds",
     "e7": "holds",
-    "e8": "unresolved",
+    "e8": "holds",
     "e9": "holds",
-    "e10": "holds"
-   },
-   "calls": {
-    "e3": {
-     "call": "right",
-     "form_only": false
-    },
-    "e8": {
-     "call": "right",
-     "form_only": false
-    }
+    "e10": "holds",
+    "e11": "holds",
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds",
+    "e15": "holds",
+    "e16": "holds"
    }
   },
   "pool-1116-2101-err-r1": {
@@ -165,19 +555,16 @@
     "e7": "holds",
     "e8": "holds",
     "e9": "holds",
-    "e10": "contradicted",
+    "e10": "holds",
     "e11": "holds",
     "e12": "holds",
     "e13": "holds",
     "e14": "holds",
     "e15": "holds",
-    "e16": "holds"
-   },
-   "calls": {
-    "e10": {
-     "call": "right",
-     "form_only": false
-    }
+    "e16": "holds",
+    "e17": "holds",
+    "e18": "holds",
+    "e19": "holds"
    }
   },
   "deploy-1116-2238-r1": {
@@ -207,15 +594,11 @@
     "e10": "holds",
     "e11": "holds",
     "e12": "holds",
-    "e13": "loose",
+    "e13": "holds",
     "e14": "loose",
     "e15": "loose",
     "e16": "loose",
-    "e17": "loose",
-    "e18": "loose",
-    "e19": "loose",
-    "e20": "loose",
-    "e21": "loose"
+    "e17": "loose"
    }
   },
   "pool-1117-0231-r1": {
@@ -244,10 +627,7 @@
     "e9": "holds",
     "e10": "holds",
     "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
+    "e12": "holds"
    }
   },
   "pool-1117-0234-r1": {
@@ -274,26 +654,11 @@
     "e7": "holds",
     "e8": "holds",
     "e9": "holds",
-    "e10": "contradicted",
-    "e11": "holds",
-    "e12": "unresolved",
-    "e13": "unresolved",
-    "e14": "holds",
-    "e15": "holds",
-    "e16": "holds",
-    "e17": "holds",
-    "e18": "holds"
+    "e10": "holds",
+    "e11": "contradicted"
    },
    "calls": {
-    "e10": {
-     "call": "right",
-     "form_only": false
-    },
-    "e12": {
-     "call": "right",
-     "form_only": false
-    },
-    "e13": {
+    "e11": {
      "call": "right",
      "form_only": false
     }
@@ -309,12 +674,12 @@
     "pr_gate_value": true,
     "pr_gate": true,
     "runbook": true,
-    "evidence_change": false,
+    "evidence_change": true,
     "evidence_failure": true,
     "evidence_symptom": true
    },
    "verdicts": {
-    "e1": "contradicted",
+    "e1": "holds",
     "e2": "holds",
     "e3": "holds",
     "e4": "holds",
@@ -325,21 +690,7 @@
     "e9": "holds",
     "e10": "holds",
     "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds",
-    "e16": "holds",
-    "e17": "holds",
-    "e18": "holds",
-    "e19": "holds",
-    "e20": "holds"
-   },
-   "calls": {
-    "e1": {
-     "call": "right",
-     "form_only": true
-    }
+    "e12": "holds"
    }
   },
   "downstream-1117-0411-r1": {
@@ -365,22 +716,16 @@
     "e5": "holds",
     "e6": "holds",
     "e7": "holds",
-    "e8": "contradicted",
+    "e8": "holds",
     "e9": "holds",
     "e10": "holds",
     "e11": "holds",
-    "e12": "contradicted",
-    "e13": "holds"
-   },
-   "calls": {
-    "e8": {
-     "call": "right",
-     "form_only": false
-    },
-    "e12": {
-     "call": "right",
-     "form_only": false
-    }
+    "e12": "holds",
+    "e13": "holds",
+    "e14": "holds",
+    "e15": "holds",
+    "e16": "holds",
+    "e17": "holds"
    }
   },
   "deploy-1117-0551-r1": {
@@ -399,833 +744,36 @@
    },
    "verdicts": {
     "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "contradicted",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "loose",
-    "e11": "loose",
-    "e12": "loose"
-   },
-   "calls": {
-    "e6": {
-     "call": "false_flag",
-     "form_only": false
-    }
-   }
-  },
-  "downstream-1114-2357-r2": {
-   "scenario": "downstream-1114-2357",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": false,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": false,
-    "evidence_health": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
+    "e2": "contradicted",
     "e3": "holds",
     "e4": "holds",
     "e5": "holds",
     "e6": "holds",
-    "e7": "holds",
-    "e8": "contradicted",
-    "e9": "holds",
-    "e10": "holds"
-   },
-   "calls": {
-    "e8": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "deploy-1116-1917-r2": {
-   "scenario": "deploy-1116-1917",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
+    "e7": "contradicted",
     "e8": "holds",
     "e9": "holds",
     "e10": "holds",
     "e11": "holds",
     "e12": "holds",
-    "e13": "holds",
-    "e14": "holds"
-   }
-  },
-  "pool-1116-2058-r2": {
-   "scenario": "pool-1116-2058",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "contradicted",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
-   },
-   "calls": {
-    "e6": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1116-2101-lat-r2": {
-   "scenario": "pool-1116-2101-lat",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": false
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds"
-   }
-  },
-  "pool-1116-2101-err-r2": {
-   "scenario": "pool-1116-2101-err",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": false,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "unresolved",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
+    "e13": "loose",
     "e14": "loose",
     "e15": "loose",
-    "e16": "loose"
-   },
-   "calls": {
-    "e1": {
-     "call": "right",
-     "form_only": true
-    }
-   }
-  },
-  "deploy-1116-2238-r2": {
-   "scenario": "deploy-1116-2238",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "contradicted",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds",
-    "e16": "holds"
+    "e16": "loose",
+    "e17": "contradicted"
    },
    "calls": {
     "e2": {
      "call": "right",
      "form_only": true
-    }
-   }
-  },
-  "pool-1117-0231-r2": {
-   "scenario": "pool-1117-0231",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
-   }
-  },
-  "pool-1117-0234-r2": {
-   "scenario": "pool-1117-0234",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
-   }
-  },
-  "pool-1117-0235-r2": {
-   "scenario": "pool-1117-0235",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "contradicted",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "contradicted",
-    "e11": "holds"
-   },
-   "calls": {
-    "e3": {
-     "call": "right",
-     "form_only": false
-    },
-    "e10": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "downstream-1117-0411-r2": {
-   "scenario": "downstream-1117-0411",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": false,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": false,
-    "evidence_failure": true,
-    "evidence_symptom": true,
-    "evidence_health": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "contradicted",
-    "e10": "holds",
-    "e11": "loose",
-    "e12": "loose",
-    "e13": "holds",
-    "e14": "loose",
-    "e15": "loose"
-   },
-   "calls": {
-    "e9": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "deploy-1117-0551-r2": {
-   "scenario": "deploy-1117-0551",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "outside_read",
-    "e4": "outside_read",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds"
-   },
-   "calls": {
-    "e3": {
-     "call": "right",
-     "form_only": false
-    },
-    "e4": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "downstream-1114-2357-r3": {
-   "scenario": "downstream-1114-2357",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": false,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": false,
-    "evidence_health": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "outside_read",
-    "e13": "holds"
-   },
-   "calls": {
-    "e12": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "deploy-1116-1917-r3": {
-   "scenario": "deploy-1116-1917",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "contradicted",
-    "e5": "outside_read",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
-   },
-   "calls": {
-    "e4": {
-     "call": "right",
-     "form_only": false
-    },
-    "e5": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1116-2058-r3": {
-   "scenario": "pool-1116-2058",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": false,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "unresolved",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "contradicted",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds"
-   },
-   "calls": {
-    "e1": {
-     "call": "right",
-     "form_only": true
-    },
-    "e6": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1116-2101-lat-r3": {
-   "scenario": "pool-1116-2101-lat",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": false,
-    "evidence_failure": true,
-    "evidence_symptom": false
-   },
-   "verdicts": {
-    "e1": "unresolved",
-    "e2": "holds",
-    "e3": "contradicted",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "unresolved",
-    "e8": "holds",
-    "e9": "contradicted",
-    "e10": "unresolved",
-    "e11": "unresolved",
-    "e12": "holds"
-   },
-   "calls": {
-    "e1": {
-     "call": "right",
-     "form_only": true
-    },
-    "e3": {
-     "call": "right",
-     "form_only": false
     },
     "e7": {
-     "call": "false_flag",
-     "form_only": false
-    },
-    "e9": {
-     "call": "right",
-     "form_only": false
-    },
-    "e10": {
-     "call": "right",
-     "form_only": false
-    },
-    "e11": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1116-2101-err-r3": {
-   "scenario": "pool-1116-2101-err",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "contradicted",
-    "e11": "contradicted",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds"
-   },
-   "calls": {
-    "e10": {
-     "call": "right",
-     "form_only": false
-    },
-    "e11": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "deploy-1116-2238-r3": {
-   "scenario": "deploy-1116-2238",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds"
-   }
-  },
-  "pool-1117-0231-r3": {
-   "scenario": "pool-1117-0231",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "contradicted",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds",
-    "e14": "holds",
-    "e15": "holds"
-   },
-   "calls": {
-    "e3": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1117-0234-r3": {
-   "scenario": "pool-1117-0234",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": false
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "contradicted",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds"
-   },
-   "calls": {
-    "e4": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "pool-1117-0235-r3": {
-   "scenario": "pool-1117-0235",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": false,
-    "evidence_failure": true,
-    "evidence_symptom": false
-   },
-   "verdicts": {
-    "e1": "unresolved",
-    "e2": "contradicted",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds"
-   },
-   "calls": {
-    "e1": {
      "call": "right",
      "form_only": true
     },
-    "e2": {
+    "e17": {
      "call": "right",
-     "form_only": false
+     "form_only": true
     }
-   }
-  },
-  "downstream-1117-0411-r3": {
-   "scenario": "downstream-1117-0411",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": false,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true,
-    "evidence_health": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "contradicted",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds",
-    "e13": "holds"
-   },
-   "calls": {
-    "e6": {
-     "call": "right",
-     "form_only": false
-    }
-   }
-  },
-  "deploy-1117-0551-r3": {
-   "scenario": "deploy-1117-0551",
-   "rubric": {
-    "names_culprit": true,
-    "names_mechanism": true,
-    "blames_no_other": true,
-    "location": true,
-    "pr_gate_value": true,
-    "pr_gate": true,
-    "runbook": true,
-    "evidence_change": true,
-    "evidence_failure": true,
-    "evidence_symptom": true
-   },
-   "verdicts": {
-    "e1": "holds",
-    "e2": "holds",
-    "e3": "holds",
-    "e4": "holds",
-    "e5": "holds",
-    "e6": "holds",
-    "e7": "holds",
-    "e8": "holds",
-    "e9": "holds",
-    "e10": "holds",
-    "e11": "holds",
-    "e12": "holds"
    }
   }
  }
