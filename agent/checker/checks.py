@@ -60,7 +60,7 @@ class Verdict(StrEnum):
     CONTRADICTED = "contradicted"  # the cited data says otherwise
     OUTSIDE_READ = "outside_read"  # it names a time its result never covered
     UNRESOLVED = "unresolved"  # its citation can't be followed
-    MISCITED = "miscited"  # it cites a runbook search, which observes nothing
+    MISCITED = "miscited"  # it cites a runbook search or a code read, which observe nothing
     UNTYPED = "untyped"  # a sentence, from before typed evidence
 
 

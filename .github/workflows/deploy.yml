@@ -26,7 +26,11 @@ jobs:
       run:
         working-directory: ${{ matrix.project }}
     steps:
+      # Full history: the tools' tests build the code snapshot from each
+      # release's commit (core/sentinelops_core/releases.py), tag and branch.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked
       - run: uv run pytest -q
@@ -66,7 +70,10 @@ jobs:
       run:
         working-directory: infra
     steps:
+      # Full history, for the code snapshot below.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -88,6 +95,14 @@ jobs:
       - name: Build the agent's Runtime package
         working-directory: agent
         run: python3 build_runtime.py
+
+      # The tool functions' packages, which the apply zips, and the read tool's
+      # code snapshot: each release's checkout/ read from its own commit, never
+      # the working tree. A file that breaks the rules fails the deploy here,
+      # before anything changes. Prints the snapshot's SHA-256 to compare.
+      - name: Build the tools' packages and the code snapshot
+        working-directory: tools
+        run: uv run --locked python build_code_snapshot.py
 
       # The knowledge base's documents, one per runbook section, which the apply
       # uploads, and their manifest, which the plan reads. Stdlib only; a runbook

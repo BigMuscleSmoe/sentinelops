@@ -1,7 +1,7 @@
 """What the tools read from, bound once per investigation."""
 
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -36,10 +36,17 @@ class ToolEnv:
     # searches. None where no knowledge base is set up, as in a recorded window.
     bedrock_agent_runtime: Any = None
     knowledge_base_id: str | None = None
+    # checkout-api's code by release, then path (sentinelops_tools.repo). None where no
+    # snapshot is shipped: only the read tool's function has one.
+    code: Mapping[str, Mapping[str, str]] | None = None
 
     @classmethod
     def from_session(
-        cls, session: Any, now: Callable[[], datetime] = utc_now, knowledge_base_id: str | None = None
+        cls,
+        session: Any,
+        now: Callable[[], datetime] = utc_now,
+        knowledge_base_id: str | None = None,
+        code: Mapping[str, Mapping[str, str]] | None = None,
     ) -> "ToolEnv":
         from botocore.config import Config
 
@@ -55,6 +62,7 @@ class ToolEnv:
             # Only with a knowledge base to search: a replay's stand-in session has no such client.
             bedrock_agent_runtime=session.client("bedrock-agent-runtime", config=config) if knowledge_base_id else None,
             knowledge_base_id=knowledge_base_id or None,
+            code=code,
         )
 
 

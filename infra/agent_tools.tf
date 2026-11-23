@@ -3,11 +3,13 @@
 # and only the gateway's role may call them.
 
 locals {
-  tools_dir = "${path.module}/../tools"
-  # Everything in tools/ but the package. The tests hold the recorded windows,
-  # megabytes of the live stack the functions never read. The runbook scripts
-  # run before a plan and after an apply, and are never imported.
-  tools_tooling = ["pyproject.toml", "uv.lock", "tests", ".venv", ".pytest_cache", "**/__pycache__", "build_runbooks.py", "ingest_runbooks.py"]
+  # Each zip's whole content, staged before a plan by tools/build_code_snapshot.py:
+  # the tools' package and sentinelops_core's rule module (stdlib only), with LF
+  # line endings, so a Windows plan and CI's apply zip the same bytes. The read
+  # tool's folder adds the code snapshot, every release's checkout/ as read from
+  # its commit; no other function holds code.
+  tools_package = "${path.module}/.build/tools-package"
+  code_reader   = "${path.module}/.build/code-reader"
 
   # Each Gateway target by name, with the tool its function runs. Gateway names
   # the tools <target>___<tool>.
@@ -16,6 +18,7 @@ locals {
     logs     = "get_recent_logs"
     deploys  = "get_deploy_history"
     runbooks = "search_runbooks"
+    code     = "read_repo_file"
   }
 
   # The tools as the model sees them, in Gateway's schema: agent/gateway_tools.py
@@ -27,15 +30,19 @@ locals {
     logs     = data.aws_iam_policy_document.tool_logs.json
     deploys  = data.aws_iam_policy_document.tool_deploys.json
     runbooks = data.aws_iam_policy_document.tool_runbooks.json
+    # Reads only the snapshot in its own zip: nothing beyond its log group.
+    code = null
   }
 
   # Only the search's function knows which knowledge base to search
-  # (sentinelops_tools/env.py, KNOWLEDGE_BASE_ENV).
+  # (sentinelops_tools/env.py, KNOWLEDGE_BASE_ENV), and only the read tool's
+  # where its snapshot is (sentinelops_tools/repo.py, CODE_SNAPSHOT_ENV).
   tool_environment = {
     metrics  = {}
     logs     = {}
     deploys  = {}
     runbooks = { SENTINELOPS_RUNBOOKS_KB_ID = aws_bedrockagent_knowledge_base.runbooks.id }
+    code     = { SENTINELOPS_CODE_SNAPSHOT = "code_snapshot.json" }
   }
 }
 
@@ -45,8 +52,7 @@ module "tool" {
 
   name        = "sentinelops-tool-${each.key}"
   description = "The agent's ${each.value} tool, behind the tools gateway"
-  source_dir  = local.tools_dir
-  excludes    = local.tools_tooling
+  source_dir  = each.key == "code" ? local.code_reader : local.tools_package
   handler     = "sentinelops_tools.handlers.${each.value}"
   memory_size = 256
   # A log search can step back through three hours in a dozen FilterLogEvents
@@ -142,7 +148,7 @@ resource "aws_iam_role_policy" "tools_gateway" {
 
 # Callers sign with SigV4 and need bedrock-agentcore:InvokeGateway on it: the
 # agent's runtime role once it exists, and an admin testing by hand. No
-# semantic search: with four tools there's nothing to search, and it bills.
+# semantic search: with five tools there's nothing to search, and it bills.
 resource "aws_bedrockagentcore_gateway" "tools" {
   name            = "sentinelops-tools"
   description     = "checkout-api's investigation tools, for the SentinelOps agent"

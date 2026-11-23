@@ -15,6 +15,7 @@ import pytest
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
+from answers import PRICING_1_43_0
 from fake_gateway import URL, FakeGateway, text_result
 from strands import tool
 from stubs import RECORDED_KB, TOOL_FIXTURES, FakeSession, load
@@ -22,6 +23,7 @@ from stubs import RECORDED_KB, TOOL_FIXTURES, FakeSession, load
 import gateway as gateway_module
 from gateway import Gateway
 from guards import RunGuard, guarded_tool
+from sentinelops_tools import repo
 from sentinelops_tools.env import ToolEnv
 from sentinelops_tools.toolset import make_tools
 
@@ -30,6 +32,8 @@ CREDENTIALS = Credentials("testing", "testing", "testing")
 # clock; the runbook search reads no time.
 FIXTURES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_bad_deploy", "runbooks_pool"]
 NOW = load(TOOL_FIXTURES / "history_bad_deploy.json")["now"]
+CODE = {"1.43.0": {"checkout/pricing.py": PRICING_1_43_0}}
+READ = {"version": "1.43.0", "path": "checkout/pricing.py"}
 AS_OF = "2026-10-27T19:05:57.026Z"
 
 
@@ -75,21 +79,23 @@ def test_each_tool_returns_what_it_returns_here() -> None:
     for name in FIXTURES:
         session.replay(load(TOOL_FIXTURES / f"{name}.json"))
     assert {load(TOOL_FIXTURES / f"{name}.json")["now"] for name in FIXTURES[:3]} == {NOW}
-    fake = FakeGateway(ToolEnv.from_session(session, knowledge_base_id=RECORDED_KB))
+    fake = FakeGateway(ToolEnv.from_session(session, knowledge_base_id=RECORDED_KB, code=CODE))
     search = load(TOOL_FIXTURES / "runbooks_pool.json")["calls"][0]["params"]["retrievalQuery"]["text"]
 
-    texts = call_all(gateway(fake), as_of=datetime.fromisoformat(NOW), args={"search_runbooks": {"query": search}})
+    args = {"search_runbooks": {"query": search}, "read_repo_file": READ}
+    texts = call_all(gateway(fake), as_of=datetime.fromisoformat(NOW), args=args)
 
-    assert texts == [load(TOOL_FIXTURES / f"{name}.json")["text"] for name in FIXTURES]
+    assert texts == [load(TOOL_FIXTURES / f"{name}.json")["text"] for name in FIXTURES] + [repo.read(CODE, **READ)]
     session.assert_all_called()  # each handler made its tool's recorded calls, with their parameters
     # A session per call: the handshake, the listing the SDK makes anyway, then the call.
-    assert fake.methods() == ["initialize", "notifications/initialized", "tools/list", "tools/call"] * 4
+    assert fake.methods() == ["initialize", "notifications/initialized", "tools/list", "tools/call"] * 5
     assert fake.calls == [
         ("metrics___get_metrics", {"minutes": 10, "period_seconds": 10, "as_of": AS_OF}),
         ("logs___get_recent_logs", {"minutes": 10, "errors_only": True, "limit": 20, "as_of": AS_OF}),
         ("deploys___get_deploy_history", {"limit": 10, "as_of": AS_OF}),
         # A replay stamps every call; the search's handler takes as_of and reads no time.
         ("runbooks___search_runbooks", {"query": search, "as_of": AS_OF}),
+        ("code___read_repo_file", {**READ, "as_of": AS_OF}),
     ]
 
 

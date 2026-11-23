@@ -736,8 +736,12 @@ dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 name = "sentinelops-tools"
 version = "0.1.0"
 source = { editable = "../tools" }
+dependencies = [
+    { name = "sentinelops-core" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "sentinelops-core", editable = "../core" }]
 
 [package.metadata.requires-dev]
 dev = [

@@ -107,6 +107,7 @@ RUN_SHAPING = (
     "core/pyproject.toml",
     "core/sentinelops_core",  # the answer's schema, the patch checks, and what code may be read
     "runbooks",  # what a search returns
+    "tools/build_code_snapshot.py",  # which code a read shows, from which commit
     "tools/build_runbooks.py",  # how the runbooks are cut into the knowledge base's sections
     "tools/ingest_runbooks.py",
     "tools/pyproject.toml",

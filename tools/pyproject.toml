@@ -2,15 +2,22 @@
 name = "sentinelops-tools"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-# None at runtime: boto3 comes with the Lambda Python runtime, and the agent
-# brings its own.
-dependencies = []
+# boto3 comes with the Lambda Python runtime, and the agent brings its own.
+# sentinelops-core is the rule for which files the read tool shows; the
+# functions' zips carry only its code module (build_code_snapshot.py), which is
+# stdlib only, never its pydantic models.
+dependencies = [
+    "sentinelops-core",
+]
 
 [dependency-groups]
 dev = [
     "boto3>=1.43",
     "pytest>=9.1.1",
 ]
+
+[tool.uv.sources]
+sentinelops-core = { path = "../core", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]

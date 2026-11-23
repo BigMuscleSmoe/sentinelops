@@ -25,6 +25,7 @@ TARGETS = {
     "get_recent_logs": "logs",
     "get_deploy_history": "deploys",
     "search_runbooks": "runbooks",
+    "read_repo_file": "code",
 }
 URL = "https://sentinelops-tools-0123456789.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
 INITIALIZED = {

@@ -7,7 +7,7 @@ written to the model. Implementation notes go in the modules behind them.
 from collections.abc import Callable
 from typing import Literal
 
-from sentinelops_tools import deploys, logs, metrics, runbooks
+from sentinelops_tools import deploys, logs, metrics, repo, runbooks
 from sentinelops_tools.env import ToolEnv
 
 Route = Literal["GET /products/{id}", "POST /cart/items", "POST /checkout"]
@@ -72,4 +72,18 @@ def make_tools(env: ToolEnv) -> list[Callable[..., str]]:
         """
         return runbooks.search(env, query)
 
-    return [get_metrics, get_recent_logs, get_deploy_history, search_runbooks]
+    def read_repo_file(version: str, path: str | None = None) -> str:
+        """checkout-api's own source code at a release: one whole file, its lines numbered.
+
+        Line numbers are the ones stack frames name: a log line's frame
+        checkout/app.py:72 is line 72 of checkout/app.py at that line's version.
+        Only checkout-api's modules under checkout/ can be read.
+
+        Args:
+            version: A release number, as deploy history and log lines give it.
+            path: One file, exactly as a stack frame names it (checkout/<module>.py).
+                Left out, the release's files are listed.
+        """
+        return repo.read(env.code, version, path)
+
+    return [get_metrics, get_recent_logs, get_deploy_history, search_runbooks, read_repo_file]

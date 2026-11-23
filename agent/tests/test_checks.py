@@ -282,3 +282,46 @@ def test_a_source_merely_starting_with_r_is_not_a_runbook_search() -> None:
     sources = read_sources(_with_a_search(RUNS["20261114T190302Z/deploy-1113-0257-r1"]))
     for label in ("r", "r0", "r1a", "rr1"):
         assert check_item("e1", item("count", source=label, count=1, note="x"), sources).verdict is Verdict.UNRESOLVED
+
+
+# --- a code read cited as evidence (Phase 4 design, decision 8) --------------------
+
+
+def _with_a_read(run: dict[str, Any]) -> dict[str, Any]:
+    """A fixture run with a read of checkout/pricing.py at 1.43.0 among its results, as source c1."""
+    from answers import PRICING_1_43_0
+
+    from sentinelops_core.code import render_file
+
+    read = render_file("1.43.0", "checkout/pricing.py", PRICING_1_43_0)
+    run = json.loads(json.dumps(run))
+    run["messages"] += [
+        {"role": "assistant", "content": [{"toolUse": {"toolUseId": "read-1", "name": "read_repo_file", "input": {}}}]},
+        {"role": "user", "content": [{"toolResult": {"toolUseId": "read-1", "content": [{"text": f"[source c1]\n{read}"}]}}]},
+    ]
+    return run
+
+
+def test_a_c_source_in_evidence_is_miscited_whether_or_not_the_read_exists() -> None:
+    name = "20261114T190302Z/deploy-1113-0257-r1"
+    run = _with_a_read(RUNS[name])
+    sources = read_sources(run)
+    assert "c1" in sources.by_label
+    cases = [
+        item("value", source="c1", column="line 15", at="19:05:00", value="promo[\"percent_off\"]", note="the line that fails"),
+        item("count", source="c2", count=1, note="one file read"),  # no c2 in this run
+        item("none", source="c1", start="19:00:00", end="19:05:00", note="no null check"),
+    ]
+    for i, evidence in enumerate(cases, 1):
+        check = check_item(f"e{i}", evidence, sources)
+        assert check.verdict is Verdict.MISCITED and check.flagged, check
+        assert "is a code read" in check.reason
+    assert [c.verdict.value for c in check_all(run["hypothesis"], sources)] == [
+        c.verdict.value for c in check_all(RUNS[name]["hypothesis"], read_sources(RUNS[name]))
+    ]
+
+
+def test_a_source_merely_starting_with_c_is_not_a_code_read() -> None:
+    sources = read_sources(_with_a_read(RUNS["20261114T190302Z/deploy-1113-0257-r1"]))
+    for label in ("c", "c0", "c1a", "cc1"):
+        assert check_item("e1", item("count", source=label, count=1, note="x"), sources).verdict is Verdict.UNRESOLVED

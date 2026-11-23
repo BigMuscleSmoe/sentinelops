@@ -17,8 +17,10 @@ import inspect
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+from sentinelops_tools import repo
 from sentinelops_tools.env import KNOWLEDGE_BASE_ENV, ToolEnv, utc_now
 from sentinelops_tools.toolset import make_tools
 
@@ -28,6 +30,8 @@ AS_OF_DESCRIPTION = (
     "there. Left out, reads end at the function's own clock, which also caps a later time."
 )
 SEPARATOR = "___"
+# Where the function's zip unpacks: the package's parent.
+ZIP_ROOT = Path(__file__).resolve().parent.parent
 
 _clients: ToolEnv | None = None
 
@@ -46,6 +50,10 @@ def get_deploy_history(event: dict[str, Any], context: Any) -> dict[str, str]:
 
 def search_runbooks(event: dict[str, Any], context: Any) -> dict[str, str]:
     return handle("search_runbooks", event, context)
+
+
+def read_repo_file(event: dict[str, Any], context: Any) -> dict[str, str]:
+    return handle("read_repo_file", event, context)
 
 
 def handle(
@@ -97,6 +105,12 @@ def _clients_once() -> ToolEnv:
     if _clients is None:
         import boto3
 
-        # Only the search tool's function has a knowledge base set.
-        _clients = ToolEnv.from_session(boto3.Session(), knowledge_base_id=os.environ.get(KNOWLEDGE_BASE_ENV))
+        # Only the search tool's function has a knowledge base set, and only the
+        # read tool's a code snapshot: a file at the zip's root, named in its environment.
+        snapshot = os.environ.get(repo.CODE_SNAPSHOT_ENV)
+        _clients = ToolEnv.from_session(
+            boto3.Session(),
+            knowledge_base_id=os.environ.get(KNOWLEDGE_BASE_ENV),
+            code=repo.load(ZIP_ROOT / snapshot) if snapshot else None,
+        )
     return _clients

@@ -108,10 +108,10 @@ def test_only_a_function_with_a_knowledge_base_set_makes_its_client(monkeypatch:
     monkeypatch.delenv(KNOWLEDGE_BASE_ENV)
     handlers._clients_once()
 
-    assert made == [{"knowledge_base_id": "KB1"}, {"knowledge_base_id": None}]
+    assert made == [{"knowledge_base_id": "KB1", "code": None}, {"knowledge_base_id": None, "code": None}]
 
 
-@pytest.mark.parametrize("tool", [*(case[0] for case in CASES), "search_runbooks"])
+@pytest.mark.parametrize("tool", [*(case[0] for case in CASES), "search_runbooks", "read_repo_file"])
 def test_each_entry_point_runs_its_own_tool(tool: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(handlers, "handle", lambda name, event, context: {"text": name})
 

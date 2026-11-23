@@ -12,8 +12,9 @@ Three outcomes per item:
   doesn't parse). These are what the trial counts as the format failing.
 - miscited: it cites a runbook search (r1, r2, ...), which says what a fault
   looks like, not what happened in this run: never evidence (Phase 3, "Step 4
-  as split", decision 9). Whether or not that search exists, nothing else is
-  checked.
+  as split", decision 9). Nor is a code read (c1, c2, ...), which shows what a
+  release's code says (Phase 4 design, decision 8). Whether or not that result
+  exists, nothing else is checked.
 
 A resolved item carries the entries it's about (its scope: the cited lines, the
 rows or lines in its window, or the whole result; a value item's one target),
@@ -28,16 +29,20 @@ from typing import Any
 
 from checker.sources import RunSources, Source, line_time
 from sentinelops_tools.metrics import HEADERS
+from sentinelops_core.code import READ_TOOL
 from sources import ALARM, PREFIXES
 
 _RUNBOOK_SEARCH = re.compile(rf"{PREFIXES['search_runbooks']}[1-9]\d*")
+# Code isn't evidence yet (BUILD_PLAN.md, Phase 4 design, decision 8): a read shows
+# what a release's code says, not what happened. The evaluation cycle may add a kind.
+_CODE_READ = re.compile(rf"{PREFIXES[READ_TOOL]}[1-9]\d*")
 
 
 class Status(StrEnum):
     RESOLVED = "resolved"
     OUTSIDE_READ = "outside_read"
     UNRESOLVED = "unresolved"
-    MISCITED = "miscited"  # a runbook search, cited as evidence
+    MISCITED = "miscited"  # a runbook search or a code read, cited as evidence
     UNTYPED = "untyped"  # a sentence, from before typed evidence
 
 
@@ -109,6 +114,8 @@ def resolve(item_id: str, item: dict[str, Any] | str, run: RunSources) -> Resolu
 
     if isinstance(label, str) and _RUNBOOK_SEARCH.fullmatch(label):
         return fail(f"{label} is a runbook search: it shows what a fault looks like, not what happened", Status.MISCITED)
+    if isinstance(label, str) and _CODE_READ.fullmatch(label):
+        return fail(f"{label} is a code read: it shows what the code says, not what happened", Status.MISCITED)
 
     times: dict[str, tuple[datetime, timedelta]] = {}
     for key in ("at", "start", "end"):

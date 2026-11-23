@@ -8,10 +8,12 @@ from sentinelops_tools import logs
 from sentinelops_tools.toolset import Route, make_tools
 
 
-def test_the_four_tools_the_model_gets() -> None:
+def test_the_five_tools_the_model_gets() -> None:
     tools = make_tools(Stubbed(datetime(2026, 10, 28, tzinfo=UTC)).env)
 
-    assert [t.__name__ for t in tools] == ["get_metrics", "get_recent_logs", "get_deploy_history", "search_runbooks"]
+    assert [t.__name__ for t in tools] == [
+        "get_metrics", "get_recent_logs", "get_deploy_history", "search_runbooks", "read_repo_file"
+    ]
     for tool in tools:
         assert tool.__doc__ and "Args:" in tool.__doc__
         params = inspect.signature(tool).parameters

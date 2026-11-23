@@ -88,5 +88,29 @@
     "query"
    ]
   }
+ },
+ {
+  "name": "read_repo_file",
+  "description": "checkout-api's own source code at a release: one whole file, its lines numbered.\n\nLine numbers are the ones stack frames name: a log line's frame\ncheckout/app.py:72 is line 72 of checkout/app.py at that line's version.\nOnly checkout-api's modules under checkout/ can be read.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "version": {
+     "type": "string",
+     "description": "A release number, as deploy history and log lines give it."
+    },
+    "path": {
+     "type": "string",
+     "description": "One file, exactly as a stack frame names it (checkout/<module>.py).\nLeft out, the release's files are listed."
+    },
+    "as_of": {
+     "type": "string",
+     "description": "Replays only: the investigation's now, in ISO 8601 with a time zone. Every read ends there. Left out, reads end at the function's own clock, which also caps a later time."
+    }
+   },
+   "required": [
+    "version"
+   ]
+  }
  }
 ]
