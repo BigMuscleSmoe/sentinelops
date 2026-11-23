@@ -14,6 +14,7 @@ build ...`) and commit that; push both commits together, since CI runs on the
 pushed head only.
 """
 
+import ast
 import json
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,11 @@ from checker.__main__ import check_run
 from evals import audit as audits
 from evals import baseline as gate
 from evals.arms import ARMS
-from evals.scenarios import BY_ID
 from evals.repo import REPO, Refusal
+from evals.scenarios import BY_ID
+from evals.score import PASS_BAR
 
+AGENT = REPO / "agent"
 BASELINE, REQUEST, RUNS = gate.load()
 ARM = ARMS[BASELINE["arm"]]
 
@@ -215,6 +218,125 @@ def test_a_sweep_missing_one_of_its_splits_scenarios_is_refused(tmp_path: Path) 
     kept = [r for r in records if r["scenario"] != dropped]
     with pytest.raises(Refusal, match=rf"every {BY_ID[dropped].split.value} scenario; the sweep has no run of {dropped}$"):
         gate.build(write_sweep(tmp_path / "sweep", kept), None, tmp_path / "gate")
+
+
+@pytest.mark.usefixtures("fresh")
+def test_build_scores_with_the_current_rubric_and_refuses_a_wrong_diagnosis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    records = answered_records()
+    wrong = records[2]["run"]
+    cause = RUNS[wrong]["hypothesis"]["root_cause"]
+    score = gate.rubric_score
+
+    def stricter(scenario: Any, hypothesis: dict[str, Any], checks: Any) -> Any:
+        result = score(scenario, hypothesis, checks)
+        if hypothesis["root_cause"] == cause:
+            result.items["blames_no_other"] = False
+        return result
+
+    monkeypatch.setattr(gate, "rubric_score", stricter)
+    with pytest.raises(Refusal, match=rf"right diagnoses only; the rubric fails {wrong}$"):
+        gate.build(write_sweep(tmp_path / "sweep", records), None, tmp_path / "gate")
+
+
+# --- what shapes a run: a sweep is a baseline only while that is as it ran on ---
+
+
+def changed_since_the_sweep(*files: str) -> Any:
+    """git's answer, if these files alone changed since the sweep's commit: paths are unchanged unless one holds one."""
+
+    def unchanged(commit: str, paths: list[str]) -> bool:
+        assert commit == BASELINE["commit"]
+        return not any(f == p or f.startswith(p + "/") for f in files for p in paths)
+
+    return unchanged
+
+
+@pytest.mark.parametrize(
+    "changed",
+    ["agent/evals/rubrics.py", "agent/checker/checks.py", "agent/checker/resolve.py", "agent/evals/score.py", "agent/evals/audit.py"],
+)
+def test_a_scoring_only_change_since_the_sweep_is_allowed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str) -> None:
+    monkeypatch.setattr(gate, "unchanged", changed_since_the_sweep(changed))
+    built = gate.build(write_sweep(tmp_path / "sweep", answered_records()), None, tmp_path / "gate")
+    assert built["sweep"] == BASELINE["sweep"] and len(built["runs"]) == len(RUNS)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "agent/prompts/system.md",
+        "agent/models.py",
+        "agent/runner.py",
+        "agent/guards.py",
+        "agent/hooks.py",
+        "agent/providers.py",
+        "agent/evals/arms.py",
+        "agent/knowledge_base.py",
+        "agent/uv.lock",
+        "tools/sentinelops_tools/toolset.py",
+        "tools/sentinelops_tools/runbooks.py",
+        "tools/tests/fixtures/windows/2026-11-17-0551.json",
+        "runbooks/bad-deploy.md",
+    ],
+)
+def test_a_run_shaping_change_since_the_sweep_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str) -> None:
+    monkeypatch.setattr(gate, "unchanged", changed_since_the_sweep(changed))
+    with pytest.raises(Refusal, match=rf"what shapes a run \(evals.baseline.RUN_SHAPING\) changed since the sweep ran on {BASELINE['commit'][:7]}"):
+        gate.build(write_sweep(tmp_path / "sweep", answered_records()), None, tmp_path / "gate")
+    assert not (tmp_path / "gate").exists()
+
+
+def under(path: str, paths: tuple[str, ...]) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in paths)
+
+
+def test_every_frozen_path_is_sorted_as_run_shaping_or_scoring_only() -> None:
+    for path in audits.read(PASS_BAR)["frozen_paths"]:
+        assert (path in gate.RUN_SHAPING) != (path in gate.SCORING_ONLY), path
+    assert not set(gate.RUN_SHAPING) & set(gate.SCORING_ONLY)
+
+
+def test_every_path_in_either_list_exists() -> None:
+    # git diff passes a path that matches nothing, so a misspelled one would never be checked.
+    missing = [p for p in (*gate.RUN_SHAPING, *gate.SCORING_ONLY) if not (REPO / p).exists()]
+    assert not missing
+
+
+def agent_files_imported_from(start: Path) -> set[str]:
+    """Every agent file start reaches by import, imports inside functions too, as paths from the repo's root."""
+
+    def files(dotted: str) -> list[Path]:
+        parts = dotted.split(".")
+        found = []
+        for i in range(1, len(parts) + 1):
+            base = AGENT.joinpath(*parts[:i])
+            found += [p for p in (base.with_suffix(".py"), base / "__init__.py") if p.is_file()]
+        return found
+
+    seen: set[Path] = set()
+    todo = [start]
+    while todo:
+        path = todo.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module, *(f"{node.module}.{alias.name}" for alias in node.names)]
+            else:
+                continue
+            for name in names:
+                todo += files(name)
+    return {p.relative_to(REPO).as_posix() for p in seen}
+
+
+def test_every_agent_module_a_sweeps_run_imports_is_sorted() -> None:
+    reached = agent_files_imported_from(AGENT / "evals" / "sweep.py")
+    assert {"agent/runner.py", "agent/models.py", "agent/providers.py", "agent/knowledge_base.py", "agent/evals/witness.py"} <= reached
+    unsorted = sorted(p for p in reached if not under(p, gate.RUN_SHAPING) and not under(p, gate.SCORING_ONLY))
+    assert not unsorted
 
 
 # --- the gate itself: it sees each part change, and keeps nothing it shouldn't -----

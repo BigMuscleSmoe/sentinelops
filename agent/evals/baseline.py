@@ -30,13 +30,16 @@ Usage, from agent/ (no model, no AWS):
     uv run python -m evals.baseline check
     uv run python -m evals.baseline build scratch/evals/<sweep> [--flags evals/audits/<sweep>.flags.json]
 
-`build` refuses a sweep that ran with uncommitted changes, one whose run-shaping
-paths (the pass bar's `frozen_paths`) differ now from its commit, so the capture
-wouldn't be what its runs were sent, and, strict for now (the user's calls,
-2026-11-18), one that isn't whole or isn't right: any run whose last attempt
-didn't answer (halted, errored, refused, or no Hypothesis), any scenario of its
-split it holds no run of, or any wrong diagnosis. A run retried after an error
-counts by its last attempt, as the sweep scores it.
+`build` refuses a sweep that ran with uncommitted changes, one where anything
+that shapes a run (`RUN_SHAPING`) differs now from its commit, so its runs
+wouldn't be what a run sends and does now, and, strict for now (the user's
+calls, 2026-11-18), one that isn't whole or isn't right: any run whose last
+attempt didn't answer (halted, errored, refused, or no Hypothesis), any scenario
+of its split it holds no run of, or any wrong diagnosis. A run retried after an
+error counts by its last attempt, as the sweep scores it. What only scores a run
+(`SCORING_ONLY`: the rubric, the checker) may change after the sweep (the
+user's call, 2026-11-23): `build` checks and scores every run with the current
+ones, and pins what they give.
 """
 
 import argparse
@@ -58,7 +61,7 @@ from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.repo import REPO, Refusal, check_committed, unchanged
 from evals.rubrics import score as rubric_score
 from evals.scenarios import BY_ID, Split
-from evals.score import PASS_BAR, load_sweep
+from evals.score import load_sweep
 
 GATE = Path(__file__).with_name("gate")
 BASELINE = "baseline.json"
@@ -76,6 +79,50 @@ GATE_ALARM = {
     "condition": "error Average > 0.05 over 10 s periods, in 2 of 3 periods.",
 }
 FLAGGED = ("contradicted", "outside_read", "unresolved", "miscited")
+
+# What shapes a run, from the repo's root: what the model is sent, the tools and
+# what they read, and what stops a run. A sweep is a baseline only while these
+# are as it ran on. Every pass-bar frozen path is here or in SCORING_ONLY, and so
+# is every agent module a sweep's run imports (tests/test_baseline_gate.py).
+RUN_SHAPING = (
+    "agent/alarm.py",  # the alarm message
+    "agent/evals/__init__.py",
+    "agent/evals/__main__.py",  # the sweep command: its sign-in and the knowledge base's check
+    "agent/evals/arms.py",  # the model, its settings and caps
+    "agent/evals/scenarios.py",  # each run's alarm and window
+    "agent/evals/sweep.py",
+    "agent/evals/witness.py",  # the transport the model's traffic goes through
+    "agent/gateway.py",  # the tools' client through Gateway, off a sweep
+    "agent/guards.py",
+    "agent/hooks.py",
+    "agent/investigation.py",
+    "agent/knowledge_base.py",
+    "agent/models.py",  # the answer's schema
+    "agent/pricing.py",  # the cost guard's prices
+    "agent/prompts",
+    "agent/providers.py",  # the model's settings and the strict answer tool
+    "agent/pyproject.toml",
+    "agent/runner.py",
+    "agent/sources.py",  # the labels on tool results
+    "agent/uv.lock",
+    "runbooks",  # what a search returns
+    "tools/build_runbooks.py",  # how the runbooks are cut into the knowledge base's sections
+    "tools/ingest_runbooks.py",
+    "tools/pyproject.toml",
+    "tools/sentinelops_tools",  # the tools: their specs, reads, and text
+    "tools/tests/fixtures/windows",  # what a sweep's tools read
+    "tools/tests/window.py",
+    "tools/uv.lock",
+)
+# Never what a run is sent or does: build checks and scores with the current ones.
+SCORING_ONLY = (
+    "agent/checker",
+    "agent/evals/audit.py",
+    "agent/evals/packet.py",
+    "agent/evals/repo.py",  # the sweep's commit and uncommitted paths: its record, not its run
+    "agent/evals/rubrics.py",
+    "agent/evals/score.py",
+)
 
 
 def capture(arm: Arm = ARMS[DEFAULT_ARM]) -> dict[str, Any]:
@@ -198,9 +245,8 @@ def build(folder: Path, flags_path: Path | None = None, out: Path = GATE) -> dic
         raise Refusal("the sweep doesn't record the commit it ran on")
     if meta.get("dirty"):
         raise Refusal(f"the sweep ran with uncommitted changes: {', '.join(meta['dirty'][:5])}")
-    shaping = audits.read(PASS_BAR)["frozen_paths"]
-    if not unchanged(commit, shaping):
-        raise Refusal(f"what shapes a run (the pass bar's frozen_paths) changed since the sweep ran on {commit[:7]}")
+    if not unchanged(commit, list(RUN_SHAPING)):
+        raise Refusal(f"what shapes a run (evals.baseline.RUN_SHAPING) changed since the sweep ran on {commit[:7]}")
     arm = ARMS[meta.get("arm", DEFAULT_ARM)]
 
     # Whole: every run answered, by its last attempt (load_sweep drops errored runs, so read the records).
