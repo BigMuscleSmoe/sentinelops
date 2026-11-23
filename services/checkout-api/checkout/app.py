@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from checkout import db, payments, telemetry
+from checkout.backend import Backend, Timeline
 from checkout.catalog import PRODUCTS, Product
 from checkout.config import Config
 from checkout.errors import BadRequest, HttpError, NotFound
 from checkout.pricing import price_cart
-from sim.backend import Backend, Timeline
 
 SERVICE = "checkout-api"
 HEALTH = "GET /health"

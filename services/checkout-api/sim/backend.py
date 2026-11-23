@@ -7,12 +7,15 @@ request take its place in the pool's ledger in a single write.
 
 payments-api's mode comes from outside checkout-api's settings: a slow upstream
 changes nothing this service is configured with.
+
+Backend implements checkout/backend.py's protocol; checkout/ never imports sim/,
+so nothing the read tool shows names the simulation.
 """
 
 import random
 from collections.abc import Callable
-from dataclasses import dataclass
 
+from checkout.backend import Timeline
 from checkout.config import Config
 from sim.pool import Ledger
 from sim.workload import HEALTHY, sample_hold, sample_payments_latency
@@ -20,30 +23,11 @@ from sim.workload import HEALTHY, sample_hold, sample_payments_latency
 CHECKOUT = "POST /checkout"
 
 
-@dataclass(frozen=True)
-class Timeline:
-    started_at: float
-    wait_s: float  # queueing for a connection; the acquire timeout if timed_out
-    timed_out: bool
-    hold_s: float  # the query, holding the connection
-    upstream_s: float | None  # how long payments-api takes to answer; checkouts only
-    active_connections: int  # connections in use once this request has its own
-    concurrent_requests: int  # requests in flight on every instance, this one included
-
-    @property
-    def granted_at(self) -> float:
-        return self.started_at + self.wait_s
-
-    @property
-    def released_at(self) -> float:
-        return self.granted_at + self.hold_s
-
-
 def _healthy() -> str:
     return HEALTHY
 
 
-class Backend:
+class Backend:  # checkout.backend.Backend
     def __init__(self, ledger: Ledger, rng: random.Random, payments: Callable[[], str] = _healthy) -> None:
         self._ledger = ledger
         self._rng = rng

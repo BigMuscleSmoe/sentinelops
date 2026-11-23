@@ -7,8 +7,8 @@ import pytest
 
 from checkout import VERSION
 from checkout.app import App
+from checkout.backend import Timeline
 from checkout.config import Config
-from sim.backend import Timeline
 from sim.pool_sim import VirtualClock
 
 START = 1_800_000_000.0

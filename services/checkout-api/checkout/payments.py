@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-from sim.backend import Timeline
+from checkout.backend import Timeline
 
 DEPENDENCY = "payments-api"
 

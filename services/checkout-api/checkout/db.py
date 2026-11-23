@@ -1,13 +1,13 @@
 """Database access through the connection pool every instance shares.
 
-The database is simulated (see sim/): the shared ledger decides how long a
-request queues for a connection, and the workload model how long its query
-holds one. This module plays the request's part.
+How long a request queues for a connection and how long its query holds one
+come back from the backend (checkout/backend.py) as the request's timeline;
+this module waits them out.
 """
 
 from collections.abc import Callable
 
-from sim.backend import Timeline
+from checkout.backend import Timeline
 
 
 def wait_for_connection(
