@@ -1,6 +1,6 @@
 # Architecture
 
-**What's built and what isn't.** Built and running: the demo service, the trigger, the agent on AgentCore Runtime with its three tools behind Gateway, and the eval harness. Designed here but not built yet: runbook search, code execution, the remediation flow, the live trace, and the frontend. Each of those sections says so in its heading.
+**What's built and what isn't.** Built and running: the demo service, the trigger, the agent on AgentCore Runtime with its four tools behind Gateway, runbook search on a Bedrock knowledge base, and the eval harness. Designed here but not built yet: code execution, the remediation flow, the live trace, and the frontend. Each of those sections says so in its heading.
 
 ## Design goals
 
@@ -43,7 +43,7 @@ A small Lambda between EventBridge and the agent. Every investigation, alarm-dri
 
 - **One investigation at a time.** Conditional write on a `lock` item in DynamoDB, with a 420 s TTL, past the runtime's 360 s maximum lifetime, so a crashed run can't hold it forever. If the lock is held, the new incident is stored as `busy`, with no run.
 - **Hourly cap.** The start times of the last hour's investigations, 20 at most. Past that, the incident is stored as `capped`, not investigated. The per-session guards don't protect against an alarm storm; this does.
-- **Triage, in code.** One incident item per service. An ALARM with no open incident is new: it opens one and starts a run. Another alarm during an open incident is a duplicate, and the same alarm again is flapping; both are recorded, and neither starts a run. The rule forwards OK events too, and an incident closes once every alarm has been OK for 10 minutes, or 60 minutes after it opened. So a fault's later alarms (the pool fault's latency and errors) and its re-fires (`bad_deploy`'s error alarm) never start a second run. Code, not a model: deterministic, testable, free, and alarm text can't steer it. The first design gave this to Nova Lite, which has no Bedrock quota here and would have been a model call outside the guard. A one-line summary for the timeline, which gives the UI something to show in the first seconds, will come from the alarms in code too (planned, Phase 3).
+- **Triage, in code.** One incident item per service. An ALARM with no open incident is new: it opens one and starts a run. Another alarm during an open incident is a duplicate, and the same alarm again is flapping; both are recorded, and neither starts a run. The rule forwards OK events too, and an incident closes once every alarm has been OK for 10 minutes, or 60 minutes after it opened. So a fault's later alarms (the pool fault's latency and errors) and its re-fires (`bad_deploy`'s error alarm) never start a second run. Code, not a model: deterministic, testable, free, and alarm text can't steer it. The first design gave this to Nova Lite, which has no Bedrock quota here and would have been a model call outside the guard. A one-line summary for the timeline, which gives the UI something to show in the first seconds, will come from the alarms in code too (planned, Phase 5).
 
 Triage runs first, then the lock and the cap. The trigger then invokes AgentCore Runtime synchronously, a live run of the alarm that opened the incident, sent once and never retried. It stops the session, stores the answer (the Hypothesis, the run's numbers, and its whole record, gzipped) on the incident, and releases the lock. Timeouts nest, each outlasting the one inside it: the guard's 300 s, the runtime's 360 s maximum lifetime, the trigger's 370 s wait for the answer, the Lambda's 400 s, and the lock's 420 s (`trigger/tests/test_timeouts.py`). Lambda's automatic retries are off, so a failed trigger can't start a second investigation.
 
@@ -60,7 +60,8 @@ agent/
   app.py               # the AgentCore Runtime entrypoint: POST /invocations, GET /ping (Starlette, uvicorn)
   main.py              # the local CLI: a live or replayed alarm, tools here or through Gateway
   investigation.py     # one alarm's investigation, for both entrypoints; its record is the transcript
-  gateway.py           # the three tools' wrappers that call them through Gateway (MCP, SigV4)
+  gateway.py           # the tools' wrappers that call them through Gateway (MCP, SigV4)
+  knowledge_base.py    # finds the runbook knowledge base and checks it holds this checkout's runbooks
   build_runtime.py     # stages the Runtime's arm64 package for Terraform to zip
   alarm.py             # the alarm a run starts from, and the prompt it becomes
   runner.py            # one investigation: the Strands agent, its tools, structured output, under the guard
@@ -71,7 +72,7 @@ agent/
     system.md          # the agent's operating instructions
   models.py            # Hypothesis (Pydantic); Remediation comes in Phase 4
   guards.py            # step cap, token cap, cost cap, timeout
-  sources.py           # labels each tool result (m1, l2, d1) so evidence can cite it
+  sources.py           # labels each tool result (m1, l2, d1, r1) so evidence can cite it
   checker/             # recomputes each typed evidence item from the result it cites, in code
   evals/               # sweeps over recorded alarms, rubrics, audits, the pass bar, the CI gate
   trace.py             # writes trace events to DynamoDB (Phase 5, not written yet)
@@ -88,7 +89,7 @@ Tools the agent can call:
 | `get_recent_logs` | Lambda via Gateway | Built |
 | `get_metrics` | Lambda via Gateway | Built |
 | `get_deploy_history` | Lambda via Gateway | Built |
-| `search_runbooks` | Lambda via Gateway (Bedrock KB `Retrieve`) | Phase 3, next |
+| `search_runbooks` | Lambda via Gateway (Bedrock KB `Retrieve`) | Built |
 | `read_repo_file` | Lambda via Gateway (read-only GitHub token) | Phase 4 |
 | `run_analysis` | AgentCore Code Interpreter (built-in, not a Lambda) | Deferred until the eval shows it's needed |
 
@@ -115,6 +116,8 @@ class Hypothesis(BaseModel):
 
 Typed evidence is what makes the answer checkable: `agent/checker/` recomputes each item from the result it cites, with no model.
 
+`runbook_cited` names the runbook the diagnosis follows, and code checks it once the run answers (`runner.check_citation`): it stays only if it names, exactly, a runbook a search in this run showed in full. Otherwise it's cleared and logged with its reason (never shown, only listed by name, or cut short by the result's cap), and the model isn't asked again. A runbook is never evidence: an evidence item citing a search (`r1`) is the checker's `miscited` flag.
+
 From Phase 4, a `remediation` field (`file_path`, `base_commit`, `diff`, `rationale`) carries the patch, and the agent writes it itself. Nothing downstream calls a model, so all LLM spend stays inside the guarded session. `remediation` will be `None` when the fix isn't in this service (`downstream_timeout`) or the agent can't name one.
 
 **Guards are not optional.** `guards.py` enforces:
@@ -138,22 +141,28 @@ tools/                      # one uv project, sentinelops-tools (built 2026-10-2
     logs.py                 # get_recent_logs: FilterLogEvents, whole log lines
     deploys.py              # get_deploy_history: deploy and config-change history from DynamoDB, up to now
     toolset.py              # make_tools(env): the functions the model sees, with their docstrings
-    runbooks.py             # planned, Phase 3: Bedrock KB Retrieve
+    runbooks.py             # search_runbooks: one Bedrock KB Retrieve, the 2 closest runbooks in full
     github_read.py          # planned, Phase 4: read a file, list recent commits
+  build_runbooks.py         # the runbooks cut into one document per section, run before a plan
+  ingest_runbooks.py        # the deploy's ingestion job, and its check that the KB holds this build
   tests/                    # replay recorded AWS calls through botocore's Stubber
 ```
 
 The tools are plain Python functions in one project, which the agent depends on by path and imports directly while developing locally. The model sets only bounded parameters; the log group, the table, and the end of every time range come from the run, and a replay pins the clock to the moment the alarm fired. Logs are read with `FilterLogEvents` as whole lines, not through Logs Insights, which lags by minutes under load and flattens arrays; metrics are the primary source. An AWS error reaches the model as its error code only.
 
-Deployed, each tool is its own Lambda (`sentinelops-tool-metrics`, `-logs`, and `-deploys`): a thin handler (`handlers.py`) around the same function, behind an AgentCore Gateway (`sentinelops-tools`, IAM auth) that serves them as MCP tools named `<target>___<tool>`. A handler takes the tool's arguments, plus `as_of` to replay a moment (capped at its own clock), and answers `{"text": ...}`. The agent keeps its three tools, with today's names and descriptions, and only their bodies call Gateway, so the prompt and its token counts don't change. Only the gateway's role may invoke the functions, and AgentCore may assume that role only for a gateway in this account.
+Deployed, each tool is its own Lambda (`sentinelops-tool-metrics`, `-logs`, `-deploys`, and `-runbooks`): a thin handler (`handlers.py`) around the same function, behind an AgentCore Gateway (`sentinelops-tools`, IAM auth) that serves them as MCP tools named `<target>___<tool>`. A handler takes the tool's arguments, plus `as_of` to replay a moment (capped at its own clock), and answers `{"text": ...}`. The agent's tools have the same names and descriptions whether they run locally or through Gateway, and only their bodies call Gateway, so the prompt and its token counts don't change. Only the gateway's role may invoke the functions, and AgentCore may assume that role only for a gateway in this account.
 
-Each tool Lambda has its own IAM role scoped to exactly what it needs. The logs tool cannot write to DynamoDB. The GitHub tool (Phase 4) won't be able to read CloudWatch, and its token will be read-only: the agent has no way to open a PR. Only the remediation flow will hold a write-capable token. It will also only see the service's own code (`services/checkout-api/checkout/`), never the fault simulator or controller.
+Each tool Lambda has its own IAM role scoped to exactly what it needs. The logs tool cannot write to DynamoDB, and the runbooks tool may only `bedrock:Retrieve` from the one knowledge base. The GitHub tool (Phase 4) won't be able to read CloudWatch, and its token will be read-only: the agent has no way to open a PR. Only the remediation flow will hold a write-capable token. It will also only see the service's own code (`services/checkout-api/checkout/`), never the fault simulator or controller.
 
-### Knowledge base (`runbooks/`; planned, Phase 3's next step)
+### Knowledge base (`runbooks/`; built, Phase 3)
 
-Markdown runbooks in S3, indexed by a Bedrock Knowledge Base backed by S3 Vectors. I write them by hand from the service's actual behavior; two of the seven are done. They're the domain knowledge that makes the agent's answers specific rather than generic.
+Seven Markdown runbooks, drafted from the service's actual behavior and reviewed one at a time: one for each fault the service injects, one for the planned memory leak, and three neighbors it never injects (slow database, traffic surge, Lambda throttling), so the closest runbook isn't always the right one. Each has the same five sections: Symptoms, What this is not, Diagnosis, Resolution, Prevention. They're the domain knowledge that makes the agent's answers specific rather than generic.
 
-Chunking: 500 tokens with 50-token overlap, split on markdown headers. Runbooks are already structured, so header-aware chunking beats naive fixed-size splitting here.
+**Indexing.** `tools/build_runbooks.py` cuts each runbook into one document per section (35 today), each with a metadata file: the runbook, its title, the section, and a digest of the whole corpus. Terraform uploads them, and a Bedrock Knowledge Base backed by S3 Vectors embeds them with Titan Text Embeddings V2. It chunks nothing itself, so a chunk is exactly one section: the runbooks are already structured, and their own headers are the right boundaries. After the apply, the deploy runs an ingestion job and one search that must return every section of this build, tagged with its digest, and nothing else (`tools/ingest_runbooks.py`). A local run or an eval sweep runs the same check first and refuses a knowledge base holding other runbooks.
+
+**Search** (`tools/sentinelops_tools/runbooks.py`). One `Retrieve` call returns every section, and the runbooks are ranked by position: each where its first Symptoms or Diagnosis section comes back. The 2 closest are shown in full (Symptoms, What this is not, Diagnosis), the rest by file name and title. Resolution and Prevention are never shown. There are no scores: on queries no runbook fits, the best score (0.67 to 0.78) fell inside the range for queries one does fit (0.62 to 0.92), so a score can't say "none of these". The query is cut at 500 characters, and the result is capped at 40,000, like the log tool's.
+
+**Measured** (`tools/tests/fixtures/retrieval/`). On 40 queries a runbook fits, written in the agent's own words: 90% top-2, the bar, met with no margin, and 75% top-1. The 12 written after five runbook fixes, which the fixes never saw, are the fairer number: 83% top-2. Both of their misses, and 3 of the 4 misses overall, are on `memory-leak.md`, whose best-matching section is What this is not, which doesn't rank. A keyword baseline over Symptoms and Diagnosis nearly tied on top-2 (85%, and 83% on the fresh 12) and trailed on top-1 (65%). In the 20-run tuning sweep (2026-11-23), `downstream-timeout.md` ranked above `bad-deploy.md` on every bad deploy, and 3 of 9 pool runs needed a second search, yet the agent cited each fault's own runbook in all 20.
 
 ### Remediation flow (`remediation/`; planned, Phase 4)
 
@@ -195,9 +204,9 @@ a break (the fault controller today, the "Break the service" button from Phase 5
   → trigger Lambda: triage (in code), lock, hourly cap
   → AgentCore Runtime session starts
   → agent: get_metrics()
-  → agent: get_recent_logs()
+  → agent: search_runbooks(what it measured)
   → agent: get_deploy_history()
-  → agent: search_runbooks(query)      # planned, Phase 3
+  → agent: get_recent_logs()
   → agent: run_analysis(...)           # deferred
   → agent: read_repo_file(path)        # planned, Phase 4; only if the fix is in this service
   → agent emits Hypothesis (with Remediation or None, from Phase 4)
@@ -206,7 +215,7 @@ a break (the fault controller today, the "Break the service" button from Phase 5
   → trace closes, UI shows result                                  # planned, Phase 5
 ```
 
-Measured: alarms fire 36-42 s after a break. The first live run (2026-10-29) took 22 s from start to answer, with 4 tool calls and 4 model calls, for $0.0094, well inside the caps.
+Measured: alarms fire 36-42 s after a break. The first live run (2026-10-29) took 22 s from start to answer, with 4 tool calls and 4 model calls, for $0.0094, well inside the caps. With runbook search, the 20-run tuning sweep (2026-11-23) took 18 to 48 s a run, with 4 to 7 tool calls, for $0.0084 on average.
 
 ## Security notes
 
