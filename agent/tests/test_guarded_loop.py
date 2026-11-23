@@ -13,15 +13,17 @@ from enum import Enum, auto
 import pytest
 
 from guards import RunGuard, guarded_tool, run_guarded
-from answers import item
-from models import FaultLocation, Hypothesis, StopReason
+from answers import CHECKED_PATCH, item
+from sentinelops_core.models import FaultLocation, Hypothesis, Remediation, StopReason
 
+# Confident, in this service, with a patch the run's check kept: it can open a PR.
 CONFIDENT_ANSWER = Hypothesis(
-    root_cause="Connection pool max size lowered in the latest config change.",
+    root_cause="Release 1.43.0 removed the null check in apply_promo, so checkouts without a promo fail.",
     confidence=0.95,
-    evidence=[item("value", source="m1", column="pool_wait_p99_ms", at="18:57:00", value="900")],
+    evidence=[item("value", source="m1", column="err%", at="19:05:00", value="10.1")],
     affected_component="checkout-api",
     fault_location=FaultLocation.THIS_SERVICE,
+    remediation=Remediation.model_validate(CHECKED_PATCH),
 )
 
 

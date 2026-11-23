@@ -97,7 +97,6 @@ RUN_SHAPING = (
     "agent/hooks.py",
     "agent/investigation.py",
     "agent/knowledge_base.py",
-    "agent/models.py",  # the answer's schema
     "agent/pricing.py",  # the cost guard's prices
     "agent/prompts",
     "agent/providers.py",  # the model's settings and the strict answer tool
@@ -105,6 +104,8 @@ RUN_SHAPING = (
     "agent/runner.py",
     "agent/sources.py",  # the labels on tool results
     "agent/uv.lock",
+    "core/pyproject.toml",
+    "core/sentinelops_core",  # the answer's schema, the patch checks, and what code may be read
     "runbooks",  # what a search returns
     "tools/build_runbooks.py",  # how the runbooks are cut into the knowledge base's sections
     "tools/ingest_runbooks.py",
@@ -114,6 +115,10 @@ RUN_SHAPING = (
     "tools/tests/window.py",
     "tools/uv.lock",
 )
+# Pass-bar frozen paths that have moved since the freeze (2026-11-16), to where
+# they live now. The bar stays as frozen; the tests sort a moved path by its new
+# home. A sweep from before a move fails build's check, since the new home is new.
+MOVED = {"agent/models.py": "core/sentinelops_core/models.py"}  # Phase 4: shared with the remediation flow
 # Never what a run is sent or does: build checks and scores with the current ones.
 SCORING_ONLY = (
     "agent/checker",

@@ -11,7 +11,7 @@ from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 from strands.models.anthropic import AnthropicModel
 
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, signed_in
-from models import Hypothesis
+from sentinelops_core.models import Hypothesis
 from providers import (
     FEDERATION_ENV,
     FEDERATION_ROLE_ENV,

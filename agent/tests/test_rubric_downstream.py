@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from answers import CONFIG_1_42_0, checked
 from checker.checks import ItemCheck, Verdict
 from checker.resolve import Entry
 from evals import rubrics
@@ -67,6 +68,22 @@ RIGHT = {
 }
 
 
+# What a wrong in-service diagnosis of a slow payments-api would patch: a longer
+# client timeout, as the run's check would keep it. From Phase 4 a PR needs a
+# kept patch, so the confidently wrong answers below carry this one; without
+# it, nothing would open.
+WRONG_PATCH = checked(
+    {
+        "source": "c1",
+        "file_path": "checkout/config.py",
+        "edits": [{"old": 'env.get("PAYMENTS_TIMEOUT_MS", "2000")', "new": 'env.get("PAYMENTS_TIMEOUT_MS", "5000")'}],
+        "rationale": "payments-api takes more than 2 s to answer; a 5 s client timeout lets checkouts wait for it.",
+    },
+    CONFIG_1_42_0,
+    "1.42.0",
+)
+
+
 def answer(**changes: Any) -> dict[str, Any]:
     return {**RIGHT, **changes}
 
@@ -99,6 +116,7 @@ def test_blaming_the_decoy_is_wrong_and_confidently_so():
         affected_component="checkout-api",
         fault_location="this_service",
         confidence=0.8,
+        remediation=WRONG_PATCH,
     ))
     assert not result.items["names_culprit"] and not result.items["blames_no_other"] and not result.items["location"]
     assert result.notes["blames_no_other"] == "blames LOG_SAMPLE_RATE"
@@ -111,10 +129,25 @@ def test_blaming_the_pool_is_wrong_and_confidently_so():
         affected_component="checkout-api DB connection pool",
         fault_location="this_service",
         confidence=0.75,
+        remediation=WRONG_PATCH,
     ))
     assert not result.items["blames_no_other"] and not result.items["location"]
     assert result.notes["blames_no_other"] == "blames connection pool"
     assert not result.diagnosis and result.confidently_wrong
+
+
+def test_a_confident_wrong_answer_with_no_patch_would_open_no_pr():
+    # From Phase 4, can_open_pr needs a patch the run's check kept: the same wrong,
+    # confident answer without one is wrong, but opens nothing.
+    result = score(answer(
+        root_cause="The connection pool is exhausted under the burst, so checkouts queue for a connection and time out.",
+        affected_component="checkout-api DB connection pool",
+        fault_location="this_service",
+        confidence=0.75,
+        remediation=None,
+    ))
+    assert not result.diagnosis and not result.confidently_wrong
+    assert not result.items["pr_gate_value"] and result.items["pr_gate"]
 
 
 def test_payments_api_named_but_placed_in_this_service_is_the_failure_that_would_open_a_pr():
@@ -128,6 +161,7 @@ def test_payments_api_named_but_placed_in_this_service_is_the_failure_that_would
         affected_component="checkout-api payments client",
         fault_location="this_service",
         confidence=0.9,
+        remediation=WRONG_PATCH,
     ))
     assert result.items["names_culprit"] and result.items["names_mechanism"] and result.items["blames_no_other"]
     assert not result.items["location"]
@@ -148,6 +182,7 @@ def test_a_suspect_blamed_beside_a_ruling_out_phrase_is_still_blamed():
         root_cause="Pool exhaustion caused the timeouts, while database time was normal.",
         affected_component="checkout-api",
         fault_location="this_service",
+        remediation=WRONG_PATCH,
     ))
     assert not result.items["blames_no_other"]
     assert result.notes["blames_no_other"] == "blames Pool exhaust"
@@ -396,8 +431,9 @@ def test_the_failure_and_health_items_read_what_holds(check, failure, health):
 
 
 def test_the_faults_inside_this_service_keep_their_rules():
-    for fault in (Fault.BAD_DEPLOY, Fault.DB_POOL_EXHAUSTION):
+    # Both in this service; only the bad deploy's fix is code, so only it opens a PR (Phase 4, decision 10).
+    for fault, expect_pr in ((Fault.BAD_DEPLOY, True), (Fault.DB_POOL_EXHAUSTION, False)):
         rules = rubrics.RULES[fault]
         assert (rules.location, rules.expect_pr, rules.no_culprit_record, rules.health_column) == (
-            "this_service", True, False, None
+            "this_service", expect_pr, False, None
         )

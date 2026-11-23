@@ -31,7 +31,7 @@ from typing import Any
 from checker.checks import FLAGS, MISSING, ItemCheck, Verdict, check_item, field_of, is_number, matches, number, same
 from checker.resolve import Entry, entries, resolve, span_of
 from checker.sources import RunSources
-from models import Evidence
+from sentinelops_core.models import Evidence
 
 PAST = timedelta(minutes=10)
 _VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")

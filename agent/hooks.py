@@ -30,7 +30,7 @@ from strands.types.content import split_system_prompt
 from strands.types.exceptions import ContextWindowOverflowException, ModelThrottledException
 
 from guards import GuardLimitExceeded, RunGuard
-from models import trimmed_answer
+from sentinelops_core.models import trimmed_answer
 from pricing import ModelPrice, Usage
 
 logger = logging.getLogger("sentinelops.model")

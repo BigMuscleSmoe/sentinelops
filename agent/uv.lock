@@ -690,6 +690,7 @@ dependencies = [
     { name = "httpx2" },
     { name = "mcp" },
     { name = "pydantic" },
+    { name = "sentinelops-core" },
     { name = "sentinelops-tools" },
     { name = "starlette" },
     { name = "strands-agents", extra = ["anthropic"] },
@@ -707,11 +708,26 @@ requires-dist = [
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "mcp", specifier = ">=2.1.1" },
     { name = "pydantic", specifier = ">=2.11" },
+    { name = "sentinelops-core", editable = "../core" },
     { name = "sentinelops-tools", editable = "../tools" },
     { name = "starlette", specifier = ">=1.10.0" },
     { name = "strands-agents", extras = ["anthropic"], specifier = "==1.62.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
+[[package]]
+name = "sentinelops-core"
+version = "0.1.0"
+source = { editable = "../core" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.11" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]

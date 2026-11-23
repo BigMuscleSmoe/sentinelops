@@ -1,0 +1,27 @@
+[project]
+name = "sentinelops-core"
+version = "0.1.0"
+# 3.12 for the agent and the tools; 3.13 for the remediation flow, since Lambda
+# durable functions run on 3.13 or 3.14. So it runs on both.
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+# Flat layout, like the other projects here: the package sits next to this file.
+[tool.uv.build-backend]
+module-name = "sentinelops_core"
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -8,6 +8,16 @@ item is one statement about one tool result, written as data, so code checks it
 against exactly what it points at instead of guessing from prose. What no tool
 result shows on its own goes in `inferences`, and what wasn't looked at in
 `not_checked`.
+
+From Phase 4 the answer can carry a patch (`remediation`), which the agent
+writes inside its guarded session, so nothing downstream calls a model. Its
+fields hold no rule that could reject the answer: a bad patch is dropped by the
+run's check (runner.check_remediation), never sent back, so it can't cost the
+diagnosis a resend.
+
+This module lives in sentinelops_core, which the agent and the remediation flow
+both import: `can_open_pr` is the one place that decides whether a PR may be
+opened, for both of them.
 """
 
 import re
@@ -203,6 +213,44 @@ class Inference(BaseModel):
     )
 
 
+class Edit(BaseModel):
+    """One passage of the file, replaced."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    old: str = Field(
+        description=(
+            "A passage copied exactly from the file as the read shows it, indentation included, without the "
+            "line number and tab before each line. It must occur exactly once in the file: take in enough of "
+            "the lines around it to make it unique."
+        )
+    )
+    new: str = Field(description="What replaces old, indented the same way. Empty deletes old.")
+
+
+class Remediation(BaseModel):
+    """A change to this service's code that removes the root cause, for a person to review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(
+        description=(
+            "The read this change is against, by its label (c2): a read_repo_file result showing the file "
+            "itself in full, not a listing."
+        )
+    )
+    file_path: str = Field(description="The file's path exactly as that read's first line shows it: checkout/pricing.py.")
+    edits: list[Edit] = Field(
+        description="One to three replacements in that file, none overlapping another, together the smallest change that removes the root cause."
+    )
+    rationale: Text = Field(description="Why this change removes the root cause, in one or two sentences.")
+    # Set by code once the run answers (runner.check_remediation), never by the
+    # model, so they're left out of the output schema the model sees.
+    version: SkipJsonSchema[str | None] = None  # the release the read showed
+    file_sha256: SkipJsonSchema[str | None] = None  # of the file as read; the flow finds the same bytes on GitHub
+    diff: SkipJsonSchema[str | None] = None  # rendered from the edits
+
+
 class Hypothesis(BaseModel):
     """The agent's diagnosis of an incident."""
 
@@ -262,6 +310,16 @@ class Hypothesis(BaseModel):
             "what you measured and nothing in its What this is not applies."
         ),
     )
+    remediation: Remediation | None = Field(
+        default=None,
+        description=(
+            "A fix for the root cause as a change to this service's code, which a person reviews before "
+            "anything changes. Only when the cause is in checkout-api's own code, and only against a file you "
+            "read in full with read_repo_file in this investigation, at the version that was running: the "
+            "smallest change that removes the cause. Null if the cause is a configuration change, is outside "
+            "this service, or is in code you didn't read in full."
+        ),
+    )
     # Set by the guard, never by the model, so it's left out of the output
     # schema the model sees. None means the investigation ran to completion.
     halted_by: SkipJsonSchema[StopReason | None] = None
@@ -293,10 +351,17 @@ class Hypothesis(BaseModel):
     def can_open_pr(self) -> bool:
         # A halted run didn't finish investigating; its confidence means nothing.
         # A fault outside this service has no fix in this repo (Phase 3, decision 4).
+        # A PR needs a patch the run's check kept (Phase 4): none means the fix
+        # isn't in this service's code, or the patch failed the check and was
+        # dropped. Only the check sets version, file_sha256, and diff, so an
+        # answer that never went through it opens nothing.
+        patch = self.remediation
         return (
             self.halted_by is None
             and self.fault_location is FaultLocation.THIS_SERVICE
             and self.confidence >= PR_CONFIDENCE_THRESHOLD
+            and patch is not None
+            and None not in (patch.version, patch.file_sha256, patch.diff)
         )
 
 

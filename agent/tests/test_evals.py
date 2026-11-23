@@ -18,7 +18,7 @@ import httpx
 import pytest
 
 from alarm import AlarmEvent
-from answers import item
+from answers import CHECKED_PATCH, item
 import evals.__main__ as evals_cli
 from evals import rubrics, score, sweep
 from evals.__main__ import main as evals_main
@@ -141,11 +141,15 @@ THIN = {
 def _rubric(name: str, **changes: Any) -> rubrics.RubricResult:
     """A fixture run's answer, changed, scored with the checker's checks of its evidence.
 
-    The fixtures predate the runbook search, so each cites its fault's own
-    runbook, as a right answer now does, unless a change says otherwise.
+    The fixtures predate the runbook search and patches, so each cites its
+    fault's own runbook, and a bad deploy's carries a patch, as a right answer
+    now does, unless a change says otherwise.
     """
     transcript = copy.deepcopy(RUNS[name])
-    transcript["hypothesis"]["runbook_cited"] = rubrics.RULES[BY_ID[transcript["eval"]["scenario"]].fault].runbook
+    fault = BY_ID[transcript["eval"]["scenario"]].fault
+    transcript["hypothesis"]["runbook_cited"] = rubrics.RULES[fault].runbook
+    if fault is Fault.BAD_DEPLOY:
+        transcript["hypothesis"]["remediation"] = CHECKED_PATCH
     transcript["hypothesis"].update(changes)
     check = check_run(name, transcript)
     return rubrics.score(BY_ID[transcript["eval"]["scenario"]], transcript["hypothesis"], check.checks)
@@ -475,10 +479,13 @@ def test_the_right_change_at_the_wrong_time_isnt_the_culprit() -> None:
 
 
 def test_a_confident_wrong_diagnosis_is_confidently_wrong() -> None:
-    wrong = {"root_cause": "Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError."}
+    # A pool fault blamed on the bad release, with the release's patch: a PR would open.
+    wrong = {"root_cause": "Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError.", "remediation": CHECKED_PATCH}
     result = _rubric(POOL_RUN, **wrong)
     assert not result.diagnosis and result.confidently_wrong
     assert not _rubric(POOL_RUN, **wrong, halted_by="step_limit").confidently_wrong
+    # Without a patch nothing opens (Phase 4): wrong, but not confidently so.
+    assert not _rubric(POOL_RUN, **{**wrong, "remediation": None}).confidently_wrong
 
 
 # --- which model answered ---------------------------------------------------------

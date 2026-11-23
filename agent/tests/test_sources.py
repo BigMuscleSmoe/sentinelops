@@ -46,11 +46,27 @@ def test_a_result_with_no_label_reads_as_unlabeled() -> None:
 
 
 def test_a_tool_with_no_prefix_is_refused_when_wrapped() -> None:
-    def read_repo_file(path: str) -> str:
+    def list_recent_commits(path: str) -> str:
         return path
 
-    with pytest.raises(ValueError, match="read_repo_file has no source prefix"):
-        cited(Sources(), read_repo_file)
+    with pytest.raises(ValueError, match="list_recent_commits has no source prefix"):
+        cited(Sources(), list_recent_commits)
+
+
+def test_a_code_read_is_labeled_c_and_its_lines_left_as_the_tool_numbered_them() -> None:
+    text = "checkout/pricing.py at 1.43.0: 2 lines\n     1\t{\"a\": 1}\n     2\tx = 1"
+    label, plain, numbers = unmark(Sources().mark("read_repo_file", text))
+    assert (label, plain, numbers) == ("c1", text, {})
+
+
+def test_labeled_gives_each_result_the_label_the_model_was_shown() -> None:
+    sources = Sources()
+    shown = [
+        unmark(sources.mark(tool, text))[0]
+        for tool, text in [("get_metrics", "a"), ("read_repo_file", "b"), ("get_metrics", "c"), ("read_repo_file", "d")]
+    ]
+    assert [label for label, _, _ in sources.labeled()] == shown == ["m1", "c1", "m2", "c2"]
+    assert sources.labeled()[3] == ("c2", "read_repo_file", "d")
 
 
 def test_the_wrapper_keeps_the_signature_and_docstring_the_model_is_shown() -> None:

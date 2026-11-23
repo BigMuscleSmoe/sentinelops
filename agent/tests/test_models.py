@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from answers import UPSTREAM_EVIDENCE, item
-from models import Evidence, FaultLocation, Hypothesis, StopReason, trimmed_answer
+from answers import CHECKED_PATCH, PATCH, UPSTREAM_EVIDENCE, item
+from sentinelops_core.models import Evidence, FaultLocation, Hypothesis, Remediation, StopReason, trimmed_answer
 
 PROMPT = (Path(__file__).parents[1] / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -19,8 +19,9 @@ VALID = {
     "affected_component": "payments-api",
     "fault_location": "upstream",
 }
-# The same answer, as if the fault were in this service: the gate can open.
-IN_SERVICE = {**VALID, "affected_component": "checkout-api", "fault_location": "this_service"}
+# The same answer, as if the fault were in this service, with a patch the
+# run's check kept: the gate can open.
+IN_SERVICE = {**VALID, "affected_component": "checkout-api", "fault_location": "this_service", "remediation": CHECKED_PATCH}
 
 
 def test_accepts_a_valid_hypothesis() -> None:
@@ -95,9 +96,42 @@ def test_can_open_pr(confidence: float, halted_by: StopReason | None, expected: 
     assert h.can_open_pr is expected
 
 
+def test_a_pr_needs_a_patch_the_runs_check_kept() -> None:
+    confident = {**IN_SERVICE, "confidence": 0.95}
+    assert Hypothesis.model_validate(confident).can_open_pr
+    # No patch: the fix isn't in this service's code, or the check dropped it.
+    assert not Hypothesis.model_validate({**confident, "remediation": None}).can_open_pr
+    # The patch as the model wrote it, before the check: it opens nothing.
+    assert not Hypothesis.model_validate({**confident, "remediation": PATCH}).can_open_pr
+    for field in ("version", "file_sha256", "diff"):
+        missing = {**CHECKED_PATCH, field: None}
+        assert not Hypothesis.model_validate({**confident, "remediation": missing}).can_open_pr, field
+
+
+def test_the_fields_only_the_check_sets_are_hidden_from_the_model() -> None:
+    remediation = Hypothesis.model_json_schema()["$defs"]["Remediation"]
+    assert set(remediation["properties"]) == {"source", "file_path", "edits", "rationale"}
+    assert set(Remediation.model_fields) == {"source", "file_path", "edits", "rationale", "version", "file_sha256", "diff"}
+
+
+def test_a_kept_patch_survives_the_hop_to_the_remediation_flow() -> None:
+    sent = Hypothesis.model_validate({**IN_SERVICE, "confidence": 0.95})
+
+    received = Hypothesis.model_validate_json(sent.model_dump_json())
+
+    assert received == sent and received.can_open_pr
+    assert received.remediation is not None and received.remediation.diff == CHECKED_PATCH["diff"]
+
+
+@pytest.mark.parametrize("extra", [{"edits": [{"old": "a", "new": "b", "line": 3}]}, {"base_commit": "abc"}])
+def test_a_patch_with_unknown_fields_is_refused(extra: dict) -> None:
+    with pytest.raises(ValidationError):
+        Hypothesis.model_validate({**IN_SERVICE, "remediation": {**PATCH, **extra}})
+
+
 def test_every_field_is_described_for_the_model() -> None:
     schema = Hypothesis.model_json_schema()
-    models = {"Hypothesis": schema, **{name: schema["$defs"][name] for name in ("Evidence", "Inference")}}
+    models = {"Hypothesis": schema, **{name: schema["$defs"][name] for name in ("Evidence", "Inference", "Remediation", "Edit")}}
     for model, part in models.items():
         for name, prop in part["properties"].items():
             assert prop.get("description"), f"{model}.{name} has no description in the output schema"

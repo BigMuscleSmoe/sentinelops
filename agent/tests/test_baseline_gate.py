@@ -31,6 +31,7 @@ from evals.scenarios import BY_ID
 from evals.score import PASS_BAR
 
 AGENT = REPO / "agent"
+CORE = REPO / "core"  # the shared package, sentinelops_core
 BASELINE, REQUEST, RUNS = gate.load()
 ARM = ARMS[BASELINE["arm"]]
 
@@ -265,7 +266,8 @@ def test_a_scoring_only_change_since_the_sweep_is_allowed(tmp_path: Path, monkey
     "changed",
     [
         "agent/prompts/system.md",
-        "agent/models.py",
+        "core/sentinelops_core/models.py",
+        "core/sentinelops_core/patches.py",
         "agent/runner.py",
         "agent/guards.py",
         "agent/hooks.py",
@@ -291,9 +293,16 @@ def under(path: str, paths: tuple[str, ...]) -> bool:
 
 
 def test_every_frozen_path_is_sorted_as_run_shaping_or_scoring_only() -> None:
-    for path in audits.read(PASS_BAR)["frozen_paths"]:
-        assert (path in gate.RUN_SHAPING) != (path in gate.SCORING_ONLY), path
+    for frozen in audits.read(PASS_BAR)["frozen_paths"]:
+        path = gate.MOVED.get(frozen, frozen)
+        assert under(path, gate.RUN_SHAPING) != under(path, gate.SCORING_ONLY), frozen
     assert not set(gate.RUN_SHAPING) & set(gate.SCORING_ONLY)
+
+
+def test_a_moved_frozen_path_is_gone_from_where_it_was_and_at_its_new_home() -> None:
+    frozen = audits.read(PASS_BAR)["frozen_paths"]
+    for old, new in gate.MOVED.items():
+        assert old in frozen and not (REPO / old).exists() and (REPO / new).is_file(), old
 
 
 def test_every_path_in_either_list_exists() -> None:
@@ -303,14 +312,15 @@ def test_every_path_in_either_list_exists() -> None:
 
 
 def agent_files_imported_from(start: Path) -> set[str]:
-    """Every agent file start reaches by import, imports inside functions too, as paths from the repo's root."""
+    """Every agent or shared-package file start reaches by import, imports inside functions too, as paths from the repo's root."""
 
     def files(dotted: str) -> list[Path]:
         parts = dotted.split(".")
         found = []
-        for i in range(1, len(parts) + 1):
-            base = AGENT.joinpath(*parts[:i])
-            found += [p for p in (base.with_suffix(".py"), base / "__init__.py") if p.is_file()]
+        for root in (AGENT, CORE):
+            for i in range(1, len(parts) + 1):
+                base = root.joinpath(*parts[:i])
+                found += [p for p in (base.with_suffix(".py"), base / "__init__.py") if p.is_file()]
         return found
 
     seen: set[Path] = set()
@@ -334,7 +344,14 @@ def agent_files_imported_from(start: Path) -> set[str]:
 
 def test_every_agent_module_a_sweeps_run_imports_is_sorted() -> None:
     reached = agent_files_imported_from(AGENT / "evals" / "sweep.py")
-    assert {"agent/runner.py", "agent/models.py", "agent/providers.py", "agent/knowledge_base.py", "agent/evals/witness.py"} <= reached
+    assert {
+        "agent/runner.py",
+        "core/sentinelops_core/models.py",
+        "core/sentinelops_core/patches.py",
+        "agent/providers.py",
+        "agent/knowledge_base.py",
+        "agent/evals/witness.py",
+    } <= reached
     unsorted = sorted(p for p in reached if not under(p, gate.RUN_SHAPING) and not under(p, gate.SCORING_ONLY))
     assert not unsorted
 
@@ -357,7 +374,7 @@ def test_a_model_setting_change_moves_the_settings_alone(monkeypatch: pytest.Mon
 def test_a_schema_change_moves_the_schema_alone(monkeypatch: pytest.MonkeyPatch, sent_now: dict[str, Any]) -> None:
     from pydantic import Field
 
-    import models
+    from sentinelops_core import models
 
     # Named as the answer tool is named, with one field's description changed.
     class Hypothesis(models.Hypothesis):

@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 import build_runtime
-from build_runtime import AGENT, ENTRY, NOT_SHIPPED, TOOLS_PACKAGE, copy_source, ours, top_level_names
+from build_runtime import AGENT, CORE_PACKAGE, ENTRY, NOT_SHIPPED, TOOLS_PACKAGE, copy_source, ours, top_level_names
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -32,6 +32,10 @@ def test_every_agent_module_the_entry_reaches_is_shipped_and_no_tooling() -> Non
     assert reached <= set(shipped)
     assert not {Path(name).stem for name in NOT_SHIPPED} & set(shipped)
     assert shipped["sentinelops_tools"] == TOOLS_PACKAGE
+    # The answer's schema and the patch checks: the runner imports them from here.
+    assert shipped["sentinelops_core"] == CORE_PACKAGE
+    assert {"sentinelops_core"} <= imported_modules(AGENT / "runner.py")
+    assert (CORE_PACKAGE / "models.py").is_file() and (CORE_PACKAGE / "patches.py").is_file()
     assert (shipped["prompts"] / "system.md").is_file()
 
 

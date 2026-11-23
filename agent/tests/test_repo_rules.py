@@ -15,8 +15,9 @@ REPO = Path(__file__).resolve().parents[2]
 ASCII_SUFFIXES = {".py", ".tf", ".yml", ".yaml", ".toml"}
 ASCII_DIRS = ("agent/prompts/",)
 
-# The one place allowed to decide whether a PR may be opened.
-PR_GATE_HOME = "agent/models.py"
+# The one place allowed to decide whether a PR may be opened: the shared
+# package, so the agent and the remediation flow import the same rule.
+PR_GATE_HOME = "core/sentinelops_core/models.py"
 PR_GATE_PATTERNS = [
     re.compile(r"confidence\s*(<=?|>=?)"),
     re.compile(r"(<=?|>=?)\s*[\w.]*confidence\b"),
@@ -53,6 +54,11 @@ def test_source_files_are_ascii_only() -> None:
                 offenders.append(f"{path}:{lineno}: {' '.join(f'U+{ord(c):04X}' for c in bad)}")
 
     assert not offenders, "Non-ASCII characters in source files:\n" + "\n".join(offenders)
+
+
+def test_the_pr_gates_home_is_where_can_open_pr_is() -> None:
+    # A stale home would let the next rule scan the real one, or skip a copy.
+    assert "def can_open_pr(" in (REPO / PR_GATE_HOME).read_text(encoding="utf-8")
 
 
 def test_pr_gate_is_only_decided_by_can_open_pr() -> None:

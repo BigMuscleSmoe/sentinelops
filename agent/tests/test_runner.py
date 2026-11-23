@@ -10,11 +10,12 @@ import pytest
 from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
 from fake_anthropic import ACCESS_TOKEN, FakeAnthropic, Reply, answer, signed_in, text, thinking, tool_use
-from answers import DEPLOY_EVIDENCE, item
+from answers import DEPLOY_EVIDENCE, PATCH, PRICING_1_42_0, PRICING_1_43_0, item
 from evals.arms import ARMS
 from guards import Limits
 from hooks import COUNTED_FIELDS, count_margin
-from models import Hypothesis, StopReason
+from sentinelops_core import code, patches
+from sentinelops_core.models import Hypothesis, StopReason
 from pricing import price_for
 from providers import Settings, build_model
 from runner import ANSWER_AS_TEXT, RunReport, investigate, system_prompt
@@ -282,9 +283,9 @@ def test_each_call_is_counted_on_the_request_it_sends() -> None:
 
 
 def test_the_model_cannot_report_a_halt() -> None:
-    fake = FakeAnthropic([answer({**DIAGNOSIS, "halted_by": "step_limit"})])
+    fake = patched(PATCH, halted_by="step_limit")
 
-    report = run(fake)
+    report = run(fake, reading())
 
     assert report.hypothesis.halted_by is None
     assert report.hypothesis.can_open_pr
@@ -390,6 +391,145 @@ def test_the_check_reads_the_marked_results_the_model_was_given() -> None:
     assert POOL_SEARCH in first["content"][0]["text"]
 
 
+# --- the patch: kept only if it passes its checks against a file this run read ----
+
+# The read tool's result for 1.43.0's checkout/pricing.py, as the tool will render it.
+PRICING_READ = code.render_file("1.43.0", "checkout/pricing.py", PRICING_1_43_0)
+
+
+class Reading(Tools):
+    """The scripted tools, and a code read that answers with each text in turn, the last one again after."""
+
+    def __init__(self, *texts: str) -> None:
+        super().__init__()
+        self.texts = list(texts)
+
+    def all(self) -> list:
+        def read_repo_file(path: str) -> str:
+            """Stands in for the code read.
+
+            Args:
+                path: The file.
+            """
+            self.runs.append("read_repo_file")
+            return self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
+
+        return [*super().all(), read_repo_file]
+
+
+def reading(*texts: str) -> Reading:
+    return Reading(*(texts or (PRICING_READ,)))
+
+
+def patched(remediation: dict[str, Any] | None, *, read: bool = True, **changes: Any) -> FakeAnthropic:
+    """A run that reads the metrics, then the file unless read is False, then answers."""
+    replies = [Reply([tool_use("get_metrics", {})])]
+    if read:
+        replies.append(Reply([tool_use("read_repo_file", {"path": "checkout/pricing.py"})]))
+    return FakeAnthropic([*replies, answer({**DIAGNOSIS, "remediation": remediation, **changes})])
+
+
+def test_a_patch_that_passes_is_kept_with_what_only_the_check_sets(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger="sentinelops.runner")
+
+    report = run(patched(PATCH), reading())
+
+    kept = report.hypothesis.remediation
+    assert kept is not None and report.remediation_dropped is None
+    assert (kept.source, kept.file_path, kept.rationale) == (PATCH["source"], PATCH["file_path"], PATCH["rationale"])
+    assert (kept.version, kept.file_sha256) == ("1.43.0", code.digest(PRICING_1_43_0))
+    assert kept.diff.startswith("--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n")
+    assert "+    if promo is None:\n" in kept.diff
+    assert report.hypothesis.can_open_pr
+    assert dropped_events(caplog) == []
+    # Made on 1.43.0, the patch gives 1.42.0 back: the null check, as it was.
+    edits = [(e.old, e.new) for e in kept.edits]
+    assert patches.apply_edits(kept.file_path, PRICING_1_43_0, edits).text == PRICING_1_42_0
+
+
+def test_what_only_the_check_sets_is_never_the_models() -> None:
+    # The strict schema leaves these out, so the API can't send them; if a model did,
+    # the check writes its own over them.
+    claimed = {**PATCH, "version": "1.42.0", "file_sha256": "0" * 64, "diff": "+ anything"}
+
+    kept = run(patched(claimed), reading()).hypothesis.remediation
+
+    assert (kept.version, kept.file_sha256) == ("1.43.0", code.digest(PRICING_1_43_0))
+    assert kept.diff != "+ anything"
+
+
+def test_an_answer_with_no_patch_needs_no_check_and_opens_nothing() -> None:
+    report = run(patched(None), reading())
+    assert report.hypothesis.remediation is None and report.remediation_dropped is None
+    assert not report.hypothesis.can_open_pr
+
+
+GONE = "x = 1\n"  # not in the file
+IMPORT = {"old": '"""Order pricing."""\n', "new": '"""Order pricing."""\nimport os\n'}
+BROKEN = {"old": PATCH["edits"][0]["old"], "new": "def apply_promo(:\n    return "}
+
+
+@pytest.mark.parametrize(
+    "remediation, read, reason",
+    [
+        ({**PATCH, "source": "c2"}, True, "no result c2 in this run"),  # one read, so c1 only
+        (PATCH, False, "no result c1 in this run"),  # no read at all
+        ({**PATCH, "source": "m1"}, True, "m1 isn't a read_repo_file result"),
+        ({**PATCH, "file_path": "checkout/payments.py"}, True, "file_path isn't the file c1 shows"),
+        ({**PATCH, "file_path": "./checkout/pricing.py"}, True, "file_path isn't the file c1 shows"),  # exact or nothing
+        ({**PATCH, "rationale": "  "}, True, "no rationale"),
+        ({**PATCH, "edits": []}, True, "no edits"),
+        ({**PATCH, "edits": [{"old": GONE, "new": "x = 2\n"}]}, True, "edit 1: old text isn't in the file"),
+        ({**PATCH, "edits": [{"old": "return ", "new": "return  "}]}, True, "edit 1: old text is in the file more than once"),
+        ({**PATCH, "edits": [*PATCH["edits"], IMPORT]}, True, "adds an import"),
+        ({**PATCH, "edits": [BROKEN]}, True, "doesn't parse"),
+    ],
+)
+def test_a_patch_that_fails_a_check_is_cleared_and_logged_never_resent(
+    remediation: dict[str, Any], read: bool, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="sentinelops.runner")
+    fake = patched(remediation, read=read)
+
+    report = run(fake, reading())
+
+    assert report.hypothesis.remediation is None and not report.hypothesis.can_open_pr
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"], "the diagnosis stands"
+    dropped = {"source": remediation["source"], "file_path": remediation["file_path"], "reason": reason}
+    assert report.remediation_dropped == dropped
+    assert dropped_events(caplog) == [{"event": "remediation_dropped", **dropped}]
+    assert len(fake.requests) == (3 if read else 2), "nothing is sent back to the model"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\n".join(PRICING_READ.split("\n")[:5]) + "\n",  # cut short
+        "Could not read checkout/handler.py: only files under checkout/ can be read.",  # a refusal
+        PRICING_READ.replace("checkout/pricing.py at 1.43.0", "checkout/pricing.py at latest"),  # no release
+    ],
+)
+def test_a_patch_against_a_read_that_isnt_one_whole_file_is_cleared(text: str) -> None:
+    report = run(patched(PATCH), reading(text))
+    assert report.hypothesis.remediation is None
+    assert report.remediation_dropped["reason"] == "c1 isn't a read of one whole file"
+
+
+def test_a_label_is_counted_per_kind_as_the_model_was_shown() -> None:
+    # Two reads: the second is c2, whatever ran between them.
+    replies = [
+        Reply([tool_use("read_repo_file", {"path": "checkout/config.py"})]),
+        Reply([tool_use("get_metrics", {})]),
+        Reply([tool_use("read_repo_file", {"path": "checkout/pricing.py"})]),
+    ]
+    fake = FakeAnthropic([*replies, answer({**DIAGNOSIS, "remediation": {**PATCH, "source": "c2"}})])
+
+    report = run(fake, reading("Could not read checkout/config.py.", PRICING_READ))
+
+    assert report.hypothesis.remediation is not None and report.hypothesis.remediation.source == "c2"
+    assert report.remediation_dropped is None
+
+
 def test_a_failed_call_ends_the_run_and_is_charged_the_most_it_could_cost() -> None:
     fake = FakeAnthropic([])  # the fake answers 400: its script is empty
 
@@ -433,6 +573,10 @@ def test_the_answer_tool_alone_goes_out_strict_on_every_call() -> None:
         assert strict == {"get_metrics": None, "get_recent_logs": None, "Hypothesis": True}
 
 
+def as_list(kind: Any) -> list[Any]:
+    return kind if isinstance(kind, list) else [kind]
+
+
 def test_the_strict_schema_is_one_the_api_takes() -> None:
     fake = FakeAnthropic([answer(DIAGNOSIS)])
 
@@ -441,8 +585,17 @@ def test_the_strict_schema_is_one_the_api_takes() -> None:
     schema = next(tool for tool in fake.requests[0]["body"]["tools"] if tool["name"] == "Hypothesis")["input_schema"]
     nodes = list(schema_nodes(schema))
     assert [(path, sorted(STRICT_REJECTS & set(node))) for path, node in nodes if STRICT_REJECTS & set(node)] == []
-    objects = [(path, node) for path, node in nodes if node.get("type") == "object"]
-    assert [path for path, node in objects] == ["$", "$.properties.evidence.items", "$.properties.inferences.items"]
+    # An object, or a nullable one: remediation goes out as type ["object", "null"], a type
+    # array, which the API counts as a union; anyOf beside properties it would refuse.
+    objects = [(path, node) for path, node in nodes if "object" in as_list(node.get("type"))]
+    assert [path for path, node in objects] == [
+        "$",
+        "$.properties.evidence.items",
+        "$.properties.inferences.items",
+        "$.properties.remediation",
+        "$.properties.remediation.properties.edits.items",
+    ]
+    assert not [path for path, node in nodes if "anyOf" in node and {"type", "properties"} & set(node)]
     assert all(node["additionalProperties"] is False for _, node in objects)
     # Every field required: with 14 optional ones the API refused the schema as too complex to compile.
     assert [(path, node["required"]) for path, node in objects] == [(path, list(node["properties"])) for path, node in objects]
@@ -455,8 +608,9 @@ def test_the_strict_schema_is_one_the_api_takes() -> None:
     )
     assert optional <= STRICT_MAX_OPTIONAL and unions <= STRICT_MAX_UNIONS
     # The fields the answer may leave unset go out nullable (a type array), each a union: 11 of
-    # Evidence's and runbook_cited. inferences and not_checked go out as plain lists.
-    assert (optional, unions) == (0, 12), "pinned: a field added or made nullable moves these on purpose"
+    # Evidence's and runbook_cited, plus remediation, an object or null (an anyOf). inferences and
+    # not_checked go out as plain lists.
+    assert (optional, unions) == (0, 13), "pinned: a field added or made nullable moves these on purpose"
 
 
 def test_the_strict_schema_is_only_what_the_api_needs_changed() -> None:
@@ -466,7 +620,7 @@ def test_the_strict_schema_is_only_what_the_api_needs_changed() -> None:
     # input_schema and strict.)
     from strands.tools.structured_output.structured_output_utils import convert_pydantic_to_tool_spec
 
-    from models import Hypothesis
+    from sentinelops_core.models import Hypothesis
 
     fake = FakeAnthropic([answer(DIAGNOSIS)])
 
@@ -498,7 +652,7 @@ def test_the_strict_schema_is_only_what_the_api_needs_changed() -> None:
 def test_an_answer_written_out_in_full_is_the_answer_it_was() -> None:
     # Under strict tool use the answer writes every field: null where it used to leave one out, and []
     # for no inferences. Pydantic reads it as the same answer, accepted first time.
-    from models import Evidence, Hypothesis
+    from sentinelops_core.models import Evidence, Hypothesis
 
     full = {
         **DIAGNOSIS,

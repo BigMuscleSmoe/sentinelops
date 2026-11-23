@@ -9,6 +9,9 @@ here, the same for local tools and Gateway's, and `unmark` takes them off, so
 the tools' parsers read their own text back.
 
 Log lines get numbers because timestamps alone can repeat across a read.
+
+A code read (c1, from Phase 4's read_repo_file) is what a remediation names as
+its source, never evidence (Phase 4 design, decision 8).
 """
 
 import functools
@@ -18,7 +21,15 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any, cast
 
-PREFIXES = {"get_metrics": "m", "get_recent_logs": "l", "get_deploy_history": "d", "search_runbooks": "r"}
+from sentinelops_core.code import READ_TOOL
+
+PREFIXES = {
+    "get_metrics": "m",
+    "get_recent_logs": "l",
+    "get_deploy_history": "d",
+    "search_runbooks": "r",
+    READ_TOOL: "c",
+}
 ALARM = "alarm"
 _LABEL = re.compile(r"\[source ([a-z])([1-9]\d*)\]$")
 _NUMBERED = re.compile(r"\[([1-9]\d*)\] (\{.*)$")
@@ -38,6 +49,16 @@ class Sources:
         self._counts[prefix] += 1
         body = number_lines(text) if prefix == PREFIXES["get_recent_logs"] else text
         return f"[source {prefix}{self._counts[prefix]}]\n{body}"
+
+    def labeled(self) -> list[tuple[str, str, str]]:
+        """Each result with the label mark gave it, its tool, and its text as the tool wrote it."""
+        counts: Counter[str] = Counter()
+        out = []
+        for tool, text in self.results:
+            prefix = PREFIXES[tool]
+            counts[prefix] += 1
+            out.append((f"{prefix}{counts[prefix]}", tool, text))
+        return out
 
 
 def number_lines(text: str) -> str:

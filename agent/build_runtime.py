@@ -3,7 +3,7 @@
     uv run python build_runtime.py        # from agent/, before any plan; CI runs it before its apply
 
 The Runtime runs direct code on arm64 Linux with Python 3.12: our modules,
-prompts/, and sentinelops_tools/ at the root, beside every locked dependency
+prompts/, sentinelops_core/, and sentinelops_tools/ at the root, beside every locked dependency
 installed from arm64 wheels. Terraform's archive_file zips the staged folder,
 infra/.build/agent-runtime/, when it plans, so a plan needs this run first.
 
@@ -23,6 +23,7 @@ from pathlib import Path
 AGENT = Path(__file__).resolve().parent
 REPO = AGENT.parent
 TOOLS_PACKAGE = REPO / "tools" / "sentinelops_tools"
+CORE_PACKAGE = REPO / "core" / "sentinelops_core"
 OUT = REPO / "infra" / ".build" / "agent-runtime"
 REQUIREMENTS = OUT.parent / "agent-runtime-requirements.txt"
 PLATFORM = "aarch64-manylinux2014"
@@ -36,9 +37,10 @@ MAX_UNZIPPED_BYTES = 750 * 1024 * 1024
 
 
 def ours() -> dict[str, Path]:
-    """What we ship by top-level name: the agent's modules, its prompts, and the tools package."""
+    """What we ship by top-level name: the agent's modules, its prompts, and the shared and tools packages."""
     shipped = {path.stem: path for path in sorted(AGENT.glob("*.py")) if path.name not in NOT_SHIPPED}
     shipped["prompts"] = AGENT / "prompts"
+    shipped["sentinelops_core"] = CORE_PACKAGE
     shipped["sentinelops_tools"] = TOOLS_PACKAGE
     return shipped
 
@@ -99,10 +101,11 @@ def main() -> int:
             shutil.rmtree(entry)
         else:
             entry.unlink()
-    # The tools package comes from its folder, not as a dependency: it's a path
-    # dependency, and --only-binary can't build it.
+    # The shared and tools packages come from their folders, not as dependencies:
+    # they're path dependencies, and --only-binary can't build them.
     uv(
-        "export", "--frozen", "--no-dev", "--no-emit-project", "--no-emit-package", "sentinelops-tools",
+        "export", "--frozen", "--no-dev", "--no-emit-project",
+        "--no-emit-package", "sentinelops-core", "--no-emit-package", "sentinelops-tools",
         "--no-header", "--format", "requirements-txt", "--output-file", str(REQUIREMENTS),
     )  # fmt: skip
     # Exactly the locked set, hash-checked: --no-deps resolves nothing past it.

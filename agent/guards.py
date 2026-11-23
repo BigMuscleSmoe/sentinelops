@@ -28,7 +28,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
-from models import FaultLocation, Hypothesis, StopReason
+from sentinelops_core.models import FaultLocation, Hypothesis, StopReason
 
 logger = logging.getLogger("sentinelops.guards")
 

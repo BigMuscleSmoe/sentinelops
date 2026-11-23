@@ -27,7 +27,10 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     is: this service for a pool fault or a bad deploy, and
                     payments-api, upstream, for a downstream timeout
   pr_gate           Hypothesis.can_open_pr, read through the property, is what
-                    the scenario expects
+                    the scenario expects: True for a bad deploy, whose fix is
+                    code (a patch the run's check kept), False for a pool fault,
+                    a config change outside the code, and for a downstream
+                    timeout (Phase 4 design, decision 10)
   runbook           runbook_cited is the fault's own runbook
                     (db-pool-exhaustion.md, bad-deploy.md, or
                     downstream-timeout.md), exactly, after the run's own
@@ -68,7 +71,7 @@ from typing import Any
 from checker.checks import ItemCheck, Verdict, field_of, is_number
 from checker.sources import RunSources
 from evals.scenarios import ERRORS, LATENCY, POOL_WAIT, Fault, Scenario
-from models import FaultLocation, Hypothesis
+from sentinelops_core.models import FaultLocation, Hypothesis
 
 # Arrows and dashes the model writes, as ASCII, so the rules can stay ASCII.
 _ASCII = {0x2192: "->", 0x2013: "-", 0x2014: "-", 0x2212: "-", 0x2248: "~", 0x00D7: "x"}
@@ -250,6 +253,8 @@ RULES = {
         failure_value=None,
         failure_column=re.compile(r"^pool_(wait|active)"),
         runbook="db-pool-exhaustion.md",
+        # The fix is reverting a config change made outside the code: no patch, no PR.
+        expect_pr=False,
     ),
     Fault.DOWNSTREAM_TIMEOUT: FaultRules(
         culprit=re.compile(r"payments?[-_ ]?api|payment provider", re.I),

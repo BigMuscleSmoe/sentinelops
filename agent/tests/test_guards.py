@@ -22,7 +22,7 @@ from guards import (
     run_guarded,
 )
 from answers import UPSTREAM_EVIDENCE
-from models import FaultLocation, Hypothesis
+from sentinelops_core.models import FaultLocation, Hypothesis
 
 DIAGNOSIS = Hypothesis(
     root_cause="Upstream payments-api p99 rose to 4.8s; checkout-api times out waiting on it.",

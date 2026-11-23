@@ -11,8 +11,9 @@ from typing import Any
 
 from guards import Limits, RunGuard, guarded_tool, run_guarded
 from hooks import GuardHooks, ModelCall, ModelRefused
-from models import Hypothesis
 from pricing import ModelPrice
+from sentinelops_core import code, patches
+from sentinelops_core.models import Hypothesis
 from sentinelops_tools.runbooks import parse_results
 from sources import Sources, cited
 
@@ -53,6 +54,8 @@ class RunReport:
     tool_calls_after_ask: list[str] | None = None
     # The runbook the answer cited and why it was cleared, if it was (check_citation).
     citation_dropped: dict[str, str] | None = None
+    # The patch the answer proposed and why it was cleared, if it was (check_remediation).
+    remediation_dropped: dict[str, str] | None = None
 
     def summary(self) -> str:
         tools = ", ".join(f"{name} x{n}" for name, n in Counter(self.tool_calls).items()) or "none"
@@ -77,7 +80,8 @@ async def investigate(
     A limit never raises: it ends the run with a halted Hypothesis. Anything
     else that stops the run, a refusal included, is reported as a failure
     with no Hypothesis. A cited runbook stays only if a search in this run
-    showed it in full (check_citation).
+    showed it in full (check_citation), and a patch only if it passes its
+    checks against a file this run read in full (check_remediation).
     """
     from strands import Agent, ModelRetryStrategy, tool
     from strands.agent.conversation_manager import NullConversationManager
@@ -139,9 +143,10 @@ async def investigate(
         failure = describe_failure(e)
         logger.warning(json.dumps({"event": "run_failed", "failure": failure}))
 
-    dropped = None
+    dropped = patch_dropped = None
     if hypothesis is not None:
         hypothesis, dropped = check_citation(hypothesis, sources)
+        hypothesis, patch_dropped = check_remediation(hypothesis, sources)
 
     return RunReport(
         hypothesis=hypothesis,
@@ -156,6 +161,7 @@ async def investigate(
         answers_in_text=answers_in_text,
         tool_calls_after_ask=hooks.tool_calls_after_ask,
         citation_dropped=dropped,
+        remediation_dropped=patch_dropped,
     )
 
 
@@ -183,6 +189,49 @@ def check_citation(hypothesis: Hypothesis, sources: Sources) -> tuple[Hypothesis
     dropped = {"cited": cited[:200], "reason": reason}
     logger.warning(json.dumps({"event": "citation_dropped", **dropped}))
     return checked, dropped
+
+
+def check_remediation(hypothesis: Hypothesis, sources: Sources) -> tuple[Hypothesis, dict[str, str] | None]:
+    """The answer with its patch kept only if it passes every check against a file this run read in full.
+
+    The model can write any edits; only the run's own results say what it read.
+    A patch that fails is cleared and logged with the reason, never sent back
+    (Phase 4 design, decision 7), so a bad patch can't cost the diagnosis a
+    resend. One that passes gets the fields only code sets: the release the read
+    showed, the file's hash, and the diff. Nothing in it is imported or run.
+    """
+    remediation = hypothesis.remediation
+    if remediation is None:
+        return hypothesis, None
+    try:
+        read = _file_read(sources, remediation.source)
+        if remediation.file_path != read.path:
+            raise patches.Refused(f"file_path isn't the file {remediation.source} shows")
+        if not remediation.rationale.strip():
+            raise patches.Refused("no rationale")
+        checked = patches.apply_edits(read.path, read.text, [(e.old, e.new) for e in remediation.edits])
+    except patches.Refused as refused:
+        dropped = {"source": remediation.source[:20], "file_path": remediation.file_path[:200], "reason": str(refused)}
+        logger.warning(json.dumps({"event": "remediation_dropped", **dropped}))
+        return hypothesis.model_copy(update={"remediation": None}), dropped
+    kept = remediation.model_copy(
+        update={"version": read.version, "file_sha256": code.digest(read.text), "diff": checked.diff}
+    )
+    return hypothesis.model_copy(update={"remediation": kept}), None
+
+
+def _file_read(sources: Sources, label: str) -> code.FileRead:
+    """The whole file the run's result `label` showed, or Refused saying what that label is instead."""
+    for found, tool, text in sources.labeled():
+        if found != label:
+            continue
+        if tool != code.READ_TOOL:
+            raise patches.Refused(f"{label} isn't a read_repo_file result")
+        read = code.parse_file(text)
+        if read is None:
+            raise patches.Refused(f"{label} isn't a read of one whole file")
+        return read
+    raise patches.Refused(f"no result {label[:20]} in this run")
 
 
 def calls_the_answer_tool(message: Any) -> bool:

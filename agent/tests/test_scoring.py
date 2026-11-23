@@ -19,6 +19,7 @@ import pytest
 from checked_runs import RUNS
 from checker.__main__ import check_run
 from evals import audit, packet, repo, score, sweep
+from evals import baseline as gate
 from evals import __main__ as evals_cli
 from evals.__main__ import main as evals_main
 from evals.arms import ARMS, Arm
@@ -248,8 +249,11 @@ def test_the_committed_pass_bar_is_r7s_and_frozen() -> None:
     assert len(bar["frozen_paths"]) == 26 and bar["frozen_paths"] == sorted(set(bar["frozen_paths"]))
     assert bar["fixed_from_sweep"] == ["agent/evals/scenarios.py", "tools/tests/fixtures/windows"]
     assert not {p for p in bar["frozen_paths"] for f in bar["fixed_from_sweep"] if f == p or f.startswith(p + "/") or p.startswith(f + "/")}
-    tracked = set(repo.git("ls-files", "--", *bar["frozen_paths"], *bar["fixed_from_sweep"]).stdout.splitlines())
-    for path in bar["frozen_paths"] + bar["fixed_from_sweep"]:
+    # A path moved since the freeze is checked where it lives now (evals.baseline.MOVED);
+    # grading still diffs the frozen name, so that freeze grades no new sweep.
+    paths = [gate.MOVED.get(p, p) for p in bar["frozen_paths"] + bar["fixed_from_sweep"]]
+    tracked = set(repo.git("ls-files", "--", *paths).stdout.splitlines())
+    for path in paths:
         assert any(t == path or t.startswith(path + "/") for t in tracked), f"{path} isn't tracked"
 
 

@@ -7,6 +7,7 @@ dependencies = [
     "httpx2>=2.16.0",
     "mcp>=2.1.1",
     "pydantic>=2.11",
+    "sentinelops-core",
     "sentinelops-tools",
     "starlette>=1.10.0",
     "strands-agents[anthropic]==1.62.0",
@@ -23,4 +24,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.uv.sources]
+sentinelops-core = { path = "../core", editable = true }
 sentinelops-tools = { path = "../tools", editable = true }

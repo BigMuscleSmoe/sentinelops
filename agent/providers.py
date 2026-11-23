@@ -17,7 +17,7 @@ from typing import Any
 
 from strands.models.anthropic import AnthropicModel
 
-from models import Hypothesis
+from sentinelops_core.models import Hypothesis
 
 PROVIDERS = ("anthropic", "bedrock")
 DEFAULT_MODEL_IDS = {"anthropic": "claude-haiku-5-5"}
