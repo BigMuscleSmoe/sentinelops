@@ -10,6 +10,12 @@ checker, the rubric, and the answer's wording were tuned on: a sweep of it is
 never a result. The test split is held out until the freeze (the grader
 redesign's step 8) and run only after it. A sweep is one split's, and under a
 frozen pass bar only a test-split sweep is graded.
+
+The 11 test alarms of 2026-11-14 to 17 were spent by the test sweeps of
+2026-11-18, and moved to tuning on 2026-11-23 (the user's call, 2026-11-22:
+BUILD_PLAN.md, Phase 3, "Step 4 as split", decision 12), so the tuning
+baseline pins downstream_timeout answers too. The test split is empty until
+the evaluation cycle's test breaks.
 """
 
 import importlib.util
@@ -69,34 +75,35 @@ SCENARIOS = [
     Scenario("deploy-1112-0803", "2026-11-12-0747", ERRORS, _at("2026-11-12T08:03:45.006Z"), Fault.BAD_DEPLOY, "08:03", seen=False, split=Split.TUNING),
     Scenario("deploy-1112-2000", "2026-11-12-2000", ERRORS, _at("2026-11-12T20:00:45.006Z"), Fault.BAD_DEPLOY, "20:00", seen=True, split=Split.TUNING),
     Scenario("deploy-1113-0257", "2026-11-13-0257", ERRORS, _at("2026-11-13T02:57:45.007Z"), Fault.BAD_DEPLOY, "02:57", seen=False, split=Split.TUNING),
-    # Held out (the user's call, 2026-11-14): its window is downstream_timeout's measuring break,
-    # recorded with no replay, sweep, or tuning on it before the freeze. The onset is the break's
+    # Held out (the user's call, 2026-11-14) until the test sweeps, then tuning, as the ten after it:
+    # its window is downstream_timeout's measuring break, recorded with no replay, sweep, or tuning
+    # on it before the freeze. The onset is the break's
     # T0, as the fault controller answered it; payments-api records no change, so no culprit.
     Scenario(
         "downstream-1114-2357", "2026-11-14-2357", LATENCY, _at("2026-11-14T23:57:37.083Z"), Fault.DOWNSTREAM_TIMEOUT, None,
-        seen=False, onset=_at("2026-11-14T23:56:55.746Z"), split=Split.TEST,
+        seen=False, onset=_at("2026-11-14T23:56:55.746Z"), split=Split.TUNING,
     ),
     # Test-break session A (the user's go, 2026-11-16), run and recorded after the freeze: the trigger
     # off, each fault its full 390 s, 100 minutes apart. A2's errors alarm went OK for 20 s and into
     # ALARM again at 21:02:26; its window ends before that, so the repeat is in the alarm history
     # only, as earlier windows keep their re-fires (the user's call).
-    Scenario("deploy-1116-1917", "2026-11-16-1917", ERRORS, _at("2026-11-16T19:17:46.805Z"), Fault.BAD_DEPLOY, "19:17", seen=False, split=Split.TEST),
-    Scenario("pool-1116-2058", "2026-11-16-2058", POOL_WAIT, _at("2026-11-16T20:58:11.690Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
-    Scenario("pool-1116-2101-lat", "2026-11-16-2058", LATENCY, _at("2026-11-16T21:01:38.818Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
-    Scenario("pool-1116-2101-err", "2026-11-16-2058", ERRORS, _at("2026-11-16T21:01:46.804Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TEST),
-    Scenario("deploy-1116-2238", "2026-11-16-2238", ERRORS, _at("2026-11-16T22:38:26.808Z"), Fault.BAD_DEPLOY, "22:37", seen=False, split=Split.TEST),
+    Scenario("deploy-1116-1917", "2026-11-16-1917", ERRORS, _at("2026-11-16T19:17:46.805Z"), Fault.BAD_DEPLOY, "19:17", seen=False, split=Split.TUNING),
+    Scenario("pool-1116-2058", "2026-11-16-2058", POOL_WAIT, _at("2026-11-16T20:58:11.690Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TUNING),
+    Scenario("pool-1116-2101-lat", "2026-11-16-2058", LATENCY, _at("2026-11-16T21:01:38.818Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TUNING),
+    Scenario("pool-1116-2101-err", "2026-11-16-2058", ERRORS, _at("2026-11-16T21:01:46.804Z"), Fault.DB_POOL_EXHAUSTION, "20:57", seen=False, split=Split.TUNING),
+    Scenario("deploy-1116-2238", "2026-11-16-2238", ERRORS, _at("2026-11-16T22:38:26.808Z"), Fault.BAD_DEPLOY, "22:37", seen=False, split=Split.TUNING),
     # Test-break session B (the user's go, 2026-11-17), run and recorded as session A was. B1's errors
     # alarm went OK for 10 s and into ALARM again at 02:35:46; its window ends before that, so the
     # repeat is in the alarm history only, as A2's. B2's onset is the break's T0, as the fault
     # controller answered it; payments-api records no change, so no culprit.
-    Scenario("pool-1117-0231", "2026-11-17-0231", POOL_WAIT, _at("2026-11-17T02:31:21.684Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
-    Scenario("pool-1117-0234", "2026-11-17-0231", LATENCY, _at("2026-11-17T02:34:48.814Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
-    Scenario("pool-1117-0235", "2026-11-17-0231", ERRORS, _at("2026-11-17T02:35:26.805Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TEST),
+    Scenario("pool-1117-0231", "2026-11-17-0231", POOL_WAIT, _at("2026-11-17T02:31:21.684Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TUNING),
+    Scenario("pool-1117-0234", "2026-11-17-0231", LATENCY, _at("2026-11-17T02:34:48.814Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TUNING),
+    Scenario("pool-1117-0235", "2026-11-17-0231", ERRORS, _at("2026-11-17T02:35:26.805Z"), Fault.DB_POOL_EXHAUSTION, "02:30", seen=False, split=Split.TUNING),
     Scenario(
         "downstream-1117-0411", "2026-11-17-0411", LATENCY, _at("2026-11-17T04:11:48.817Z"), Fault.DOWNSTREAM_TIMEOUT, None,
-        seen=False, onset=_at("2026-11-17T04:11:07.924Z"), split=Split.TEST,
+        seen=False, onset=_at("2026-11-17T04:11:07.924Z"), split=Split.TUNING,
     ),
-    Scenario("deploy-1117-0551", "2026-11-17-0551", ERRORS, _at("2026-11-17T05:51:46.805Z"), Fault.BAD_DEPLOY, "05:51", seen=False, split=Split.TEST),
+    Scenario("deploy-1117-0551", "2026-11-17-0551", ERRORS, _at("2026-11-17T05:51:46.805Z"), Fault.BAD_DEPLOY, "05:51", seen=False, split=Split.TUNING),
 ]
 BY_ID = {s.id: s for s in SCENARIOS}
 

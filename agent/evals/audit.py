@@ -12,7 +12,8 @@ evidence item; the fourth is for what no flag can:
 
 - contradicted: what it cites shows otherwise (flag: contradicted);
 - outside_read: it states something about rows, lines, or a period its read doesn't cover (flag: outside_read);
-- miscited: what it cites doesn't exist, or isn't what it says (flag: unresolved);
+- miscited: what it cites doesn't exist, or isn't what it says (flag: unresolved), or is a
+  runbook search, which is never evidence (flag: miscited);
 - unsupported: no evidence carries it (a figure no item states, a cause or comparison that doesn't follow).
 
 A label is code-checkable when it points at an evidence item with one of the
@@ -40,6 +41,7 @@ FLAG_COMPLAINT = {
     Verdict.CONTRADICTED: "contradicted",
     Verdict.OUTSIDE_READ: "outside_read",
     Verdict.UNRESOLVED: "miscited",
+    Verdict.MISCITED: "miscited",
 }
 FLAG_CALLS = ("right", "false_flag")
 _TARGET = re.compile(r"([esi])([1-9]\d*)")

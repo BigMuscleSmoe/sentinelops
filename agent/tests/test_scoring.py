@@ -530,13 +530,13 @@ def test_each_arm_plans_its_own_runs_per_alarm_unless_told(capsys: pytest.Captur
     assert price_for("anthropic", "claude-sonnet-5-5").standard.output == 10.00
     assert evals_main(["sweep", "--arm", "sonnet"]) == 2
     out = capsys.readouterr().out
-    assert "18 runs (9 scenarios x 2) of the tuning split, one at a time, on the sonnet arm (claude-sonnet-5-5)" in out
-    assert "Expected about $4.23; at most $6.00 ($0.50 a run, $6.00 a sweep)" in out
+    assert "40 runs (20 scenarios x 2) of the tuning split, one at a time, on the sonnet arm (claude-sonnet-5-5)" in out
+    assert "Expected about $9.40; at most $6.00 ($0.50 a run, $6.00 a sweep)" in out
     assert "can't run yet" not in out and "Nothing ran" in out
     assert evals_main(["plan", "--arm", "sonnet", "--runs", "1"]) == 0
-    assert "9 runs (9 scenarios x 1)" in capsys.readouterr().out
+    assert "20 runs (20 scenarios x 1)" in capsys.readouterr().out
     assert evals_main(["plan"]) == 0
-    assert "27 runs (9 scenarios x 3) of the tuning split, one at a time, on the haiku arm" in capsys.readouterr().out
+    assert "60 runs (20 scenarios x 3) of the tuning split, one at a time, on the haiku arm" in capsys.readouterr().out
 
 
 def test_a_blocked_arm_still_refuses_to_spend(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:

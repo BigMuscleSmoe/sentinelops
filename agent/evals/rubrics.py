@@ -28,8 +28,10 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     payments-api, upstream, for a downstream timeout
   pr_gate           Hypothesis.can_open_pr, read through the property, is what
                     the scenario expects
-  runbook           runbook_cited is what the scenario expects: null, while
-                    there's no runbook search
+  runbook           runbook_cited is the fault's own runbook
+                    (db-pool-exhaustion.md, bad-deploy.md, or
+                    downstream-timeout.md), exactly, after the run's own
+                    citation check; apart from `diagnosis`
   evidence_change   an evidence item cites the culprit's own deploy record, by
                     a field that shows the change (its version, or the changed
                     key), and holds there; for a downstream timeout, which has
@@ -192,6 +194,7 @@ class FaultRules:
     # is itself the observation), or a column whose number shows it (a wait).
     failure_value: re.Pattern[str] | None
     failure_column: re.Pattern[str] | None
+    runbook: str  # the runbook a right answer follows, by its file name in runbooks/
     # Where the fault is, and what affected_component must name.
     location: FaultLocation = FaultLocation.THIS_SERVICE
     component: re.Pattern[str] = re.compile(r"checkout|pool", re.I)
@@ -217,6 +220,7 @@ RULES = {
         bare_suspects=re.compile(rf"\b(?:{_BARE_POOL}|{_BARE_DATABASE}|{_BARE_PAYMENTS})\b", re.I),
         failure_value=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
         failure_column=None,
+        runbook="bad-deploy.md",
     ),
     Fault.DB_POOL_EXHAUSTION: FaultRules(
         culprit=re.compile(
@@ -238,6 +242,7 @@ RULES = {
         bare_suspects=re.compile(rf"\b(?:{_BARE_DATABASE}|{_BARE_PAYMENTS})\b", re.I),
         failure_value=None,
         failure_column=re.compile(r"^pool_(wait|active)"),
+        runbook="db-pool-exhaustion.md",
     ),
     Fault.DOWNSTREAM_TIMEOUT: FaultRules(
         culprit=re.compile(r"payments?[-_ ]?api|payment provider", re.I),
@@ -252,6 +257,7 @@ RULES = {
         bare_suspects=re.compile(rf"\b(?:{_BARE_POOL}|{_BARE_DATABASE}|{_BARE_DEPLOY})\b", re.I),
         failure_value=re.compile(r"UpstreamTimeout|did not respond|payment provider timed out|\b504\b"),
         failure_column=re.compile(r"^payments_"),
+        runbook="downstream-timeout.md",
         location=FaultLocation.UPSTREAM,
         component=re.compile(r"payments", re.I),
         expect_pr=False,
@@ -261,7 +267,6 @@ RULES = {
 }
 # Each alarm's own metric, as the metrics table heads it; the alarm message's datapoints are it too.
 _SYMPTOM = {ERRORS: "err%", LATENCY: "p99_ms", POOL_WAIT: "pool_wait_p99_ms"}
-EXPECT_RUNBOOK = None
 
 
 @dataclass
@@ -460,7 +465,7 @@ def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck
     gate = pr_gate(hypothesis)
     result.items["pr_gate_value"] = gate
     result.items["pr_gate"] = gate is rules.expect_pr
-    result.items["runbook"] = hypothesis.get("runbook_cited") == EXPECT_RUNBOOK
+    result.items["runbook"] = hypothesis.get("runbook_cited") == rules.runbook
 
     evidence = hypothesis.get("evidence")
     result.items.update(evidence_items(scenario, checks, evidence if isinstance(evidence, list) else None))

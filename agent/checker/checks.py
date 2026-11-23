@@ -35,8 +35,9 @@ its kind uses are listed as unchecked, never guessed at.
 Verdicts: holds; loose, right as far as it goes with the rest unchecked (a
 text field's value and then more words, "deploy 1.43.0" for kind deploy, or a
 number stated as a range, "0.1-4.2"); contradicted, the cited data says
-otherwise; outside_read and unresolved, from the resolver; untyped, a
-sentence. Contradicted, outside_read, and unresolved are the flags.
+otherwise; outside_read, unresolved, and miscited (a runbook search cited
+as evidence), from the resolver; untyped, a sentence. Contradicted,
+outside_read, unresolved, and miscited are the flags.
 """
 
 import json
@@ -59,13 +60,15 @@ class Verdict(StrEnum):
     CONTRADICTED = "contradicted"  # the cited data says otherwise
     OUTSIDE_READ = "outside_read"  # it names a time its result never covered
     UNRESOLVED = "unresolved"  # its citation can't be followed
+    MISCITED = "miscited"  # it cites a runbook search, which observes nothing
     UNTYPED = "untyped"  # a sentence, from before typed evidence
 
 
-FLAGS = frozenset({Verdict.CONTRADICTED, Verdict.OUTSIDE_READ, Verdict.UNRESOLVED})
+FLAGS = frozenset({Verdict.CONTRADICTED, Verdict.OUTSIDE_READ, Verdict.UNRESOLVED, Verdict.MISCITED})
 _FROM_STATUS = {
     Status.OUTSIDE_READ: Verdict.OUTSIDE_READ,
     Status.UNRESOLVED: Verdict.UNRESOLVED,
+    Status.MISCITED: Verdict.MISCITED,
     Status.UNTYPED: Verdict.UNTYPED,
 }
 STATED = ("column", "at", "start", "end", "lines", "value", "low", "high", "count", "seconds")

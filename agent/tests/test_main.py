@@ -20,12 +20,15 @@ from pricing import price_for
 from sources import unmark
 from providers import FEDERATION_ENV, FEDERATION_ROLE_ENV, Settings
 from sentinelops_tools.env import ToolEnv
-from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
+from knowledge_base import KnowledgeBase, KnowledgeBaseError
+from stubs import AGENT_FIXTURES, RECORDED_KB, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 FEDERATED = Settings.from_env(FEDERATION_IDS)
 ERRORS = "sentinelops-checkout-errors"
 REPLAY = ["--alarm", ERRORS, "--as-of", "2026-10-27T19:06:00Z"]
+# The runbook fixtures' corpus (tools/tests/fixtures/runbooks_*.json, recorded 2026-11-23).
+RECORDED_CORPUS = "197a0201c9eb"
 TOOL_FIXTURE_NAMES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_bad_deploy"]
 DIAGNOSIS = {
     "root_cause": "Release 1.43.0 removed the null check in apply_promo; checkouts without a promo fail.",
@@ -60,6 +63,8 @@ def run(
     **kwargs: object,
 ) -> tuple[int, str, str]:
     args = main.parse_args([*argv, "--transcript", str(transcript)])
+    # Run here, the tools search the recorded knowledge base: its check is knowledge_base's tests'.
+    kwargs.setdefault("connect_knowledge_base", lambda session: KnowledgeBase(RECORDED_KB, RECORDED_CORPUS))
     out, err = io.StringIO(), io.StringIO()
     code = asyncio.run(
         main.run(
@@ -117,6 +122,7 @@ def test_a_replay_runs_the_real_tools_as_of_the_alarm(tmp_path: Path) -> None:
     assert record["answers_in_text"] == 0  # answers given as text and asked for again: none here
     assert record["tool_calls"] == ["get_metrics", "get_recent_logs", "get_deploy_history"]
     assert record["tool_calls_after_ask"] is None  # it answered without being asked
+    assert record["citation_dropped"] is None  # it cited no runbook
     assert len(record["model_calls"]) == 4 and record["cost_usd"] > 0
 
 
@@ -124,8 +130,12 @@ def test_a_replay_through_the_gateway_gives_the_model_what_a_local_one_does(tmp_
     session, fake = replay_session(), investigating()
     gateway = FakeGateway(ToolEnv.from_session(session))
 
+    def never(session: object) -> KnowledgeBase:
+        raise AssertionError("through Gateway, the search's Lambda has the knowledge base")
+
     code, out, _ = run(
-        [*REPLAY, "--gateway", URL], session, fake, tmp_path / "run.json", gateway_transport=gateway.transport()
+        [*REPLAY, "--gateway", URL], session, fake, tmp_path / "run.json", gateway_transport=gateway.transport(),
+        connect_knowledge_base=never,
     )
 
     assert code == main.EXIT_OK
@@ -136,6 +146,36 @@ def test_a_replay_through_the_gateway_gives_the_model_what_a_local_one_does(tmp_
     assert json.loads(out)["root_cause"] == DIAGNOSIS["root_cause"]
     record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
     assert record["tools_via"] == "gateway"
+
+
+def test_a_run_here_on_a_knowledge_base_that_fails_its_check_is_refused_before_any_model_call(tmp_path: Path) -> None:
+    def stale(session: object) -> KnowledgeBase:
+        raise KnowledgeBaseError("sentinelops-runbooks doesn't hold this checkout's runbooks (corpus abc)")
+
+    session, fake = FakeSession(), FakeAnthropic([])
+    code, out, err = run(REPLAY, session, fake, tmp_path / "run.json", connect_knowledge_base=stale)
+
+    assert code == main.EXIT_REFUSED and out == ""
+    assert err == "Refused: sentinelops-runbooks doesn't hold this checkout's runbooks (corpus abc)\n"
+    assert fake.requests == [] and not (tmp_path / "run.json").exists()
+    assert session.made == []  # not even the alarm was read
+
+
+def test_a_run_here_gives_its_tools_the_checked_knowledge_base(tmp_path: Path) -> None:
+    search = load(TOOL_FIXTURES / "runbooks_pool.json")
+    query = search["calls"][0]["params"]["retrievalQuery"]["text"]
+    session = replay_session(tools=[])
+    session.replay(search)
+    fake = FakeAnthropic([Reply([tool_use("search_runbooks", {"query": query})]), answer({**DIAGNOSIS, "runbook_cited": "bad-deploy.md"})])
+
+    code, _, _ = run(REPLAY, session, fake, tmp_path / "run.json")
+
+    assert code == main.EXIT_OK
+    session.assert_all_called()  # the Retrieve, at the knowledge base the check found
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    # Shown by name only in this search: cleared, recorded, never sent back.
+    assert record["hypothesis"]["runbook_cited"] is None
+    assert record["citation_dropped"] == {"cited": "bad-deploy.md", "reason": "only listed"}
 
 
 def test_a_hypothesis_beyond_ascii_prints_on_a_cp1252_stdout(tmp_path: Path) -> None:
@@ -158,6 +198,7 @@ def test_a_hypothesis_beyond_ascii_prints_on_a_cp1252_stdout(tmp_path: Path) -> 
             token_http_client=fake.token_client(),
             stdout=stdout,
             stderr=io.StringIO(),
+            connect_knowledge_base=lambda session: KnowledgeBase(RECORDED_KB, RECORDED_CORPUS),
         )
     )
     stdout.flush()

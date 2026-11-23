@@ -62,7 +62,7 @@ RIGHT = {
     "evidence": EVIDENCE,
     "inferences": [{"claim": "The slowness is payments-api's, not this service's.", "rests_on": ["e1", "e2", "e4"]}],
     "not_checked": ["Why payments-api slowed down: its own metrics and logs aren't readable from here."],
-    "runbook_cited": None,
+    "runbook_cited": "downstream-timeout.md",
     "halted_by": None,
 }
 

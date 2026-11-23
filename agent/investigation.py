@@ -59,6 +59,7 @@ class Investigation:
             "answers_in_text": report.answers_in_text,
             "tool_calls": report.tool_calls,
             "tool_calls_after_ask": report.tool_calls_after_ask,
+            "citation_dropped": report.citation_dropped,
             "model_calls": [asdict(call) for call in report.model_calls],
             "input_tokens": report.input_tokens,
             "cost_usd": round(report.cost_usd, 6),
@@ -87,10 +88,13 @@ async def investigate_alarm(
     token_http_client: Any = None,
     gateway_transport: Any = None,
     limits: Limits = Limits(),
+    knowledge_base_id: str | None = None,
 ) -> Investigation | Refused:
     """Investigate the alarm live, or as of a past moment, where every tool reads as of then.
 
     limits are the guard's: the default everywhere but an eval arm's runs.
+    knowledge_base_id is the runbook search's, for tools run here (knowledge_base.connect
+    finds and checks it); through Gateway, the search's Lambda has its own.
     http_client, token_http_client, and gateway_transport are for tests: a fake
     Messages API, token endpoint, and Gateway.
     """
@@ -117,7 +121,9 @@ async def investigate_alarm(
         gateway = Gateway(gateway_url, session.get_credentials(), settings.region, transport=gateway_transport)
         tools = gateway.tools(as_of=fired_at if replay else None)
     else:
-        env = ToolEnv.from_session(session, now=(lambda: fired_at) if replay else utc_now)
+        env = ToolEnv.from_session(
+            session, now=(lambda: fired_at) if replay else utc_now, knowledge_base_id=knowledge_base_id
+        )
         tools = make_tools(env)
     try:
         report = await investigate(

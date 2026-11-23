@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 from strands.models._native_output import _UNSUPPORTED_MECHANISMS
@@ -18,6 +18,8 @@ from models import Hypothesis, StopReason
 from pricing import price_for
 from providers import Settings, build_model
 from runner import ANSWER_AS_TEXT, RunReport, investigate, system_prompt
+from sentinelops_tools.runbooks import SHOWN_SECTIONS, Hit, parse_results, render
+from stubs import TOOL_FIXTURES, load
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 SETTINGS = Settings()
@@ -288,29 +290,104 @@ def test_the_model_cannot_report_a_halt() -> None:
     assert report.hypothesis.can_open_pr
 
 
-def test_a_runbook_this_run_never_retrieved_is_not_cited(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.WARNING, logger="sentinelops.runner")
-    fake = FakeAnthropic([answer({**DIAGNOSIS, "runbook_cited": "db-pool-exhaustion.md"})])
+# The runbook search, as the recorded pool-1 search showed it: db-pool-exhaustion.md and
+# slow-database.md in full, the other five listed by name.
+POOL_SEARCH = load(TOOL_FIXTURES / "runbooks_pool.json")["text"]
 
-    report = run(fake)
+
+class Searching(Tools):
+    """The scripted tools, and a runbook search that answers with text."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.text = text
+
+    def all(self) -> list:
+        def search_runbooks(query: str) -> str:
+            """Stands in for the runbook search.
+
+            Args:
+                query: What was measured.
+            """
+            self.runs.append("search_runbooks")
+            return self.text
+
+        return [*super().all(), search_runbooks]
+
+
+def searching(text: str = POOL_SEARCH) -> Searching:
+    return Searching(text)
+
+
+def cites(runbook: str | None, *, search: bool = True) -> FakeAnthropic:
+    replies = [Reply([tool_use("search_runbooks", {"query": "pool wait rose, then 500s"})])] if search else []
+    return FakeAnthropic([*replies, answer({**DIAGNOSIS, "runbook_cited": runbook})])
+
+
+def dropped_events(caplog: pytest.LogCaptureFixture) -> list[dict[str, Any]]:
+    return [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.runner"]
+
+
+def test_a_runbook_a_search_showed_in_full_is_kept(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger="sentinelops.runner")
+    for runbook in ("db-pool-exhaustion.md", "slow-database.md"):
+        report = run(cites(runbook), searching())
+        assert report.hypothesis.runbook_cited == runbook and report.citation_dropped is None
+    assert dropped_events(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "runbook, search, reason",
+    [
+        ("memory-leak.md", True, "only listed"),  # the search named it, and showed it no further
+        ("db-pool-exhaustion.md", False, "never shown"),  # no search at all
+        ("connection-pool.md", True, "never shown"),  # no such runbook
+        ("DB-Pool-Exhaustion.md", True, "never shown"),  # a name only shown in other letters: exact or nothing
+        ("db-pool-exhaustion.md: Database connection pool exhaustion", True, "never shown"),  # the title line
+    ],
+)
+def test_a_runbook_not_shown_in_full_is_cleared_and_logged_never_resent(
+    runbook: str, search: bool, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="sentinelops.runner")
+    fake = cites(runbook, search=search)
+
+    report = run(fake, searching())
 
     assert report.hypothesis.runbook_cited is None
-    events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "sentinelops.runner"]
-    assert events == [
-        {
-            "event": "citation_dropped",
-            "cited": "db-pool-exhaustion.md",
-            "reason": "no runbook search in this run returned it",
-        }
+    assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
+    assert report.citation_dropped == {"cited": runbook, "reason": reason}
+    assert dropped_events(caplog) == [{"event": "citation_dropped", "cited": runbook, "reason": reason}]
+    assert len(fake.requests) == (2 if search else 1), "nothing is sent back to the model"
+
+
+def test_a_search_that_failed_shows_nothing() -> None:
+    tools = searching("Could not read the runbooks: AWS returned ThrottlingException.")
+    report = run(cites("db-pool-exhaustion.md"), tools)
+    assert report.citation_dropped == {"cited": "db-pool-exhaustion.md", "reason": "never shown"}
+
+
+def test_a_runbook_the_cap_cut_short_was_not_read_whole() -> None:
+    body = "\n".join(f"- check {n} " + "x" * 90 for n in range(400))
+    hits = [
+        Hit(f"a--{s}.md", "a.md", section, 0.5, "A", f"# Runbook: A\n\n## {section}\n\n{body}")
+        for s, section in enumerate(SHOWN_SECTIONS)
     ]
+    text = render(hits)
+    assert parse_results(text).partial == "a.md"
+
+    report = run(cites("a.md"), searching(text))
+
+    assert report.citation_dropped == {"cited": "a.md", "reason": "cut short"}
 
 
-def test_a_runbook_this_run_retrieved_is_kept() -> None:
-    fake = FakeAnthropic([answer({**DIAGNOSIS, "runbook_cited": "db-pool-exhaustion.md"})])
-
-    report = run(fake, retrieved_runbooks={"db-pool-exhaustion.md"})
-
-    assert report.hypothesis.runbook_cited == "db-pool-exhaustion.md"
+def test_the_check_reads_the_marked_results_the_model_was_given() -> None:
+    """The run's sources keep each result as its tool wrote it, so the check reads the same text either way."""
+    fake = cites("db-pool-exhaustion.md")
+    report = run(fake, searching())
+    results = [b["toolResult"] for m in report.messages for b in m["content"] if "toolResult" in b]
+    (first,) = [r for r in results if "[source r1]" in r["content"][0]["text"]]
+    assert POOL_SEARCH in first["content"][0]["text"]
 
 
 def test_a_failed_call_ends_the_run_and_is_charged_the_most_it_could_cost() -> None:

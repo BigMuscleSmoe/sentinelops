@@ -25,6 +25,7 @@ from checker.__main__ import check_run
 from evals import audit as audits
 from evals import baseline as gate
 from evals.arms import ARMS
+from evals.scenarios import BY_ID
 from evals.repo import REPO, Refusal
 
 BASELINE, REQUEST, RUNS = gate.load()
@@ -142,7 +143,10 @@ def answered_records() -> list[dict[str, Any]]:
 
 
 def write_sweep(folder: Path, records: list[dict[str, Any]], *, skip_transcripts: tuple[str, ...] = ()) -> Path:
-    """A sweep folder as evals sweep writes one, its transcripts the committed kept runs."""
+    """A sweep folder as evals sweep writes one, its transcripts the committed kept runs.
+
+    Its split is the one the runs' scenarios are in now: the test sweep's alarms are tuning ones since 2026-11-23.
+    """
     folder.mkdir(parents=True)
     for record in records:
         if record["transcript"] not in skip_transcripts:
@@ -150,7 +154,7 @@ def write_sweep(folder: Path, records: list[dict[str, Any]], *, skip_transcripts
     meta = {
         "sweep": BASELINE["sweep"],
         "arm": BASELINE["arm"],
-        "split": "test",
+        "split": BY_ID[next(iter(RUNS.values()))["eval"]["scenario"]].split.value,
         "commit": BASELINE["commit"],
         "dirty": [],
         "records": records,
@@ -209,7 +213,7 @@ def test_a_sweep_missing_one_of_its_splits_scenarios_is_refused(tmp_path: Path) 
     records = answered_records()
     dropped = records[0]["scenario"]
     kept = [r for r in records if r["scenario"] != dropped]
-    with pytest.raises(Refusal, match=rf"every test scenario; the sweep has no run of {dropped}$"):
+    with pytest.raises(Refusal, match=rf"every {BY_ID[dropped].split.value} scenario; the sweep has no run of {dropped}$"):
         gate.build(write_sweep(tmp_path / "sweep", kept), None, tmp_path / "gate")
 
 

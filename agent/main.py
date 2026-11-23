@@ -6,7 +6,9 @@
 Live, the alarm must be in ALARM now. With --as-of, the run replays the
 alarm's last change into ALARM at or before that time, and every tool reads
 as of that moment. The tools run here, unless --gateway (or
-SENTINELOPS_GATEWAY_URL) names the AgentCore Gateway to run them. The
+SENTINELOPS_GATEWAY_URL) names the AgentCore Gateway to run them. Run here,
+the runbook search uses the knowledge base sentinelops-runbooks, found by name
+and checked to hold this checkout's runbooks first (knowledge_base.py). The
 Hypothesis goes to stdout as JSON. The summary and the guard's JSON log lines
 go to stderr, and the transcript to scratch/runs/.
 """
@@ -17,10 +19,12 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+import knowledge_base
 from investigation import Refused, investigate_alarm, parse_utc
 from pricing import ModelPrice, UnknownModelPrice, price_for
 from providers import Settings, SettingsError
@@ -85,7 +89,14 @@ async def run(
     gateway_transport: Any = None,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
+    connect_knowledge_base: Callable[[Any], knowledge_base.KnowledgeBase] = knowledge_base.connect,
 ) -> int:
+    knowledge_base_id = None
+    if not args.gateway:
+        try:
+            knowledge_base_id = connect_knowledge_base(session).id
+        except knowledge_base.KnowledgeBaseError as e:
+            return refuse(str(e), stderr)
     outcome = await investigate_alarm(
         args.alarm,
         args.as_of,
@@ -96,6 +107,7 @@ async def run(
         http_client=http_client,
         token_http_client=token_http_client,
         gateway_transport=gateway_transport,
+        knowledge_base_id=knowledge_base_id,
     )
     if isinstance(outcome, Refused):
         return refuse(outcome.reason, stderr)

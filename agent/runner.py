@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable, Collection
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -13,6 +13,7 @@ from guards import Limits, RunGuard, guarded_tool, run_guarded
 from hooks import GuardHooks, ModelCall, ModelRefused
 from models import Hypothesis
 from pricing import ModelPrice
+from sentinelops_tools.runbooks import parse_results
 from sources import Sources, cited
 
 logger = logging.getLogger("sentinelops.runner")
@@ -50,6 +51,8 @@ class RunReport:
     # The tools called after the run was first asked for its answer; None if it
     # never was (hooks.GuardHooks.tool_calls_after_ask).
     tool_calls_after_ask: list[str] | None = None
+    # The runbook the answer cited and why it was cleared, if it was (check_citation).
+    citation_dropped: dict[str, str] | None = None
 
     def summary(self) -> str:
         tools = ", ".join(f"{name} x{n}" for name, n in Counter(self.tool_calls).items()) or "none"
@@ -67,14 +70,14 @@ async def investigate(
     price: ModelPrice,
     max_output_tokens: int,
     limits: Limits = Limits(),
-    retrieved_runbooks: Collection[str] = (),
     clock: Callable[[], float] = time.monotonic,
 ) -> RunReport:
     """Run the agent on one alarm's prompt and return what it found, and what it spent.
 
     A limit never raises: it ends the run with a halted Hypothesis. Anything
     else that stops the run, a refusal included, is reported as a failure
-    with no Hypothesis.
+    with no Hypothesis. A cited runbook stays only if a search in this run
+    showed it in full (check_citation).
     """
     from strands import Agent, ModelRetryStrategy, tool
     from strands.agent.conversation_manager import NullConversationManager
@@ -136,19 +139,9 @@ async def investigate(
         failure = describe_failure(e)
         logger.warning(json.dumps({"event": "run_failed", "failure": failure}))
 
+    dropped = None
     if hypothesis is not None:
-        checked = hypothesis.with_citation_checked(retrieved_runbooks)
-        if checked is not hypothesis:
-            logger.warning(
-                json.dumps(
-                    {
-                        "event": "citation_dropped",
-                        "cited": (hypothesis.runbook_cited or "")[:200],
-                        "reason": "no runbook search in this run returned it",
-                    }
-                )
-            )
-        hypothesis = checked
+        hypothesis, dropped = check_citation(hypothesis, sources)
 
     return RunReport(
         hypothesis=hypothesis,
@@ -162,7 +155,34 @@ async def investigate(
         trims=list(guard.trims),
         answers_in_text=answers_in_text,
         tool_calls_after_ask=hooks.tool_calls_after_ask,
+        citation_dropped=dropped,
     )
+
+
+def check_citation(hypothesis: Hypothesis, sources: Sources) -> tuple[Hypothesis, dict[str, str] | None]:
+    """The answer with runbook_cited kept only if a search in this run showed that runbook in full.
+
+    The model can name any file; only the run's own results say what it read.
+    A runbook only listed by name, or cut short by the result's cap, wasn't
+    read whole. A citation that fails is cleared and logged, never sent back.
+    """
+    in_full: set[str] = set()
+    cut_short: set[str] = set()
+    listed: set[str] = set()
+    for tool, text in sources.results:
+        page = parse_results(text) if tool == "search_runbooks" else None
+        if page is not None:
+            in_full.update(page.in_full)
+            cut_short.update(set(page.shown) - set(page.in_full))
+            listed.update(page.listed)
+    checked = hypothesis.with_citation_checked(in_full)
+    if checked is hypothesis:
+        return hypothesis, None
+    cited = hypothesis.runbook_cited or ""
+    reason = "cut short" if cited in cut_short else "only listed" if cited in listed else "never shown"
+    dropped = {"cited": cited[:200], "reason": reason}
+    logger.warning(json.dumps({"event": "citation_dropped", **dropped}))
+    return checked, dropped
 
 
 def calls_the_answer_tool(message: Any) -> bool:

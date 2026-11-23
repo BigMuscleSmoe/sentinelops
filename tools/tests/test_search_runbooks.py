@@ -77,7 +77,7 @@ def test_the_two_closest_are_shown_in_full_and_the_rest_listed(name: str) -> Non
     page = parse_results(load(name)["text"])
 
     assert page is not None and not page.cut
-    assert page.shown == rank(hits)[:2]
+    assert page.shown == rank(hits)[:2] and page.in_full == page.shown
     assert page.listed == rank(hits)[2:]
     assert set(page.shown) | set(page.listed) == RUNBOOKS
     for runbook in page.shown:
@@ -194,6 +194,22 @@ def test_a_result_past_the_cap_is_cut_and_says_so() -> None:
     assert text.split("\n")[-1] == f"{CUT_MARK} The result passed {MAX_RESULT_CHARS:,} characters."
     page = parse_results(text)
     assert page is not None and page.cut and page.shown == ["a.md"]
+    assert page.partial == "a.md" and page.in_full == []
+
+
+def test_a_cut_in_the_list_leaves_every_shown_runbook_whole() -> None:
+    whole = render([hit(f"{name}.md", "Symptoms") for name in "abcd"])
+    cut = whole[: whole.index("- d.md") + 3] + f"\n{CUT_MARK} The result passed {MAX_RESULT_CHARS:,} characters."
+    page = parse_results(cut)
+    assert page is not None and page.cut and page.partial is None
+    assert page.in_full == page.shown == ["a.md", "b.md"]
+
+
+def test_a_cut_between_two_shown_runbooks_counts_against_the_first() -> None:
+    whole = render([hit("a.md", "Symptoms"), hit("b.md", "Symptoms"), hit("c.md", "Symptoms")])
+    cut = whole[: whole.index("=== b.md")] + f"\n{CUT_MARK} The result passed {MAX_RESULT_CHARS:,} characters."
+    page = parse_results(cut)
+    assert page is not None and (page.shown, page.in_full) == (["a.md"], [])
 
 
 def test_a_body_keeps_its_lists_and_bold_lines() -> None:

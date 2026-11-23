@@ -86,3 +86,12 @@ def test_a_call_that_raises_takes_no_label() -> None:
     with pytest.raises(RuntimeError):
         wrapped()
     assert wrapped() == "[source d1]\nok"
+
+
+def test_each_result_is_kept_as_the_tool_wrote_it_in_order() -> None:
+    """The run's citation check reads its searches here (runner.check_citation)."""
+    sources = Sources()
+    sources.mark("search_runbooks", "first search")
+    sources.mark("get_metrics", "a table")
+    sources.mark("search_runbooks", "second search")
+    assert sources.results == [("search_runbooks", "first search"), ("get_metrics", "a table"), ("search_runbooks", "second search")]

@@ -10,12 +10,17 @@ Three outcomes per item:
 - unresolved: it can't be followed (an unknown source or column, a kind that
   doesn't fit the source, a row, line, or record that isn't there, a time that
   doesn't parse). These are what the trial counts as the format failing.
+- miscited: it cites a runbook search (r1, r2, ...), which says what a fault
+  looks like, not what happened in this run: never evidence (Phase 3, "Step 4
+  as split", decision 9). Whether or not that search exists, nothing else is
+  checked.
 
 A resolved item carries the entries it's about (its scope: the cited lines, the
 rows or lines in its window, or the whole result; a value item's one target),
 so the checks per kind (`checks`) read the cited data, never the item's words.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -23,13 +28,16 @@ from typing import Any
 
 from checker.sources import RunSources, Source, line_time
 from sentinelops_tools.metrics import HEADERS
-from sources import ALARM
+from sources import ALARM, PREFIXES
+
+_RUNBOOK_SEARCH = re.compile(rf"{PREFIXES['search_runbooks']}[1-9]\d*")
 
 
 class Status(StrEnum):
     RESOLVED = "resolved"
     OUTSIDE_READ = "outside_read"
     UNRESOLVED = "unresolved"
+    MISCITED = "miscited"  # a runbook search, cited as evidence
     UNTYPED = "untyped"  # a sentence, from before typed evidence
 
 
@@ -98,6 +106,9 @@ def resolve(item_id: str, item: dict[str, Any] | str, run: RunSources) -> Resolu
     def fail(reason: str, status: Status = Status.UNRESOLVED) -> Resolution:
         out.status, out.reason = status, reason
         return out
+
+    if isinstance(label, str) and _RUNBOOK_SEARCH.fullmatch(label):
+        return fail(f"{label} is a runbook search: it shows what a fault looks like, not what happened", Status.MISCITED)
 
     times: dict[str, tuple[datetime, timedelta]] = {}
     for key in ("at", "start", "end"):

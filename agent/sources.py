@@ -25,13 +25,16 @@ _NUMBERED = re.compile(r"\[([1-9]\d*)\] (\{.*)$")
 
 
 class Sources:
-    """The run's count of results by kind, so each gets the next label."""
+    """The run's count of results by kind, so each gets the next label, and each result as the tool wrote it."""
 
     def __init__(self) -> None:
         self._counts: Counter[str] = Counter()
+        # Each result the model was given, by tool, in order: the citation check reads the searches.
+        self.results: list[tuple[str, str]] = []
 
     def mark(self, tool: str, text: str) -> str:
         prefix = PREFIXES[tool]
+        self.results.append((tool, text))
         self._counts[prefix] += 1
         body = number_lines(text) if prefix == PREFIXES["get_recent_logs"] else text
         return f"[source {prefix}{self._counts[prefix]}]\n{body}"

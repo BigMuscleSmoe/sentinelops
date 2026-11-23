@@ -29,7 +29,8 @@ from checker.__main__ import check_run
 from fake_anthropic import FEDERATION_IDS, FakeAnthropic, Reply, answer, tool_use
 from pricing import price_for
 from providers import Settings
-from stubs import FakeSession
+from knowledge_base import KnowledgeBase, KnowledgeBaseError
+from stubs import RECORDED_KB, TOOL_FIXTURES, FakeSession, load
 
 # The alarms of step 1's 12 saved runs, which the first grader's rules were written on (kept at 57455ab).
 SEEN = {"deploy-1027-1905", "deploy-1029-0156", "deploy-1112-2000"}
@@ -38,6 +39,11 @@ TUNED_ON = {
     "pool-1027-1856", "pool-1027-1900", "pool-1027-1901", "deploy-1027-1905", "deploy-1029-0156",
     "deploy-1112-0747", "deploy-1112-0803", "deploy-1112-2000", "deploy-1113-0257",
 }  # fmt: skip
+# The test alarms the test sweeps of 2026-11-18 spent, moved to tuning on 2026-11-23 (Phase 3, decision 12).
+SPENT = [
+    "downstream-1114-2357", "deploy-1116-1917", "pool-1116-2058", "pool-1116-2101-lat", "pool-1116-2101-err", "deploy-1116-2238",
+    "pool-1117-0231", "pool-1117-0234", "pool-1117-0235", "downstream-1117-0411", "deploy-1117-0551",
+]  # fmt: skip
 FEDERATED = Settings.from_env(FEDERATION_IDS)
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
 
@@ -107,15 +113,12 @@ def test_seen_marks_exactly_the_alarms_the_first_grader_was_written_on() -> None
     assert {s.id for s in SCENARIOS if s.seen} == SEEN
 
 
-def test_the_tuning_split_is_the_nine_alarms_tuned_on_and_a_new_row_must_say_its_split() -> None:
-    assert {s.id for s in SCENARIOS if s.split is Split.TUNING} == TUNED_ON
-    # The held-out window's alarm, then the fresh breaks' (sessions A and B), recorded after the freeze.
-    assert [s.id for s in SCENARIOS if s.split is Split.TEST] == [
-        "downstream-1114-2357", "deploy-1116-1917", "pool-1116-2058", "pool-1116-2101-lat", "pool-1116-2101-err", "deploy-1116-2238",
-        "pool-1117-0231", "pool-1117-0234", "pool-1117-0235", "downstream-1117-0411", "deploy-1117-0551",
-    ]  # fmt: skip
-    test_windows = {"2026-11-14-2357", "2026-11-16-1917", "2026-11-16-2058", "2026-11-16-2238", "2026-11-17-0231", "2026-11-17-0411", "2026-11-17-0551"}
-    assert all(s.split is Split.TEST for s in SCENARIOS if s.window in test_windows)
+def test_the_tuning_split_is_all_twenty_alarms_and_a_new_row_must_say_its_split() -> None:
+    # The nine first tuned on, then the held-out window's alarm and the fresh breaks' (sessions A
+    # and B), spent by the test sweeps. The test split waits for the evaluation cycle's breaks.
+    assert [s.id for s in SCENARIOS if s.id not in TUNED_ON] == SPENT
+    assert all(s.split is Split.TUNING for s in SCENARIOS) and len(SCENARIOS) == 20
+    assert {s.fault for s in SCENARIOS if s.id in SPENT} == set(Fault)  # downstream_timeout's only alarms among them
     with pytest.raises(TypeError, match="split"):
         Scenario("new-0101-0000", "2026-11-13-0257", ERRORS, datetime(2027, 1, 1, tzinfo=UTC), Fault.BAD_DEPLOY, "00:00", seen=False)
 
@@ -136,8 +139,13 @@ THIN = {
 
 
 def _rubric(name: str, **changes: Any) -> rubrics.RubricResult:
-    """A fixture run's answer, changed, scored with the checker's checks of its evidence."""
+    """A fixture run's answer, changed, scored with the checker's checks of its evidence.
+
+    The fixtures predate the runbook search, so each cites its fault's own
+    runbook, as a right answer now does, unless a change says otherwise.
+    """
     transcript = copy.deepcopy(RUNS[name])
+    transcript["hypothesis"]["runbook_cited"] = rubrics.RULES[BY_ID[transcript["eval"]["scenario"]].fault].runbook
     transcript["hypothesis"].update(changes)
     check = check_run(name, transcript)
     return rubrics.score(BY_ID[transcript["eval"]["scenario"]], transcript["hypothesis"], check.checks)
@@ -427,9 +435,11 @@ def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
         # The upstream blamed, by name or by location; by location, no PR either.
         (DEPLOY_RUN, {"affected_component": "payments-api"}, {"location"}),
         (DEPLOY_RUN, {"fault_location": "upstream"}, {"location", "pr_gate"}),
-        # Not confident enough to open a PR, and a citation with no search.
+        # Not confident enough to open a PR; no runbook cited, or another fault's.
         (DEPLOY_RUN, {"confidence": 0.5}, {"pr_gate"}),
-        (DEPLOY_RUN, {"runbook_cited": "bad-deploy.md"}, {"runbook"}),
+        (DEPLOY_RUN, {"runbook_cited": None}, {"runbook"}),
+        (DEPLOY_RUN, {"runbook_cited": "db-pool-exhaustion.md"}, {"runbook"}),
+        (POOL_RUN, {"runbook_cited": "slow-database.md"}, {"runbook"}),
         # Thin evidence: counts that hold show no change, failure, or metric.
         (DEPLOY_RUN, {"evidence": [item("count", source="d1", count=10, note="ten records"), item("count", source="l1", count=30, note="thirty lines")], "inferences": []}, {"evidence_change", "evidence_failure", "evidence_symptom"}),
     ],
@@ -701,6 +711,64 @@ def test_an_answer_from_another_model_is_an_error_not_a_score(tmp_path: Path) ->
     ]
 
 
+def test_a_sweep_searches_the_checked_knowledge_base_through_the_sign_in_and_records_its_corpus(tmp_path: Path) -> None:
+    """The window answers every read but the search, which goes to the live knowledge base."""
+    search = load(TOOL_FIXTURES / "runbooks_pool.json")
+    query = search["calls"][0]["params"]["retrievalQuery"]["text"]
+    fake = FakeAnthropic(
+        [
+            Reply([tool_use("get_metrics", {"minutes": 10, "period_seconds": 60})]),
+            Reply([tool_use("search_runbooks", {"query": query})]),
+            answer({**POOL_ANSWER, "runbook_cited": "db-pool-exhaustion.md"}),
+        ]
+    )
+    sts = _sts(1)
+    sts.replay(search)  # the recorded Retrieve, asked of the sign-in session's client
+    runbooks = KnowledgeBase(RECORDED_KB, "197a0201c9eb")
+
+    (record,) = _sweep([BY_ID["pool-1027-1856"]], 1, fake, sts, tmp_path, knowledge_base=runbooks)
+
+    sts.assert_all_called()
+    assert (record.status, record.tool_calls) == ("answered", 2)
+    assert fake.tool_results(2)[1].startswith("[source r1]\n" + search["text"])
+    transcript = json.loads((tmp_path / "pool-1027-1856-r1.json").read_text(encoding="utf-8"))
+    assert transcript["hypothesis"]["runbook_cited"] == "db-pool-exhaustion.md" and transcript["citation_dropped"] is None
+    assert json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))["runbooks_corpus"] == "197a0201c9eb"
+
+    # Resumed, the sweep must search the same runbooks.
+    with pytest.raises(ValueError, match="searched runbooks corpus 197a0201c9eb, and this run's is 0123456789ab"):
+        _sweep([BY_ID["pool-1027-1856"]], 1, FakeAnthropic([]), FakeSession(), tmp_path, knowledge_base=KnowledgeBase(RECORDED_KB, "0123456789ab"))
+
+
+def test_a_window_session_hands_out_only_the_search_and_the_sign_in_from_aws() -> None:
+    sign_in = FakeSession()
+    session = sweep.WindowSession(load_window("2026-11-13-0257"), sign_in)
+    assert session.client("bedrock-agent-runtime") is sign_in.clients["bedrock-agent-runtime"]
+    assert session.client("sts") is sign_in.clients["sts"]
+    for service in ("bedrock-agent", "lambda", "s3"):
+        with pytest.raises(ValueError, match=f"a replay has no {service} client"):
+            session.client(service)
+
+
+def test_a_sweep_on_a_knowledge_base_that_fails_its_check_is_refused_before_it_spends(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_sweep: None
+) -> None:
+    def stale(session: Any) -> KnowledgeBase:
+        raise KnowledgeBaseError("sentinelops-runbooks doesn't hold this checkout's runbooks (corpus abc)")
+
+    monkeypatch.setattr(evals_cli, "connect_knowledge_base", stale)
+    monkeypatch.setattr("boto3.Session", lambda **kwargs: object())  # no profile needed: nothing reaches AWS
+    monkeypatch.delenv("SENTINELOPS_MODEL_ID", raising=False)
+    for name, value in FEDERATION_IDS.items():  # CI has none of its own
+        monkeypatch.setenv(name, value)
+    monkeypatch.chdir(tmp_path)  # a sweep that got past the refusal would write here, not in scratch/
+
+    assert evals_main(["sweep", "--go", "--runs", "1", "--scenario", "pool-1027-1856"]) == 1
+
+    assert "Refused: sentinelops-runbooks doesn't hold this checkout's runbooks (corpus abc)" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []  # no sweep folder: nothing started
+
+
 def test_a_read_the_recording_cant_answer_is_an_error(tmp_path: Path) -> None:
     late = dataclasses.replace(BY_ID["deploy-1113-0257"], fired_at=datetime(2026, 11, 13, 4, 0, tzinfo=UTC))
     records = _sweep([late], 1, FakeAnthropic([]), FakeSession(), tmp_path)
@@ -724,7 +792,7 @@ def test_a_run_that_ends_without_a_hypothesis_is_an_outcome_and_an_api_failure_a
 def test_without_go_the_sweep_command_only_plans(capsys: pytest.CaptureFixture[str]) -> None:
     assert evals_main(["sweep", "--runs", "3"]) == 2
     out = capsys.readouterr().out
-    assert "27 runs (9 scenarios x 3) of the tuning split" in out and "at most $1.00" in out and "Nothing ran" in out
+    assert "60 runs (20 scenarios x 3) of the tuning split" in out and "at most $1.00" in out and "Nothing ran" in out
 
 
 @pytest.fixture
@@ -740,17 +808,16 @@ def no_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_plan_takes_one_split_the_tuning_one_unless_asked(capsys: pytest.CaptureFixture[str]) -> None:
     assert evals_main(["plan"]) == 0
     out = capsys.readouterr().out
-    assert "27 runs (9 scenarios x 3) of the tuning split" in out and "downstream-1114-2357" not in out
-    assert evals_main(["plan", "--split", "test"]) == 0
-    out = capsys.readouterr().out
-    assert "downstream-1114-2357  downstream_timeout  test   unseen sentinelops-checkout-latency at 2026-11-14 23:57:37Z" in out
-    assert "33 runs (11 scenarios x 3) of the test split" in out and "pool-1027-1856" not in out
+    assert "60 runs (20 scenarios x 3) of the tuning split" in out
+    # The spent test alarms are tuning ones since 2026-11-23.
+    assert "downstream-1114-2357  downstream_timeout  tuning unseen sentinelops-checkout-latency at 2026-11-14 23:57:37Z" in out
+    # The test split is empty until the evaluation cycle's test breaks.
+    assert evals_main(["plan", "--split", "test"]) == 1
+    assert "The test split has no scenarios yet." in capsys.readouterr().err
     # A named scenario must be in the split asked for.
-    assert evals_main(["plan", "--scenario", "downstream-1114-2357"]) == 1
-    assert "Refused: not in the tuning split: downstream-1114-2357" in capsys.readouterr().err
-    assert evals_main(["plan", "--scenario", "downstream-1114-2357", "--split", "test"]) == 0
-    assert evals_main(["plan", "--scenario", "pool-1027-1856", "--scenario", "downstream-1114-2357", "--split", "test"]) == 1
-    assert "Refused: not in the test split: pool-1027-1856" in capsys.readouterr().err
+    assert evals_main(["plan", "--scenario", "downstream-1114-2357", "--split", "test"]) == 1
+    assert "Refused: not in the test split: downstream-1114-2357" in capsys.readouterr().err
+    assert evals_main(["plan", "--scenario", "pool-1027-1856", "--scenario", "downstream-1114-2357"]) == 0
 
 
 def test_a_split_with_no_scenarios_plans_nothing(
@@ -768,6 +835,8 @@ def test_a_test_sweep_is_refused_before_the_freeze_and_before_it_spends(
     bar.write_text(json.dumps({**json.loads(score.PASS_BAR.read_text(encoding="utf-8")), "frozen": False}), encoding="utf-8")
     monkeypatch.setattr(score, "PASS_BAR", bar)  # whatever the committed bar says by now
     monkeypatch.chdir(tmp_path)  # a sweep that got past the refusal would write here, not in scratch/
+    # The test split is empty since 2026-11-23; a held-out alarm stands in for the next one.
+    monkeypatch.setattr(evals_cli, "SCENARIOS", [dataclasses.replace(BY_ID["downstream-1114-2357"], split=Split.TEST)])
 
     assert evals_main(["sweep", "--go", "--split", "test"]) == 1
 

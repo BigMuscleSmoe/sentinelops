@@ -24,6 +24,7 @@ SERVICE_OF = {
     "get_web_identity_token": "sts",
     "assume_role": "sts",
     "retrieve": "bedrock-agent-runtime",
+    "list_knowledge_bases": "bedrock-agent",
 }
 # The knowledge base's ID in the runbook fixtures (tools/tests/conftest.py's RECORDED_KB).
 RECORDED_KB = "RECORDEDKB"

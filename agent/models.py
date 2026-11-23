@@ -256,9 +256,10 @@ class Hypothesis(BaseModel):
     runbook_cited: Text | None = Field(
         default=None,
         description=(
-            "The file name of the runbook this diagnosis follows, exactly as a "
-            "runbook search in this investigation returned it. Null if no search "
-            "returned a runbook that fits."
+            "The file name of the runbook this diagnosis follows, exactly as a search in this investigation "
+            "showed it in full: the name.md in its === name.md: Title === line. A runbook the search only listed "
+            "by name can't be cited. Null if no runbook shown in full fits: one fits only if its Symptoms match "
+            "what you measured and nothing in its What this is not applies."
         ),
     )
     # Set by the guard, never by the model, so it's left out of the output
@@ -279,12 +280,12 @@ class Hypothesis(BaseModel):
                     )
         return self
 
-    def with_citation_checked(self, retrieved: Collection[str]) -> "Hypothesis":
-        """This hypothesis, with runbook_cited cleared unless this run's searches returned it.
+    def with_citation_checked(self, in_full: Collection[str]) -> "Hypothesis":
+        """This hypothesis, with runbook_cited cleared unless it names, exactly, a runbook this run's searches showed in full.
 
-        The model can name any file it likes; only the run knows what it read.
+        The model can name any file it likes; only the run knows what it read (runner.check_citation).
         """
-        if self.runbook_cited is None or self.runbook_cited in retrieved:
+        if self.runbook_cited is None or self.runbook_cited in in_full:
             return self
         return self.model_copy(update={"runbook_cited": None})
 

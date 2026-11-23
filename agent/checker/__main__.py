@@ -149,7 +149,7 @@ def _verdicts(checks: list[ItemCheck]) -> str:
     if flagged:
         parts += (
             f" ({n(Verdict.CONTRADICTED)} contradicted, {n(Verdict.OUTSIDE_READ)} outside the read, "
-            f"{n(Verdict.UNRESOLVED)} unresolved)"
+            f"{n(Verdict.UNRESOLVED)} unresolved, {n(Verdict.MISCITED)} miscited)"
         )
     untyped = n(Verdict.UNTYPED)
     return parts + (f", {untyped} untyped" if untyped else "")

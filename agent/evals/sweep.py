@@ -1,8 +1,11 @@
 """A sweep: every scenario, N times, one run at a time, through investigation.py.
 
 The run is main.py's replay with the window in AWS's place: the window answers
-the alarm, metrics, logs, and deploy history, and only the sign-in reaches AWS
-(STS, as main.py's runs do). The model is the real one, so a sweep is billed.
+the alarm, metrics, logs, and deploy history. Only the sign-in (STS, as
+main.py's runs do) and the runbook search reach AWS: the search reads the live
+knowledge base, which the sweep's command first checks holds this checkout's
+runbooks (knowledge_base.connect) and records by its corpus digest. The model
+is the real one, so a sweep is billed.
 
 Each run's transcript is kept whole in scratch/evals/<sweep>/, and sweep.json
 records every outcome as it lands. Errors are kept apart from outcomes and
@@ -16,8 +19,8 @@ monthly limit in the Anthropic Console. Both caps are the arm's (evals/arms.py):
 $0.10 and $1.00 for Haiku, the production cap. sweep.json records the arm and
 the commit the sweep ran on, so a test sweep can be held to the freeze. A sweep
 is one split's (tuning or test) and one commit's: one already begun is resumed
-only as the same arm's and split's, on the commit it started on. The sweep
-never grades.
+only as the same arm's and split's, on the commit it started on, against the
+same runbooks. The sweep never grades.
 """
 
 import asyncio
@@ -38,6 +41,7 @@ from evals.scenarios import Scenario, Split, load_window, window_module
 from evals.witness import ModelWitness, same_model
 from guards import Limits
 from investigation import Refused, investigate_alarm
+from knowledge_base import KnowledgeBase
 from pricing import ModelPrice
 from providers import Settings
 
@@ -69,7 +73,7 @@ class RunRecord:
 
 
 class WindowSession:
-    """Stands in for boto3.Session in a replay: the window for reads, a real session for the sign-in."""
+    """Stands in for boto3.Session in a replay: the window for reads, a real session for the sign-in and the runbook search."""
 
     def __init__(self, window: Any, sign_in: Any) -> None:
         self.window = window
@@ -80,8 +84,8 @@ class WindowSession:
     def client(self, service: str, **kwargs: Any) -> Any:
         if service in ("logs", "cloudwatch", "dynamodb"):
             return _Noting(self.window.client(service), self.gaps, self._outside)
-        if service == "sts":
-            return self.sign_in.client("sts", **kwargs)
+        if service in ("sts", "bedrock-agent-runtime"):
+            return self.sign_in.client(service, **kwargs)
         raise ValueError(f"a replay has no {service} client")
 
     def get_credentials(self) -> Any:
@@ -146,6 +150,7 @@ async def run_one(
     api_transport: Callable[[], httpx.AsyncBaseTransport],
     token_http_client: Any = None,
     limits: Limits = Limits(),
+    knowledge_base_id: str | None = None,
 ) -> RunRecord:
     import anthropic
 
@@ -167,6 +172,7 @@ async def run_one(
             http_client=client,
             token_http_client=token_http_client,
             limits=limits,
+            knowledge_base_id=knowledge_base_id,
         )
     except Exception as e:  # an error of the harness or the recording, never the model's
         record.detail = _short(f"{type(e).__name__}: {e}")
@@ -241,12 +247,15 @@ def _sha(commit: str | None) -> str:
     return commit[:7] if commit else "no recorded commit"
 
 
-def check_resumed(name: str, was: dict[str, Any], arm: Arm, split: Split, commit: str | None, dirty: list[str]) -> None:
+def check_resumed(
+    name: str, was: dict[str, Any], arm: Arm, split: Split, commit: str | None, dirty: list[str], corpus: str | None = None
+) -> None:
     """A sweep already begun is resumed only as what it is; raises ValueError otherwise.
 
-    The same arm's and split's, and on the commit it started on: sweep.json
-    holds one commit for all its runs, and a test sweep is held to the freeze
-    by it. A sweep from before the split was recorded is a tuning one.
+    The same arm's and split's, on the commit it started on, and searching the
+    same runbooks: sweep.json holds one commit and one corpus for all its runs,
+    and a test sweep is held to the freeze by it. A sweep from before the split
+    was recorded is a tuning one.
     """
     was_arm, was_split = was.get("arm", DEFAULT_ARM), was.get("split", Split.TUNING.value)
     if was_arm != arm.name:
@@ -259,6 +268,8 @@ def check_resumed(name: str, was: dict[str, Any], arm: Arm, split: Split, commit
         )
     if dirty and not was.get("dirty"):
         raise ValueError(f"{name} ran on a clean tree, and it has uncommitted changes now: {', '.join(dirty[:5])}")
+    if was.get("runbooks_corpus") != corpus:
+        raise ValueError(f"{name} searched runbooks corpus {was.get('runbooks_corpus')}, and this run's is {corpus}")
 
 
 async def run_sweep(
@@ -272,6 +283,7 @@ async def run_sweep(
     api_transport: Callable[[], httpx.AsyncBaseTransport],
     token_http_client: Any = None,
     arm: Arm = ARMS[DEFAULT_ARM],
+    knowledge_base: KnowledgeBase | None = None,
     cap_usd: float | None = None,
     per_run_usd: float | None = None,
     pause_s: float = 10.0,
@@ -281,8 +293,10 @@ async def run_sweep(
     of the same sweep retries only its errors. Stops before a run the cap can't cover.
 
     The arm sets both caps; cap_usd and per_run_usd override them, for tests. The
-    scenarios must be one split's, and a sweep already begun is resumed only as
-    what it is (check_resumed): ValueError otherwise, before anything runs."""
+    knowledge base is the runbook search's, already checked (knowledge_base.connect);
+    without one, a run's search says there's none. The scenarios must be one
+    split's, and a sweep already begun is resumed only as what it is
+    (check_resumed): ValueError otherwise, before anything runs."""
     cap_usd = arm.cap_usd if cap_usd is None else cap_usd
     per_run_usd = arm.per_run_usd if per_run_usd is None else per_run_usd
     limits = Limits(max_cost_usd=per_run_usd)
@@ -291,9 +305,10 @@ async def run_sweep(
         raise ValueError("a sweep is one split's: these scenarios are " + (" and ".join(splits) if splits else "none at all"))
     split = splits[0]
     commit, dirty = repo.head(), repo.dirty()
+    corpus = knowledge_base.corpus if knowledge_base else None
     earlier = out_dir / "sweep.json"
     if earlier.exists():
-        check_resumed(out_dir.name, json.loads(earlier.read_text(encoding="utf-8")), arm, split, commit, dirty)
+        check_resumed(out_dir.name, json.loads(earlier.read_text(encoding="utf-8")), arm, split, commit, dirty, corpus)
     records = load_records(out_dir)
     done = {r.run for r in records if r.scored}
     attempts = {r.run: r.attempt for r in records}
@@ -317,6 +332,7 @@ async def run_sweep(
             api_transport=api_transport,
             token_http_client=token_http_client,
             limits=limits,
+            knowledge_base_id=knowledge_base.id if knowledge_base else None,
         )
         records.append(record)
         attempts[rid] = record.attempt
@@ -331,6 +347,7 @@ async def run_sweep(
                 "cap_usd": cap_usd,
                 "commit": commit,
                 "dirty": dirty,
+                "runbooks_corpus": corpus,
                 "runs_per_scenario": runs,
                 "scenarios": [s.id for s in scenarios],
                 "records": [asdict(r) for r in records],

@@ -149,7 +149,7 @@ def test_the_cli_prints_each_run_and_a_total(transcript: dict[str, Any], tmp_pat
     printed = capsys.readouterr().out
     assert (
         "wrong: 5 evidence, 2 inferences (typed 71%, citations followed 80%); 2 hold, 0 loose, 3 flagged "
-        "(1 contradicted, 1 outside the read, 1 unresolved);"
+        "(1 contradicted, 1 outside the read, 1 unresolved, 0 miscited);"
     ) in printed
     assert printed.split("\n")[0].endswith("uncited figures in root_cause; 1 trims")
     assert "  e3 none l1: outside_read: 19:05:27 and 19:05:30 outside l1's read" in printed

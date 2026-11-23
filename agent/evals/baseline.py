@@ -75,7 +75,7 @@ GATE_ALARM = {
     "description": "Over 5% of checkout-api requests fail with a 500",
     "condition": "error Average > 0.05 over 10 s periods, in 2 of 3 periods.",
 }
-FLAGGED = ("contradicted", "outside_read", "unresolved")
+FLAGGED = ("contradicted", "outside_read", "unresolved", "miscited")
 
 
 def capture(arm: Arm = ARMS[DEFAULT_ARM]) -> dict[str, Any]:

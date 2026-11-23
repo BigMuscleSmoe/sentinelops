@@ -149,13 +149,20 @@ _REST_HEAD = "=== Not shown, further from the query ==="
 
 @dataclass(frozen=True)
 class RunbookPage:
-    """One `search` result: the runbooks it showed in full, closest first, and those it only listed."""
+    """One `search` result: the runbooks it showed, closest first, and those it only listed."""
 
     shown: list[str]
     listed: list[str]
     titles: dict[str, str] = field(default_factory=dict)
     sections: dict[str, dict[str, str]] = field(default_factory=dict)  # runbook -> section -> text
     cut: bool = False
+    # The shown runbook the cap's cut fell in, if it fell in one rather than in the list after.
+    partial: str | None = None
+
+    @property
+    def in_full(self) -> list[str]:
+        """The shown runbooks the model read whole: every one, unless the cut fell in one."""
+        return [runbook for runbook in self.shown if runbook != self.partial]
 
 
 def parse_results(text: str) -> RunbookPage | None:
@@ -173,8 +180,12 @@ def parse_results(text: str) -> RunbookPage | None:
             sections[runbook][section] = "\n".join(body).strip("\n")
 
     in_rest = False
+    partial = None
     for line in lines[1:]:
         if line.startswith(CUT_MARK):
+            # A cut before the list falls in the last runbook begun, or just after its end.
+            # Nothing shows which, so that runbook doesn't count as read whole.
+            partial = None if in_rest else runbook
             break
         if line == _REST_HEAD:
             close()
@@ -200,4 +211,4 @@ def parse_results(text: str) -> RunbookPage | None:
         if section is not None:
             body.append(line)
     close()
-    return RunbookPage(shown=shown, listed=listed, titles=titles, sections=sections, cut=cut)
+    return RunbookPage(shown=shown, listed=listed, titles=titles, sections=sections, cut=cut, partial=partial)

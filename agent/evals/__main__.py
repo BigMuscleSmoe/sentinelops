@@ -2,6 +2,7 @@
 
     uv run python -m evals plan [--runs N] [--arm haiku|sonnet] [--split tuning|test]
     uv run python -m evals sweep --go [--runs N] [--arm haiku] [--split tuning] [--scenario ID ...] [--resume DIR] [--pause 10]
+    uv run python -m evals report DIR
     uv run python -m evals packet DIR --out PACKET.md [--run RUN ...]
     uv run python -m evals audit DIR --labels LABELS.json [--some]
     uv run python -m evals flags DIR --out FLAGS.json
@@ -10,11 +11,13 @@
 
 plan calls nothing: it replays each scenario's alarm from its window and prints
 the runs and the cost bound. sweep without --go does the same and stops; with
-it, every run is a real model call, billed to Anthropic. Both take one split's
+it, the live runbook knowledge base is checked first (knowledge_base.connect),
+and every run is a real model call, billed to Anthropic. Both take one split's
 scenarios: the tuning split unless --split test, and a test sweep starts only
 once the pass bar is frozen and the tree could be graded as it stands. The rest
-call no model and no AWS: packet writes what a labeler reads, with a blank label file beside
-it; audit checks a label file against the sweep, refusing a label that points
+call no model and no AWS: report gives a tuning sweep's outcomes, costs, rubric
+failures, resends and trims, and runbook citations, never as a result; packet
+writes what a labeler reads, with a blank label file beside it; audit checks a label file against the sweep, refusing a label that points
 at nothing; flags writes every checker flag for the hand check; grade scores the
 sweep against its committed audit and the pass bar; compare sets two labelers'
 committed files side by side, by ID (R8).
@@ -31,6 +34,9 @@ from alarm import AlarmEvent
 from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.scenarios import BY_ID, SCENARIOS, Scenario, Split, load_window
 from evals.sweep import SWEEPS, plan, run_id, run_sweep
+from knowledge_base import NAME as KNOWLEDGE_BASE
+from knowledge_base import KnowledgeBaseError
+from knowledge_base import connect as connect_knowledge_base
 
 EXIT_OK, EXIT_FAILED, EXIT_STOPPED = 0, 1, 2
 
@@ -60,6 +66,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     sweep.add_argument("--resume", type=Path, help="a sweep's folder: run what it hasn't, retrying its errors")
     sweep.add_argument("--pause", type=float, default=10.0, help="seconds between runs (default 10)")
     sweep.add_argument("--profile", default="sentinelops", help="the AWS profile for the sign-in")
+    tuning = sub.add_parser("report")
+    tuning.add_argument("sweep", type=Path)
     packet = sub.add_parser("packet")
     packet.add_argument("sweep", type=Path)
     packet.add_argument("--out", type=Path, required=True, help="the packet (.md); the blank labels go beside it (.labels.json)")
@@ -116,7 +124,8 @@ def show_plan(scenarios: list[Scenario], runs: int, arm: Arm = ARMS[DEFAULT_ARM]
         f"\n{len(todo)} runs ({len(scenarios)} scenarios x {runs}) of the {split.value} split, one at a time, "
         f"on the {arm.name} arm ({arm.model_id}). "
         f"Expected about ${len(todo) * arm.expected_run_usd:.2f}; at most ${bound:.2f} "
-        f"(${arm.per_run_usd:.2f} a run, ${arm.cap_usd:.2f} a sweep). No AWS cost: the windows answer every read."
+        f"(${arm.per_run_usd:.2f} a run, ${arm.cap_usd:.2f} a sweep). The windows answer every read but the runbook "
+        "search, which reads the live knowledge base: a fraction of a cent for the whole sweep (COSTS.md)."
     )
     if arm.blocked:
         print(f"The {arm.name} arm can't run yet: {arm.blocked}.")
@@ -162,6 +171,15 @@ def sweep(args: argparse.Namespace) -> int:
     except UnknownModelPrice as e:
         print(f"Refused: {e}", file=sys.stderr)
         return EXIT_FAILED
+    sign_in = boto3.Session(profile_name=args.profile, region_name=settings.region)
+    try:
+        # Before any folder or model call: the live runbooks must be this checkout's.
+        runbooks = connect_knowledge_base(sign_in)
+    except KnowledgeBaseError as e:
+        print(f"Refused: {e}", file=sys.stderr)
+        return EXIT_FAILED
+    print()
+    print(f"runbooks: the knowledge base {KNOWLEDGE_BASE} holds this checkout's, corpus {runbooks.corpus}")
     out_dir = args.resume or SWEEPS / (datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + ("" if arm.name == DEFAULT_ARM else f"-{arm.name}"))
     out_dir.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(out_dir / "sweep.log", encoding="utf-8")
@@ -178,10 +196,11 @@ def sweep(args: argparse.Namespace) -> int:
                 args.runs,
                 settings=settings,
                 price=price,
-                sign_in=boto3.Session(profile_name=args.profile, region_name=settings.region),
+                sign_in=sign_in,
                 out_dir=out_dir,
                 api_transport=lambda: httpx.AsyncHTTPTransport(),
                 arm=arm,
+                knowledge_base=runbooks,
                 pause_s=args.pause,
             )
         )
@@ -263,6 +282,16 @@ def grade(args: argparse.Namespace) -> int:
     return EXIT_FAILED if report.verdict == "FAIL" else EXIT_OK
 
 
+def tuning_report(args: argparse.Namespace) -> int:
+    from evals import tuning
+
+    if not (args.sweep / "sweep.json").is_file():
+        print(f"Refused: {args.sweep} holds no sweep.json", file=sys.stderr)
+        return EXIT_FAILED
+    print(tuning.render(tuning.report(args.sweep)))
+    return EXIT_OK
+
+
 def compare(args: argparse.Namespace) -> int:
     from evals import audit, repo
     from evals.score import load_sweep
@@ -283,7 +312,7 @@ def compare(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-COMMANDS = {"sweep": sweep, "packet": packet, "audit": check_labels, "flags": flag_list, "grade": grade, "compare": compare}
+COMMANDS = {"sweep": sweep, "report": tuning_report, "packet": packet, "audit": check_labels, "flags": flag_list, "grade": grade, "compare": compare}
 
 
 def main(argv: list[str] | None = None) -> int:

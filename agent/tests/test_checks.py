@@ -240,3 +240,45 @@ def test_a_figure_no_item_states_is_uncited() -> None:
 def test_the_fixture_runs_uncited_figures() -> None:
     counts = [len(uncited(t["hypothesis"])) for t in RUNS.values()]
     assert sum(counts) == 43 and len(counts) == 26
+
+
+# --- a runbook search cited as evidence -------------------------------------------
+
+
+def _with_a_search(run: dict[str, Any]) -> dict[str, Any]:
+    """A fixture run with the recorded pool search among its results, as source r1."""
+    from stubs import TOOL_FIXTURES, load
+
+    search = load(TOOL_FIXTURES / "runbooks_pool.json")["text"]
+    run = json.loads(json.dumps(run))
+    run["messages"] += [
+        {"role": "assistant", "content": [{"toolUse": {"toolUseId": "search-1", "name": "search_runbooks", "input": {}}}]},
+        {"role": "user", "content": [{"toolResult": {"toolUseId": "search-1", "content": [{"text": f"[source r1]\n{search}"}]}}]},
+    ]
+    return run
+
+
+def test_an_r_source_in_evidence_is_miscited_whether_or_not_the_search_exists() -> None:
+    name = "20261114T190302Z/deploy-1113-0257-r1"
+    run = _with_a_search(RUNS[name])
+    sources = read_sources(run)
+    assert "r1" in sources.by_label
+    cases = [
+        item("value", source="r1", column="Symptoms", at="19:05:00", value="pool wait", note="the runbook says so"),
+        item("count", source="r2", count=2, note="two runbooks shown"),  # no r2 in this run
+        item("none", source="r1", start="19:00:00", end="19:05:00", note="no fix shown"),
+    ]
+    for i, evidence in enumerate(cases, 1):
+        check = check_item(f"e{i}", evidence, sources)
+        assert check.verdict is Verdict.MISCITED and check.flagged, check
+        assert "is a runbook search" in check.reason
+    # The run's other items are as pinned: the search changes no other verdict.
+    assert [c.verdict.value for c in check_all(run["hypothesis"], sources)] == [
+        c.verdict.value for c in check_all(RUNS[name]["hypothesis"], read_sources(RUNS[name]))
+    ]
+
+
+def test_a_source_merely_starting_with_r_is_not_a_runbook_search() -> None:
+    sources = read_sources(_with_a_search(RUNS["20261114T190302Z/deploy-1113-0257-r1"]))
+    for label in ("r", "r0", "r1a", "rr1"):
+        assert check_item("e1", item("count", source=label, count=1, note="x"), sources).verdict is Verdict.UNRESOLVED

@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from checker.checks import MISSING, ItemCheck, Verdict, check_item, field_of, is_number, matches, number, same
+from checker.checks import FLAGS, MISSING, ItemCheck, Verdict, check_item, field_of, is_number, matches, number, same
 from checker.resolve import Entry, entries, resolve, span_of
 from checker.sources import RunSources
 from models import Evidence
@@ -58,7 +58,7 @@ class Planted:
 
     @property
     def caught(self) -> bool:
-        return self.verdict in (Verdict.CONTRADICTED, Verdict.OUTSIDE_READ, Verdict.UNRESOLVED)
+        return self.verdict in FLAGS
 
 
 def plant_run(name: str, hypothesis: dict[str, Any], run: RunSources) -> tuple[list[Planted], list[str]]:
