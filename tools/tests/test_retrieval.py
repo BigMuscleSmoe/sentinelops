@@ -64,18 +64,21 @@ def test_no_query_holds_a_figure_or_what_only_the_staging_knows() -> None:
 # The recording
 
 
-def test_the_recording_is_of_this_corpus_and_these_queries() -> None:
-    """A runbook or query edit fails here until the set is recorded again (python -m tests.retrieval record)."""
+def test_the_recording_is_of_these_queries_and_whole() -> None:
+    """A query edit fails here until the set is recorded again (python -m tests.retrieval record).
+
+    A runbook edit doesn't: it reaches the knowledge base only through a deploy,
+    which this test gates, so the report flags a recording of another corpus
+    as stale instead.
+    """
     recording = load_recorded()
-    corpus = rb.load()
-    assert recording["corpus"] == corpus.digest
     queries = load_queries()
     assert list(recording["searches"]) == [q["id"] for q in queries]
-    documents = sorted(section.file for section in corpus.sections)
     for q in queries:
         search = recording["searches"][q["id"]]
         assert search["query"] == q["query"]
-        assert sorted(h["document"] for h in search["hits"]) == documents
+        documents = [h["document"] for h in search["hits"]]
+        assert len(documents) == len(set(documents)) == recording["number_of_results"]
 
 
 def test_the_recorded_ranking_meets_the_bar() -> None:

@@ -7,8 +7,10 @@ Run from tools/ (profile sentinelops for record):
 The queries (fixtures/retrieval/queries.json) are fixed before any search.
 The recording keeps each search's sections in order with their scores, and
 nothing account-specific: the document's name, its runbook and section, the
-score. It's tied to the corpus digest, so a runbook edit fails
-test_retrieval.py until the set is recorded again, on purpose.
+score. It's tied to the corpus digest, and the report flags a recording of
+another corpus as STALE. A query edit fails test_retrieval.py until the set
+is recorded again; a runbook edit can't, since it reaches the knowledge base
+only through a deploy, which the tests gate: push it, then record again.
 
 Beside the knowledge base's ranking (sentinelops_tools.runbooks.rank), a
 keyword yardstick: each runbook's Symptoms and Diagnosis text against the
@@ -136,6 +138,8 @@ def report() -> str:
     kb = {q["id"]: rank(recorded_hits(recording, q["id"])) for q in queries}
     kw = {q["id"]: keyword_rank(q["query"], corpus) for q in queries}
     lines = [f"Retrieval set: {len(queries)} queries, corpus {recording['corpus']}, recorded {recording['recorded_at']}", ""]
+    if recording["corpus"] != corpus.digest:
+        lines[1:1] = [f"STALE: recorded on corpus {recording['corpus']}, the runbooks build {corpus.digest}: push them, then record again"]
     lines.append(f"{'query':<19} {'expect':<23} {'kb rank':>7}  {'kb top 2':<46} {'kw rank':>7}")
     for q in queries:
         expect = q["expect"] or "(none fits)"
