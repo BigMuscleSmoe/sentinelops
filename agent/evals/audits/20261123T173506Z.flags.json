@@ -1,0 +1,615 @@
+{
+ "about": "Every checker flag on this sweep, hand-checked against its cited result: call right if the item is wrong as typed, false_flag if it holds; note why. Committed before the report is read. Form-only flags (a wrong or nonexistent column, or a value that isn't the field's own, while every stated fact holds in the cited result; each note starts 'form:') are called right, as wrong as typed (the user's call, 2026-11-18). Hand-checked by Claude, 2026-11-23, against each run's cited results.",
+ "sweep": "20261123T173506Z",
+ "checker": "05d556aeea3f594d9adb7b58d48d2f83cb6bf417",
+ "flags": {
+  "pool-1027-1900-r1": {
+   "e13": {
+    "verdict": "contradicted",
+    "reason": "5 in the window, the first d1 2026-10-27T14:19:02.761Z",
+    "item": {
+     "kind": "none",
+     "source": "d1",
+     "column": null,
+     "at": null,
+     "start": "2026-10-14T17:48:02.000Z",
+     "end": "2026-10-27T18:56:05.000Z",
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no other deploy or config change in the window before the pool change, so the earlier 1.42.0 deploy and its config tweaks did not start this"
+    },
+    "call": "right",
+    "note": "the none's window (10-14 17:48:02 to 10-27 18:56:05) holds 5 records after the 1.42.0 deploy at its start, the newest the 14:19:02 CART_TTL_HOURS change, among them the 03:01 1.43.0 deploy and its 03:06 rollback; its note names records it judges unrelated, which take their own items, not a none."
+   }
+  },
+  "pool-1027-1901-r1": {
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "db_query_p50_ms runs 61.9 to 66.7 over 6 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "18:56:00",
+     "end": "19:01:00",
+     "lines": null,
+     "value": null,
+     "low": 62.9,
+     "high": 66.7,
+     "count": null,
+     "seconds": null,
+     "note": "database query time flat, so the database is not the cause"
+    },
+    "call": "right",
+    "note": "low 62.9: m1's 18:56-19:01 rows of db_query_p50_ms go down to 61.9 (18:57); 62.9 is 18:59's."
+   },
+   "e14": {
+    "verdict": "contradicted",
+    "reason": "ts at d1 2026-10-27T14:19:02.761Z is 2026-10-27T14:19:02.761Z",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "ts",
+     "at": "2026-10-27T14:19:02.761Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "14:19:02.761Z",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "older config changes (CART_TTL_HOURS, RECOMMENDATIONS_ENABLED, PRODUCT_CACHE_TTL_S) are hours earlier and well before the onset, so they are not the cause"
+    },
+    "call": "false_flag",
+    "note": "holds: d1's record at 2026-10-27T14:19:02.761Z has that ts, written as the time of day, as every table here writes times; the three config changes its note names (14:19, 14:09, 00:07) are all hours before the 18:56 onset."
+   }
+  },
+  "deploy-1112-0747-r1": {
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "stack at l2[1] is [\"checkout/app.py:72 in handle\", \"checkout/app.py:136 in _checkout\", \"checkout/pricing.py:11 in price_cart\", \"checkout/pricing.py:15 in apply_promo\"]",
+    "item": {
+     "kind": "value",
+     "source": "l2",
+     "column": "stack",
+     "at": "2026-11-12T07:46:44.078Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      1
+     ],
+     "value": "checkout/app.py:72 handle -> checkout/app.py:136 _checkout -> checkout/pricing.py:11 price_cart -> checkout/pricing.py:15 apply_promo",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "failure is raised in pricing, before any pool or payments step; failing lines have no db_query_ms or payments fields, matching bad-deploy.md"
+    },
+    "call": "false_flag",
+    "note": "holds: l2[1]'s stack is the four frames the value lists, in order, each written without its ' in ' and joined with ' -> '; l2[1] is a TypeError 500 with no pool, db_query_ms, or payments fields."
+   }
+  },
+  "deploy-1112-0803-r1": {
+   "e2": {
+    "verdict": "contradicted",
+    "reason": "timestamp at l2[1] is 2026-11-12T08:03:21.700Z",
+    "item": {
+     "kind": "value",
+     "source": "l2",
+     "column": "timestamp",
+     "at": "2026-11-12T08:03:21.700Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      1
+     ],
+     "value": "TypeError",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "first failing line in the window, on version 1.43.0, about 10 s after the deploy"
+    },
+    "call": "right",
+    "note": "the value TypeError is l2[1]'s error_type, not its timestamp (08:03:21.700); and l2[1] is only the oldest of the newest 30 of 37 lines found from 08:03:15, so 'the first failing line in the window' is said of 7 lines the result never showed."
+   },
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "26 of 30 lines have error_type TypeError",
+    "item": {
+     "kind": "count",
+     "source": "l2",
+     "column": "error_type",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "TypeError",
+     "low": null,
+     "high": null,
+     "count": 27,
+     "seconds": null,
+     "note": "27 of the 30 lines shown are TypeError 500s on POST /checkout, all with has_promo false"
+    },
+    "call": "right",
+    "note": "count 27: 26 of l2's 30 lines are TypeError 500s; the other 4 are 200s with a promo."
+   },
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_p99_ms runs 0.4 to 0.5 over 6 rows",
+    "item": {
+     "kind": "range",
+     "source": "m2",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "07:58:00",
+     "end": "08:03:00",
+     "lines": null,
+     "value": null,
+     "low": 0.3,
+     "high": 0.5,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait stayed flat through the onset, so the database pool is not the cause"
+    },
+    "call": "right",
+    "note": "low 0.3: m2's 07:58-08:03 rows of pool_wait_p99_ms run 0.4 to 0.5."
+   }
+  },
+  "deploy-1112-2000-r1": {
+   "e13": {
+    "verdict": "contradicted",
+    "reason": "0 of 22 lines have route GET /products/{id} or POST /cart/items",
+    "item": {
+     "kind": "count",
+     "source": "l2",
+     "column": "route",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      2,
+      3,
+      7,
+      8,
+      9,
+      10,
+      12,
+      14,
+      15,
+      18,
+      19,
+      20,
+      21,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+     ],
+     "value": "GET /products/{id} or POST /cart/items",
+     "low": null,
+     "high": null,
+     "count": 22,
+     "seconds": null,
+     "note": "the other routes succeed with 200/201 and normal latency on 1.43.0"
+    },
+    "call": "right",
+    "note": "form: the typed value 'GET /products/{id} or POST /cart/items' isn't a value of the field, though every stated fact holds in the cited lines: the 22 are 10 GET /products/{id} 200s and 12 POST /cart/items 201s, all on 1.43.0, at 31.7 to 159.6 ms (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   },
+   "e15": {
+    "verdict": "contradicted",
+    "reason": "version at d1 2026-11-12T08:04:55.634Z is 1.43.0->1.42.0",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "version",
+     "at": "2026-11-12T08:04:55.634Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "1.42.0 (rollback from 1.43.0)",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "earlier 1.43.0 rollout (08:03) was rolled back a minute later; 1.42.0 served until the 20:00 redeploy"
+    },
+    "call": "right",
+    "note": "form: the typed value '1.42.0 (rollback from 1.43.0)' isn't the field's value (1.43.0->1.42.0), though every stated fact holds in d1: the 08:04:55 rollback from 1.43.0 to 1.42.0, 1 min 44 s after the 08:03:11 deploy ('a minute later', loosely), and no version change until the 20:00:15 deploy (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   },
+   "e16": {
+    "verdict": "contradicted",
+    "reason": "version at d1 2026-11-12T07:46:29.556Z is 1.42.0->1.43.0",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "version",
+     "at": "2026-11-12T07:46:29.556Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "1.43.0 (deploy), then 07:47:36 rollback to 1.42.0",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "earlier 1.43.0 attempts, long before onset; not the cause of an error that began at 20:00"
+    },
+    "call": "right",
+    "note": "form: the typed value holds two records, the 07:46:29 1.43.0 deploy and the 07:47:36 rollback, in one item's version (1.42.0->1.43.0 at 07:46:29), though both are in d1 as stated (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   },
+   "e18": {
+    "verdict": "contradicted",
+    "reason": "POOL_MAX_SIZE at d1 2026-10-30T22:13:02.515Z is 20->2",
+    "item": {
+     "kind": "value",
+     "source": "d1",
+     "column": "POOL_MAX_SIZE",
+     "at": "2026-10-30T22:13:02.515Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "20->2, then 2->20 at 22:20:23",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "pool changes weeks before onset; pool wait stayed at 0.3 to 0.5 ms, so the pool is not involved"
+    },
+    "call": "right",
+    "note": "form: the typed value holds two records, the 10-30 22:13:02 POOL_MAX_SIZE 20->2 and the 22:20:23 2->20 revert, in one item's POOL_MAX_SIZE, though both are in d1 as stated, and m1's pool_wait_p99_ms runs 0.3 to 0.5 as its note says (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   }
+  },
+  "deploy-1113-0257-r1": {
+   "e3": {
+    "verdict": "contradicted",
+    "reason": "payments_p99_ms runs 65.8 to 300 over 16 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "02:42:00",
+     "end": "02:57:00",
+     "lines": null,
+     "value": null,
+     "low": 112.0,
+     "high": 300.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency stayed in its usual range through onset"
+    },
+    "call": "right",
+    "note": "low 112.0: m1's 02:42-02:57 rows of payments_p99_ms go down to 65.8 (02:52) and 104 (02:53)."
+   },
+   "e13": {
+    "verdict": "contradicted",
+    "reason": "1 of 30 lines have another has_promo: l2[7] has true",
+    "item": {
+     "kind": "all",
+     "source": "l2",
+     "column": "has_promo",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15,
+      17,
+      18,
+      19,
+      20,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      33,
+      37
+     ],
+     "value": "false",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "every failing checkout line in the window has has_promo false"
+    },
+    "call": "right",
+    "note": "l2[7], one of the 30 cited, is a 200 with has_promo true; the 29 others, every failing line in l2, have false."
+   },
+   "e15": {
+    "verdict": "contradicted",
+    "reason": "30 of 30 lines have another stack: l2[1] has [\"checkout/app.py:72 in handle\", \"checkout/app.py:136 in _checkout\", \"checkout/pricing.py:11 in price_cart\", \"checkout/pricing.py:15 in apply_promo\"]",
+    "item": {
+     "kind": "all",
+     "source": "l2",
+     "column": "stack",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15,
+      17,
+      18,
+      19,
+      20,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      33,
+      37
+     ],
+     "value": "checkout/app.py:72 in handle > checkout/app.py:136 in _checkout > checkout/pricing.py:11 in price_cart > checkout/pricing.py:15 in apply_promo",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "all failing lines share the same stack, ending in apply_promo"
+    },
+    "call": "right",
+    "note": "l2[7], one of the 30 cited, is a 200 with no stack; the 29 failing lines do share the four frames the value lists, joined with ' > ', so on them alone the checker's 'another stack' would be a false flag."
+   }
+  },
+  "downstream-1114-2357-r1": {
+   "e8": {
+    "verdict": "contradicted",
+    "reason": "1 of 1 lines have error_type UpstreamTimeout",
+    "item": {
+     "kind": "count",
+     "source": "l1",
+     "column": "error_type",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      4
+     ],
+     "value": "UpstreamTimeout",
+     "low": null,
+     "high": null,
+     "count": 2,
+     "seconds": null,
+     "note": "504 from payments-api timeout; upstream_timeout_ms 2000.0 matches the configured limit"
+    },
+    "call": "right",
+    "note": "count 2: l1 holds one UpstreamTimeout line, [4], the one it cites."
+   },
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "latency_ms runs 38.8 to 1355.3 over 26 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "latency_ms",
+     "at": null,
+     "start": "23:57:33.314Z",
+     "end": "23:57:36.928Z",
+     "lines": null,
+     "value": null,
+     "low": 40.5,
+     "high": 1355.3,
+     "count": null,
+     "seconds": null,
+     "note": "cart and product lines stay fast; checkout lines are the slow ones"
+    },
+    "call": "right",
+    "note": "low 40.5: the 26 lines from 23:57:33.314 to 23:57:36.928 go down to 38.8 ([21], GET /products/{id})."
+   }
+  },
+  "pool-1116-2058-r1": {
+   "e6": {
+    "verdict": "contradicted",
+    "reason": "db_query_p50_ms runs 65.7 to 71.1 over 2 rows",
+    "item": {
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "20:57:00",
+     "end": "20:58:00",
+     "lines": null,
+     "value": null,
+     "low": 65.7,
+     "high": 87.6,
+     "count": null,
+     "seconds": null,
+     "note": "query time stays in its usual 50-90 ms range, not the cause"
+    },
+    "call": "right",
+    "note": "high 87.6: m1's 20:57 and 20:58 rows of db_query_p50_ms are 71.1 and 65.7; 87.6 is 20:58's p50_ms."
+   },
+   "e10": {
+    "verdict": "contradicted",
+    "reason": "pool_wait_time_ms runs 42 to 96.2 over 4 lines",
+    "item": {
+     "kind": "range",
+     "source": "l1",
+     "column": "pool_wait_time_ms",
+     "at": null,
+     "start": "2026-11-16T20:58:09.306Z",
+     "end": "2026-11-16T20:58:11.501Z",
+     "lines": [
+      6,
+      10,
+      12,
+      15
+     ],
+     "value": null,
+     "low": 50.6,
+     "high": 96.2,
+     "count": null,
+     "seconds": null,
+     "note": "the lines that waited, with pool_active_connections at 2 and concurrent_requests 3-4"
+    },
+    "call": "right",
+    "note": "low 50.6: the cited lines run 42.0 ([15]) to 96.2 ([12])."
+   },
+   "e11": {
+    "verdict": "unresolved",
+    "reason": "l1 has no column or field 'error_type'",
+    "item": {
+     "kind": "count",
+     "source": "l1",
+     "column": "error_type",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": 0,
+     "seconds": null,
+     "note": "no failed requests in the window; err% stays 0 so far"
+    },
+    "call": "right",
+    "note": "form: the typed column 'error_type' is on no line of l1, and the count gives no value to match, though every stated fact holds: l1's 20 lines are all 200s and 201s, none failed, and m1's err% is 0.0 through 20:58 (a none types this) (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   }
+  },
+  "pool-1117-0234-r1": {
+   "e11": {
+    "verdict": "contradicted",
+    "reason": "2 in the window, the first d1 2026-11-17T00:31:06.542Z",
+    "item": {
+     "kind": "none",
+     "source": "d1",
+     "column": null,
+     "at": null,
+     "start": "2026-11-16T22:44:22.000Z",
+     "end": "2026-11-17T02:30:51.000Z",
+     "lines": null,
+     "value": null,
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "no change in the window that fits the onset; the 1.43.0 rollback, the 00:07 recommendations config and the 00:31 log-sampling config all came hours before the onset, and latency was normal after them"
+    },
+    "call": "right",
+    "note": "the none's window (11-16 22:44:22 to 11-17 02:30:51) holds 2 records after the rollback at its start, the 00:07:15 RECOMMENDATIONS_ENABLED and 00:31:06 LOG_SAMPLE_RATE changes, which its note names: records judged unrelated take their own items, not a none."
+   }
+  },
+  "deploy-1117-0551-r1": {
+   "e2": {
+    "verdict": "contradicted",
+    "reason": "timestamp at l1[1] is 2026-11-17T05:51:16.087Z",
+    "item": {
+     "kind": "value",
+     "source": "l1",
+     "column": "timestamp",
+     "at": "2026-11-17T05:51:16.087Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      1
+     ],
+     "value": "TypeError",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "first failing line, 3 s after the 1.43.0 deploy"
+    },
+    "call": "right",
+    "note": "form: the typed column 'timestamp' (value 'TypeError', the line's error_type) isn't the field's value, though every stated fact holds: l1[1], at 05:51:16.087, is the oldest of the 25 error lines l1 found in its 15 minutes, all shown, 3.3 s after the 05:51:12.756 1.43.0 deploy (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   },
+   "e7": {
+    "verdict": "contradicted",
+    "reason": "l2[16] has no pool_active_connections",
+    "item": {
+     "kind": "value",
+     "source": "l2",
+     "column": "pool_active_connections",
+     "at": "2026-11-17T05:51:43.346Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      16
+     ],
+     "value": "absent",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "failing lines lack pool fields and db_query_ms, so they stop in pricing before the DB call"
+    },
+    "call": "right",
+    "note": "form: the typed value 'absent' isn't a value of the field, though the stated fact holds: l2[16] is a TypeError 500 on 1.43.0 with no pool_active_connections, db_query_ms, or payments fields (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   },
+   "e17": {
+    "verdict": "contradicted",
+    "reason": "route at l2[4] is POST /cart/items",
+    "item": {
+     "kind": "value",
+     "source": "l2",
+     "column": "route",
+     "at": "2026-11-17T05:51:41.267Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      3,
+      4,
+      5,
+      7
+     ],
+     "value": "200/201",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "GET /products/{id} and POST /cart/items succeed on 1.43.0 at normal latency, so the fault is confined to the checkout promo path"
+    },
+    "call": "right",
+    "note": "form: the typed value '200/201' is the lines' status, not their route, though every stated fact holds: l2[3], [4], [5], and [7] are GET /products/{id} 200s and POST /cart/items 201s on 1.43.0, at 45.9 to 127.3 ms (the audit's convention 4 leaves it unlabeled). Called right: wrong as typed, as in the hand checks of sweeps 20261117T192758Z and 20261118T050147Z-sonnet (the user's call, 2026-11-18)."
+   }
+  }
+ }
+}
