@@ -17,7 +17,7 @@ from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 from fake_gateway import URL, FakeGateway, text_result
 from strands import tool
-from stubs import TOOL_FIXTURES, FakeSession, load
+from stubs import RECORDED_KB, TOOL_FIXTURES, FakeSession, load
 
 import gateway as gateway_module
 from gateway import Gateway
@@ -26,7 +26,9 @@ from sentinelops_tools.env import ToolEnv
 from sentinelops_tools.toolset import make_tools
 
 CREDENTIALS = Credentials("testing", "testing", "testing")
-FIXTURES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_bad_deploy"]
+# One recorded fixture per tool, in the tools' order. The three reads share one
+# clock; the runbook search reads no time.
+FIXTURES = ["metrics_bad_deploy", "logs_bad_deploy_errors", "history_bad_deploy", "runbooks_pool"]
 NOW = load(TOOL_FIXTURES / "history_bad_deploy.json")["now"]
 AS_OF = "2026-10-27T19:05:57.026Z"
 
@@ -35,10 +37,13 @@ def gateway(fake: FakeGateway) -> Gateway:
     return Gateway(URL, CREDENTIALS, "us-east-1", transport=fake.transport())
 
 
-def call_all(client: Gateway, *, as_of: Any = None, **kwargs: Any) -> list[str]:
+def call_all(client: Gateway, *, as_of: Any = None, args: dict[str, dict[str, Any]] | None = None) -> list[str]:
+    """Every tool once, each with its arguments in `args` (by tool name), or none."""
+    args = args or {}
+
     async def go() -> list[str]:
         try:
-            return [await fn(**kwargs) for fn in client.tools(as_of=as_of)]
+            return [await fn(**args.get(fn.__name__, {})) for fn in client.tools(as_of=as_of)]
         finally:
             await client.aclose()
 
@@ -69,19 +74,22 @@ def test_each_tool_returns_what_it_returns_here() -> None:
     session = FakeSession()
     for name in FIXTURES:
         session.replay(load(TOOL_FIXTURES / f"{name}.json"))
-        assert load(TOOL_FIXTURES / f"{name}.json")["now"] == NOW
-    fake = FakeGateway(ToolEnv.from_session(session))
+    assert {load(TOOL_FIXTURES / f"{name}.json")["now"] for name in FIXTURES[:3]} == {NOW}
+    fake = FakeGateway(ToolEnv.from_session(session, knowledge_base_id=RECORDED_KB))
+    search = load(TOOL_FIXTURES / "runbooks_pool.json")["calls"][0]["params"]["retrievalQuery"]["text"]
 
-    texts = call_all(gateway(fake), as_of=datetime.fromisoformat(NOW))
+    texts = call_all(gateway(fake), as_of=datetime.fromisoformat(NOW), args={"search_runbooks": {"query": search}})
 
     assert texts == [load(TOOL_FIXTURES / f"{name}.json")["text"] for name in FIXTURES]
     session.assert_all_called()  # each handler made its tool's recorded calls, with their parameters
     # A session per call: the handshake, the listing the SDK makes anyway, then the call.
-    assert fake.methods() == ["initialize", "notifications/initialized", "tools/list", "tools/call"] * 3
+    assert fake.methods() == ["initialize", "notifications/initialized", "tools/list", "tools/call"] * 4
     assert fake.calls == [
         ("metrics___get_metrics", {"minutes": 10, "period_seconds": 10, "as_of": AS_OF}),
         ("logs___get_recent_logs", {"minutes": 10, "errors_only": True, "limit": 20, "as_of": AS_OF}),
         ("deploys___get_deploy_history", {"limit": 10, "as_of": AS_OF}),
+        # A replay stamps every call; the search's handler takes as_of and reads no time.
+        ("runbooks___search_runbooks", {"query": search, "as_of": AS_OF}),
     ]
 
 

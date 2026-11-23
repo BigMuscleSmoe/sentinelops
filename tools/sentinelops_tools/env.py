@@ -10,6 +10,8 @@ SERVICE = "checkout-api"
 LOG_GROUP = "/aws/lambda/sentinelops-checkout-api"
 HISTORY_TABLE = "sentinelops-deploy-history"
 NAMESPACE = "checkout-api"
+# The runbook knowledge base's ID: Terraform sets it on the search tool's function.
+KNOWLEDGE_BASE_ENV = "SENTINELOPS_RUNBOOKS_KB_ID"
 
 
 def utc_now() -> datetime:
@@ -30,9 +32,15 @@ class ToolEnv:
     log_group: str = LOG_GROUP
     history_table: str = HISTORY_TABLE
     namespace: str = NAMESPACE
+    # The runbook search: Bedrock's retrieval client and the knowledge base it
+    # searches. None where no knowledge base is set up, as in a recorded window.
+    bedrock_agent_runtime: Any = None
+    knowledge_base_id: str | None = None
 
     @classmethod
-    def from_session(cls, session: Any, now: Callable[[], datetime] = utc_now) -> "ToolEnv":
+    def from_session(
+        cls, session: Any, now: Callable[[], datetime] = utc_now, knowledge_base_id: str | None = None
+    ) -> "ToolEnv":
         from botocore.config import Config
 
         # A tool call has seconds, not minutes: fail fast and let the model move on.
@@ -44,6 +52,9 @@ class ToolEnv:
             cloudwatch=session.client("cloudwatch", config=config),
             dynamodb=session.client("dynamodb", config=config),
             now=now,
+            # Only with a knowledge base to search: a replay's stand-in session has no such client.
+            bedrock_agent_runtime=session.client("bedrock-agent-runtime", config=config) if knowledge_base_id else None,
+            knowledge_base_id=knowledge_base_id or None,
         )
 
 

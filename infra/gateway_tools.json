@@ -68,5 +68,25 @@
    },
    "required": []
   }
+ },
+ {
+  "name": "search_runbooks",
+  "description": "checkout-api's runbooks that come closest to what you describe.\n\nDescribe what you measured in your own words: the alarm, which signals moved\nand which stayed flat, which routes fail and how. The 2 closest runbooks come\nback in full (Symptoms, What this is not, Diagnosis), the rest by name only.\nThe closest runbook is not always the one that fits.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "What you measured, at most 500 characters."
+    },
+    "as_of": {
+     "type": "string",
+     "description": "Replays only: the investigation's now, in ISO 8601 with a time zone. Every read ends there. Left out, reads end at the function's own clock, which also caps a later time."
+    }
+   },
+   "required": [
+    "query"
+   ]
+  }
  }
 ]

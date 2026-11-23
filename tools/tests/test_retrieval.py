@@ -118,9 +118,9 @@ def test_a_retrieve_response_becomes_hits_in_its_order() -> None:
     response = {
         "retrievalResults": [
             {
-                "content": {"text": "x"},
+                "content": {"text": f"# Runbook: {runbook}\n\n## {section}\n\nx", "type": "TEXT"},
                 "location": {"type": "S3", "s3Location": {"uri": f"s3://bucket/{name}"}},
-                "metadata": {"runbook": runbook, "section": section, "corpus": "abc"},
+                "metadata": {"runbook": runbook, "section": section, "title": runbook.upper(), "corpus": "abc"},
                 "score": score,
             }
             for name, runbook, section, score in [
@@ -130,8 +130,8 @@ def test_a_retrieve_response_becomes_hits_in_its_order() -> None:
         ]
     }
     assert hits_from_retrieve(response) == [
-        Hit("b--diagnosis.md", "b.md", "Diagnosis", 0.61),
-        Hit("a--symptoms.md", "a.md", "Symptoms", 0.55),
+        Hit("b--diagnosis.md", "b.md", "Diagnosis", 0.61, "B.MD", "# Runbook: b.md\n\n## Diagnosis\n\nx"),
+        Hit("a--symptoms.md", "a.md", "Symptoms", 0.55, "A.MD", "# Runbook: a.md\n\n## Symptoms\n\nx"),
     ]
 
 

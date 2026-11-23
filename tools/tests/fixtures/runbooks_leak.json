@@ -1,0 +1,796 @@
+{
+ "about": "search_runbooks on the retrieval set's leak-1, recorded against the live knowledge base (corpus 197a0201c9eb); the bucket and the IDs masked.",
+ "now": "2026-11-23T07:17:31+00:00",
+ "query_id": "leak-1",
+ "calls": [
+  {
+   "operation": "retrieve",
+   "params": {
+    "knowledgeBaseId": "RECORDEDKB",
+    "retrievalQuery": {
+     "text": "a steady stream of cold starts at steady traffic; requests vanish without log lines, err% stays low, and pool and payments-api are flat"
+    },
+    "retrievalConfiguration": {
+     "vectorSearchConfiguration": {
+      "numberOfResults": 100
+     }
+    }
+   },
+   "response": {
+    "retrievalResults": [
+     {
+      "content": {
+       "text": "# Runbook: Traffic surge\n\n## What this is not\n\nIf the pool fills under traffic it has held before, check `pool_max_size` on the log lines and the deploy history. A smaller pool is a config change, not a surge (see `db-pool-exhaustion.md`).\n\nIf `db_query_p50_ms` rises with the traffic, the database is slowing under the load (see `slow-database.md`).\n\nIf only `POST /checkout` slows, with `payments_p99_ms` up, the time is in payments-api (see `downstream-timeout.md`).\n\nIf err% steps up to a steady share at once, with stack traces and a new version on the failing lines, it's a bad deploy that the traffic only made louder (see `bad-deploy.md`).\n\nIf callers see errors that leave no line in this service's logs, the requests were refused before the code ran, by API Gateway's throttle (429s, above) or by Lambda's concurrency cap (see `lambda-throttling.md`), or killed before they finished (see `memory-leak.md`).\n\nTraffic is the trigger, not the cause, whenever something else that acts on what failed changed at the onset: a config value, a release, a dependency. A surge is the cause only when nothing that acts on what failed changed, and the extra traffic alone reached one of the limits above.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/traffic-surge--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Traffic surge",
+       "runbook": "traffic-surge.md",
+       "x-amz-bedrock-kb-chunk-id": "e53c29a9-4b97-4f61-9e60-f5d40dcd6071"
+      },
+      "score": 0.695825
+     },
+     {
+      "content": {
+       "text": "# Runbook: Traffic surge\n\n## Symptoms\n\nMore requests arrive than usual. On its own that isn't a failure. The service scales out, one Lambda instance per request in flight, and each request that queries takes a connection from one shared pool of 20 for as long as its query runs. A surge the service absorbs looks like this:\n\n**`req` rises; little else moves**\n\n- `req` rises, and `concurrent_max` and `pool_active_max` rise with it, in proportion: connections in use are about requests a second times how long each query holds one\n- p50 latency stays at its usual level. p99 can rise while new instances start: each new instance's first request is slower than its warm ones (`cold_start: true` on that line)\n- err% stays at 0, `pool_wait_p99_ms` stays near zero, and `db_query_p50_ms` and `payments_p99_ms` stay flat\n- No alarm fires: none of the three alarms watches traffic. If one fired, the surge met a limit or arrived with a fault: see What this is not\n\n**At the edges: what the service never sees**\n\n- API Gateway throttles requests at the stage's default route settings: a rate limit of 30 requests a second, with up to 60 at once. Requests past them are throttled before they reach checkout-api, and callers get `429 Too Many Requests` from API Gateway. They leave no log line and no metric here: nothing in `req`, nothing in err%. A `req` that flattens while callers report errors is the sign\n- checkout-api is capped at 80 concurrent executions. Past that, Lambda refuses the invocation before the code runs. With API Gateway's throttle in front, traffic alone rarely reaches the cap: requests have to be slow too (see `lambda-throttling.md`)",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/traffic-surge--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Traffic surge",
+       "runbook": "traffic-surge.md",
+       "x-amz-bedrock-kb-chunk-id": "78066648-fa7d-4e3e-a134-9c023b25ba55"
+      },
+      "score": 0.695276
+     },
+     {
+      "content": {
+       "text": "# Runbook: Traffic surge\n\n## Diagnosis\n\n1. Read the metrics over a window that starts before the rise. Note when `req` rose, which of err%, latency, `pool_wait_p99_ms`, and `db_query_p50_ms` moved, and whether each moved before or after it.\n2. If only `req`, `concurrent_max`, and `pool_active_max` moved, the service absorbed the surge, and an alarm that fired has another cause: follow the signal that moved.\n3. If pool wait rose, compare `pool_active_max` with `pool_max_size` on the log lines. Connections pegged at the configured 20, under much more traffic than usual and with query time flat, mean the pool is too small for this load. Pegged at a smaller size, the pool was changed (see `db-pool-exhaustion.md`).\n4. Read the deploy history for changes at the onset. A change whose time fits the onset is a suspect before the traffic is.\n5. Where the extra traffic comes from isn't in checkout-api's logs: the lines carry no client fields. Nor are the 429s, which are in API Gateway's own metrics, not this service's. Say what you couldn't check.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/traffic-surge--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Traffic surge",
+       "runbook": "traffic-surge.md",
+       "x-amz-bedrock-kb-chunk-id": "61f57097-5100-4d48-9465-b85b953e5087"
+      },
+      "score": 0.685917
+     },
+     {
+      "content": {
+       "text": "# Runbook: payments-api timeouts (a slow downstream)\n\n## Symptoms\n\ncheckout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. The fault is in the dependency, not in this service: nothing in checkout-api changes, and its deploy history shows no change that acts on the payments call.\n\n**The latency alarm fires; the error and pool-wait alarms stay OK**\n\n- p99 latency over all routes passes the 1.5 s threshold soon after the slowdown begins and stays above it. Checkouts are a minority of requests, but their tail is the payments call, and it sets the p99\n- p99 above 2 s, checkout only: `POST /checkout` p99 sits just above the 2000 ms timeout. Other routes stay fast: `GET /products/{id}` and `POST /cart/items` never call payments-api\n- Payments p99 near the timeout: `payments_p99_ms` rises from its usual level to about the timeout, since a timed-out call is recorded at the timeout. The typical call (the request lines' `upstream_latency_ms`) slows well past its usual level, though most calls still finish inside the timeout\n- A few timeouts a minute: `payments_timeouts` stays above 0 under load, a small share of checkouts, not all of them\n- `concurrent_max` climbs under load, since each checkout holds its request open for the call. The extra instances' cold starts can lift the other routes' p99 a little; their warm requests are unchanged\n\n**err% stays at 0.** A 504 is the upstream's failure, not this service's: its log line has `error: 0`, and it counts under `payments_timeouts`, never err%. A flat error rate does not rule this out.\n\n**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect. On the slow checkouts that finish, `upstream_latency_ms` is most of `latency_ms`.\n\n**Throughout:** `pool_wait_p99_ms` stays near zero, `db_query_p50_ms` stays flat, and `pool_active_max` stays below `pool_max_size`. The order's connection goes back to the pool before the charge, so a slow payments-api holds no connection.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/downstream-timeout--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "payments-api timeouts (a slow downstream)",
+       "runbook": "downstream-timeout.md",
+       "x-amz-bedrock-kb-chunk-id": "72824966-eb1c-4cea-83c1-45a777c6af38"
+      },
+      "score": 0.676894
+     },
+     {
+      "content": {
+       "text": "# Runbook: Memory leak\n\n## What this is not\n\nIf failures leave lines here, with stack traces, and began right after a release, it's a bad deploy, not a leak: a leak's failures leave no lines, and start only once instances have served many requests (see `bad-deploy.md`).\n\nIf `concurrent_max` sits flat at the cap of 80, requests are being refused, not killed (see `lambda-throttling.md`). Refused requests leave no lines either, but they bring no stream of cold starts.\n\nIf cold starts rise with `req`, Lambda is adding instances for more traffic (see `traffic-surge.md`). A leak replaces instances while traffic stays steady.\n\nA few cold starts at steady traffic are normal: Lambda replaces instances every few hours for maintenance, even under constant load. A leak makes them regular.\n\nA request that runs into the function's 10-second timeout also resets its instance and leaves no line, but its `platform.report` record says `timeout`, not `error`. This service's own limits (`POOL_ACQUIRE_TIMEOUT_MS`, `PAYMENTS_TIMEOUT_MS`) end its requests well before that.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/memory-leak--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Memory leak",
+       "runbook": "memory-leak.md",
+       "x-amz-bedrock-kb-chunk-id": "e93c4de0-ce68-46d3-bcf0-7ef6b914cbfc"
+      },
+      "score": 0.673995
+     },
+     {
+      "content": {
+       "text": "# Runbook: payments-api timeouts (a slow downstream)\n\n## What this is not\n\nIf `pool_wait_p99_ms` rises with the latency, the time is spent waiting for a connection: that is pool exhaustion (see `db-pool-exhaustion.md`), not this.\n\nIf `db_query_p50_ms` rises with the latency, the time is in the database's queries, and every route slows, not only checkout (see `slow-database.md`).\n\nIf err% jumps, the failures are 500s with a stack, or a new version appears in the logs or the deploy history, check for a bad deploy (see `bad-deploy.md`). A slow payments-api produces no 500s.\n\nIf `payments_timeouts` rises while payments-api's typical call stays at its usual latency, the timeout itself may have been lowered. Check the deploy history for a change to `PAYMENTS_TIMEOUT_MS`, and read the timeout the 504 lines name. That change is in this service, and is fixed here.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/downstream-timeout--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "payments-api timeouts (a slow downstream)",
+       "runbook": "downstream-timeout.md",
+       "x-amz-bedrock-kb-chunk-id": "23b56557-0a5f-4db1-a967-59bf96d75f93"
+      },
+      "score": 0.668352
+     },
+     {
+      "content": {
+       "text": "# Runbook: Bad deploy (a release that fails requests)\n\n## Symptoms\n\nA release with a bug fails every request that takes the broken code path, from the moment it starts serving. Nothing builds up first: no queue, no slow dependency. The failures start within a period or two of the new version's first requests and hold at a steady share of traffic until the release is rolled back.\n\n**The error alarm fires; the pool-wait and latency alarms stay OK**\n\n- err% steps up at once, with no ramp before it, and holds at the share of requests that take the broken path. The error alarm needs err% above 5% in 2 of the last 3 10-second periods, so under load it fires soon after the onset. At baseline traffic a 10-second period holds only a few requests, so err% jumps between 0 and high values from one period to the next, and the alarm can go OK and fire again\n- p99 latency does not rise. A request that fails in its own code answers quickly, and one that fails before it takes a database connection answers faster than one that succeeds. p50 can fall a little, since the fast failures count in it\n- Only the routes that run the broken code fail, often one route alone, such as `POST /checkout`, while latency, pool wait, and payments-api stay normal. The other routes keep succeeding at their usual latency\n\n**Logs:** each failure is a line with `status: 500`, `level: ERROR`, and `error: 1`, with `error_type`, `error_message` (the line's `message` is the two joined), and `stack`: the innermost frames, up to 10, each as `path:line in function`. The stack names the file and function that raised. Every failing line carries the new release's `version`.\n\n**Where a failure stops a checkout:** `POST /checkout` prices the cart, then saves the order, which takes a database connection, then calls payments-api. A line records only the steps its request reached. A checkout that fails while pricing has no pool fields, no `db_query_ms`, and no payments fields; one that fails while saving the order has pool fields but no `db_query_ms`; one that fails at payments has all of them. The fields a failing line lacks show where it stopped, and the stack should agree.\n\n**Deploy history:** a `kind: deploy` record shortly before the first failing period, whose `changes` show `version` going from the old release to the new one.\n\n**Throughout:** `pool_wait_p99_ms` stays near zero, `pool_active_max` stays below `pool_max_size`, `db_query_p50_ms` stays flat, and `payments_p99_ms` and `payments_timeouts` stay at their usual level. The service's dependencies are fine; its own code is failing.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/bad-deploy--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Bad deploy (a release that fails requests)",
+       "runbook": "bad-deploy.md",
+       "x-amz-bedrock-kb-chunk-id": "757b2a29-0171-4d4f-b9ab-33f5c95f586d"
+      },
+      "score": 0.667207
+     },
+     {
+      "content": {
+       "text": "# Runbook: payments-api timeouts (a slow downstream)\n\n## Diagnosis\n\n1. Read the metrics. If `payments_p99_ms` and `payments_timeouts` rose at the onset while `pool_wait_p99_ms` and `db_query_p50_ms` stayed flat, the time is in payments-api.\n2. Read the failing log lines. 504s with `UpstreamTimeout` naming payments-api, and no 500s, confirm it.\n3. On the 504 lines, compare `upstream_latency_ms` with `upstream_timeout_ms`. `upstream_timeout_ms` is the limit in effect for that request, and a timed-out call's `upstream_latency_ms` sits at it: payments-api used the whole limit and never answered. If `upstream_timeout_ms` is below the configured `PAYMENTS_TIMEOUT_MS`, the timeout was lowered, a change in this service (see \"What this is not\"). Successful checkout lines carry the same two fields: calls that succeed close to the limit mean payments-api is slow for everyone, not only for the 504s.\n4. Compare routes: `GET /products/{id}` and `POST /cart/items` should be at their usual latency. If they are slow too, the cause is not payments-api alone.\n5. Read the deploy history for the minutes before the onset. If nothing was deployed or changed there, checkout-api did not cause it. A deploy or config change from well before the onset, or one already rolled back, did not start a slowdown that began just now.\n6. The fault is upstream: nothing in checkout-api's code or config fixes it, so no change to this service is proposed.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/downstream-timeout--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "payments-api timeouts (a slow downstream)",
+       "runbook": "downstream-timeout.md",
+       "x-amz-bedrock-kb-chunk-id": "8eaaa920-708b-47ba-8cbb-063421891a32"
+      },
+      "score": 0.661491
+     },
+     {
+      "content": {
+       "text": "# Runbook: Slow database queries\n\n## What this is not\n\nIf `db_query_p50_ms` stays flat, the database is not slow, whatever else is.\n\nIf `pool_wait_p99_ms` rises while `db_query_p50_ms` stays flat, the pool is too small for the traffic, not too slow: check `pool_max_size` on the log lines and the deploy history for a change to `POOL_MAX_SIZE` (see `db-pool-exhaustion.md`).\n\nIf only `POST /checkout` slows, and `payments_p99_ms` rises with it, the time is in the payments-api call, not the database (see `downstream-timeout.md`).\n\nIf err% jumps at once, with stack traces from this service's own code and no rise in latency first, check for a bad deploy (see `bad-deploy.md`).\n\nIf query time rises only while traffic is high and falls back with it, the database is reaching its own capacity under load: start from the traffic (see `traffic-surge.md`).",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/slow-database--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Slow database queries",
+       "runbook": "slow-database.md",
+       "x-amz-bedrock-kb-chunk-id": "bc5453c5-4c89-41c3-ba18-f3085d645214"
+      },
+      "score": 0.648075
+     },
+     {
+      "content": {
+       "text": "# Runbook: Traffic surge\n\n## Resolution\n\n**If the service absorbed it:** nothing to fix. Note the peak, so the next load test covers it.\n\n**If a limit was reached:** follow the runbook for that limit (the pool, the database, the concurrency cap). Raise a limit only with the next one in mind: more requests through API Gateway mean more concurrency, more connections, and more load on the database. Each limit protects the one after it.\n\n**If the surge is clients retrying failures:** fix the failure first. Retries multiply the load a failure creates, and they stop when it does.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/traffic-surge--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Traffic surge",
+       "runbook": "traffic-surge.md",
+       "x-amz-bedrock-kb-chunk-id": "8d342942-1a25-477c-a675-3f3cf6560e23"
+      },
+      "score": 0.646939
+     },
+     {
+      "content": {
+       "text": "# Runbook: Lambda concurrency throttling\n\n## Symptoms\n\ncheckout-api runs one request per Lambda instance, and the function is capped at 80 concurrent executions (its reserved concurrency). The 80 are its own: no other function in the account can take them, and it can't use more. When all 80 are busy, Lambda refuses the next invocation with a throttling error (`TooManyRequestsException`, reason `ReservedFunctionConcurrentInvocationLimitExceeded`, HTTP 429) before any of this service's code runs. API Gateway gets that refusal instead of a response from checkout-api, and answers the caller with an error of its own.\n\n**What this service's metrics show**\n\n- `concurrent_max` climbs to the cap and stays flat at or just under 80. It counts the requests in flight that use the pool, so `GET /health` calls aren't in it\n- `req` stops rising, or falls, while callers keep sending: a throttled request is never counted\n- err% can stay low while callers fail: throttled requests aren't in it, so the error alarm doesn't see them\n- The requests that do run are slow. Concurrency is requests a second times how long each takes, and API Gateway's throttle in front of the function (a rate limit of 30 requests a second, with up to 60 at once) holds traffic down, so the cap is reached when requests take much longer than usual, not from traffic alone. p99 latency is high, and the latency alarm (p99 above 1,500 ms in 2 of the last 3 10-second periods) can fire\n\n**What they don't show**\n\n- A throttled request leaves no log line, no `latency_ms`, and no metric here. Lambda counts it in the function's own `Throttles` metric, which isn't among this service's metrics",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/lambda-throttling--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Lambda concurrency throttling",
+       "runbook": "lambda-throttling.md",
+       "x-amz-bedrock-kb-chunk-id": "f70365cf-7efb-4d55-a759-72f3779bdebf"
+      },
+      "score": 0.644186
+     },
+     {
+      "content": {
+       "text": "# Runbook: Memory leak\n\n## Diagnosis\n\n1. Read the request lines over a long window (failures only off). Count the `cold_start: true` lines against `req`, and note when a steady stream of them began.\n2. Read the metrics over the same window. Confirm that `req` stayed steady, that `concurrent_max` stayed well under 80, and that pool wait, query time, and payments stayed flat.\n3. Read the deploy history further back than the onset: the release that introduced a leak can come well before the first failures. A release followed, after a delay, by the stream of cold starts is the suspect.\n4. Lambda's own records aren't in checkout-api's metrics, and the log reads return only this service's lines. Lambda writes a `platform.report` record for every invocation into the function's log group, beside this service's lines but without their fields (`service`, `route`, `status`). Its `record.metrics` holds `maxMemoryUsedMB` and `memorySizeMB` (256), and its `record.status` is `success`, `error`, `failure`, or `timeout`. Under a leak, `maxMemoryUsedMB` climbs toward 256, and a killed request's report has `status` `error`, memory at or near 256, and no line from this service with its request ID (`record.requestId`, which this service logs as `request_id`). Lambda's `Errors` metric counts invocations that end in a function error, the runtime's as well as the code's. Say what you couldn't check: whether `maxMemoryUsedMB` climbed toward 256, and whether the failed requests' reports show `status` `error`.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/memory-leak--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Memory leak",
+       "runbook": "memory-leak.md",
+       "x-amz-bedrock-kb-chunk-id": "8a8ea49b-8592-4b3a-8577-628af54acb98"
+      },
+      "score": 0.642339
+     },
+     {
+      "content": {
+       "text": "# Runbook: Lambda concurrency throttling\n\n## What this is not\n\nIf `concurrent_max` stays well under 80, Lambda is not throttling. Errors that callers see but this service never logs come instead from API Gateway's own throttle, which answers `429 Too Many Requests` (see `traffic-surge.md`), or from instances killed as their memory runs out (see `memory-leak.md`).\n\nIf failures leave lines here (500s with stack traces, 504s with `upstream_timeout`), those requests ran: the service failed them, Lambda didn't refuse them. Start from the failing lines (see `bad-deploy.md`, `downstream-timeout.md`, `db-pool-exhaustion.md`).\n\nThe cap is almost always the effect, not the cause: something made requests slow, and slow requests pile up until they fill it. If `pool_wait_p99_ms`, `db_query_p50_ms`, or `payments_p99_ms` rose before `concurrent_max` reached the cap, that is the cause: follow its runbook (`db-pool-exhaustion.md`, `slow-database.md`, `downstream-timeout.md`).",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/lambda-throttling--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Lambda concurrency throttling",
+       "runbook": "lambda-throttling.md",
+       "x-amz-bedrock-kb-chunk-id": "a38a9984-8508-4f1c-bff2-9cdc7ff847c2"
+      },
+      "score": 0.642022
+     },
+     {
+      "content": {
+       "text": "# Runbook: Slow database queries\n\n## Symptoms\n\nEvery route but `GET /health` takes a connection from the pool, runs one query, and gives the connection back. `db_query_ms` is how long that query held its connection. When the database slows down, every query takes longer, so every route that queries slows together, and each connection stays busy longer.\n\n**First: query time rises on every route**\n\n- `db_query_p50_ms` rises from its usual level at the onset. It is the earliest sign, and it rises on `GET /products/{id}`, `POST /cart/items`, and `POST /checkout` alike: the request lines' `db_query_ms` shows it per route\n- p50 and p99 latency rise with it, on every route, by about the extra query time. The latency alarm (p99 above 1,500 ms in 2 of the last 3 10-second periods) fires if queries slow enough\n- err% stays at 0 while there are still connections to spare\n\n**Then, under load, the pool can fill behind the slow queries:** `pool_wait_p99_ms` rises only after `db_query_p50_ms` has, and any pool timeouts are an effect, not the cause (see `db-pool-exhaustion.md`).\n\n**Logs:** lines that got a connection carry `db_query_ms` above its usual level, on every route. `pool_max_size` on the lines stays at the configured 20, and the version is the one already running.\n\n**Throughout:** `payments_p99_ms` and `payments_timeouts` stay at their usual level. Nothing in checkout-api's deploy history needs to have changed.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/slow-database--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Slow database queries",
+       "runbook": "slow-database.md",
+       "x-amz-bedrock-kb-chunk-id": "3c8669f1-17f3-4bf7-8a4b-a34af1c7c6f3"
+      },
+      "score": 0.633085
+     },
+     {
+      "content": {
+       "text": "# Runbook: Memory leak\n\n## Symptoms\n\nEach Lambda instance keeps its process between requests, so whatever the code holds onto outside a request is still in memory for the next one. A leak adds a little memory with every request an instance serves, and each instance climbs, request by request, toward the function's 256 MB. When an instance runs out, its runtime is killed in the middle of a request, and that request fails. Lambda then resets the instance, and the next request on it starts the runtime again, as a cold start. The cycle repeats on every instance, so failures arrive as a steady trickle, not a step.\n\n**What this service's metrics and logs show**\n\n- `cold_start: true` lines keep appearing while `req` stays steady: instances that ran out are being replaced, not added for traffic\n- p99 latency can rise with them, since a new instance's first request is slower than its warm ones. The latency alarm (p99 above 1,500 ms in 2 of the last 3 10-second periods) can fire\n- err% stays low, and the error alarm may never fire: a killed request leaves no log line, so it isn't in `req`, err%, or latency\n- `pool_wait_p99_ms`, `db_query_p50_ms`, and `payments_p99_ms` stay flat. A leak doesn't have to slow requests before the kill\n- The first failures come hours after the release that caused them, since an instance has to serve many requests before it runs out. The busier the service, the sooner they start",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/memory-leak--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Memory leak",
+       "runbook": "memory-leak.md",
+       "x-amz-bedrock-kb-chunk-id": "66925f5a-25cd-4a90-9b97-00949b574ad6"
+      },
+      "score": 0.633032
+     },
+     {
+      "content": {
+       "text": "# Runbook: payments-api timeouts (a slow downstream)\n\n## Resolution\n\n**Immediate:** escalate to payments-api's owners with the onset time, `payments_p99_ms`, and `payments_timeouts` per minute. checkout-api has nothing to roll back.\n\n**Do not raise `PAYMENTS_TIMEOUT_MS`** to make the 504s go away. Each checkout then holds its request longer and concurrency climbs with it. checkout-api is capped at 80 concurrent requests, and past that every route is throttled, not only checkout. Do not lower it either: that turns slow charges that would have succeeded into 504s.\n\n**Do not resize the pool or roll back checkout-api:** neither is involved, and a rollback changes code that isn't failing.\n\n**Do not add a retry during the incident.** checkout-api calls payments-api once and never retries. A retried charge after a timeout can charge a card twice unless payments-api deduplicates it.\n\nThe incident ends when payments-api recovers: the latency alarm returns to OK soon after.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/downstream-timeout--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "payments-api timeouts (a slow downstream)",
+       "runbook": "downstream-timeout.md",
+       "x-amz-bedrock-kb-chunk-id": "2d46a45d-8cf3-40f4-afdd-8cae67db4ae7"
+      },
+      "score": 0.631223
+     },
+     {
+      "content": {
+       "text": "# Runbook: Bad deploy (a release that fails requests)\n\n## What this is not\n\nIf latency climbs first and errors follow minutes later, this is not a release failing its own code: the service is running out of something. Check `pool_wait_p99_ms` (see `db-pool-exhaustion.md`) and `db_query_p50_ms` (see `slow-database.md`). A release can still be behind a slow query (see `slow-database.md`).\n\nIf the failures are 504s with `UpstreamTimeout` and err% stays flat, the failing step is the payments-api call, not this release (see `downstream-timeout.md`).\n\nIf the change at the onset is a `kind: config` record, whose `changes` name a config key rather than `version`, the release isn't the suspect. The config change is the suspect if its key acts on the failing step: `POOL_MAX_SIZE` on the pool, where a smaller pool fails requests by making them wait for a connection (see `db-pool-exhaustion.md`), or `PAYMENTS_TIMEOUT_MS` on the payments call (see `downstream-timeout.md`). A key with no part in the failing step didn't cause it.\n\nFor failures that leave lines with stack traces, a deploy whose time doesn't fit is a coincidence: those failures start within a period or two of the new version's first requests, not before the deploy and not long after it. A deploy from hours before the onset, or one already rolled back, did not start such failures that began just now. Failures that leave no lines and come with a steady stream of cold starts are different: a release that leaks memory can come hours before its first failures (see `memory-leak.md`).\n\nIf the same error appears on the old version's lines, before the deploy or beside it, the release didn't cause it.\n\nIf callers report errors that leave no line in this service's logs and no mark on err%, the requests never reached the code, or never finished it (see `lambda-throttling.md` and `memory-leak.md`).",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/bad-deploy--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Bad deploy (a release that fails requests)",
+       "runbook": "bad-deploy.md",
+       "x-amz-bedrock-kb-chunk-id": "a04db9cc-6777-498f-adcc-c4515adfdb9c"
+      },
+      "score": 0.630054
+     },
+     {
+      "content": {
+       "text": "# Runbook: Traffic surge\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- Alarm on API Gateway's 429 count, since throttled requests never reach this service's metrics\n- Load test at 1.5x the expected peak before changing any limit: the API's throttle, the concurrency cap, or the pool\n- Rate limits per client, so one caller's surge can't use the whole API's limit",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/traffic-surge--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Traffic surge",
+       "runbook": "traffic-surge.md",
+       "x-amz-bedrock-kb-chunk-id": "636b7313-f801-482b-b939-ec5a4b09dedc"
+      },
+      "score": 0.627542
+     },
+     {
+      "content": {
+       "text": "# Runbook: Database connection pool exhaustion\n\n## Symptoms\n\nPool exhaustion arrives in stages, and the early signs come minutes before any request fails. Diagnose it from those: the first responder, human or agent, is expected to identify pool exhaustion before errors appear.\n\n**Early: the pool is saturated, nothing fails yet**\n\n- `pool_wait_p99_ms` (each line's `pool_wait_time_ms`) rises above 100ms as soon as traffic outgrows the pool, and the pool-wait alarm fires first\n- p99 latency degrades steadily while the error rate stays flat, and the latency alarm fires next. A 0% error rate does not rule this out\n- `pool_active_max` (each line's `pool_active_connections`) is pinned at `pool_max_size`, and `concurrent_max` (`concurrent_requests`) is well above it\n\n**Later: requests start timing out, typically 3 to 6 minutes after the wait first rises**\n\n- Error rate climbs above 5% and keeps rising, and the error alarm fires: 500s on every route that queries, not only `/checkout`\n- Logs contain `TimeoutError: acquiring connection from pool`, on the version already running\n- Errors correlate with request volume, not with any particular endpoint\n\n**Throughout:** query time once a connection is acquired (`db_query_p50_ms`, each line's `db_query_ms`) stays flat, and so does `payments_p99_ms`. The database itself is fine; requests are waiting for a connection, not for their queries.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/db-pool-exhaustion--symptoms.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Symptoms",
+       "title": "Database connection pool exhaustion",
+       "runbook": "db-pool-exhaustion.md",
+       "x-amz-bedrock-kb-chunk-id": "c8ef26f2-9107-4a7c-8d7c-ba0b46c0aa6b"
+      },
+      "score": 0.626047
+     },
+     {
+      "content": {
+       "text": "# Runbook: Lambda concurrency throttling\n\n## Diagnosis\n\n1. Read the metrics over a window that starts before the onset. Find when `concurrent_max` reached the cap, whether it stayed flat there, and whether `req` flattened or fell at the same time.\n2. Find what slowed requests first: which of `pool_wait_p99_ms`, `db_query_p50_ms`, `payments_p99_ms`, and p50 latency moved before the cap was reached. The first to move is the cause; the cap is its effect.\n3. Read the request lines (failures only off). The requests that ran are slow, and their fields show where the time went: `pool_wait_time_ms`, `db_query_ms`, `upstream_latency_ms`. Throttled requests have no lines at all.\n4. Read the deploy history for changes at the onset. A release or config change that slowed requests comes first. The cap itself is set on the function, not in the service's config keys, so a change to it may not appear in the deploy history.\n5. The function's `Throttles` metric, and what API Gateway sent callers, aren't in checkout-api's metrics or logs. Say what you couldn't check, and what the service's owners should look at.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/lambda-throttling--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Lambda concurrency throttling",
+       "runbook": "lambda-throttling.md",
+       "x-amz-bedrock-kb-chunk-id": "bcd5daee-9235-4f0e-ad03-63160f317e25"
+      },
+      "score": 0.618569
+     },
+     {
+      "content": {
+       "text": "# Runbook: Lambda concurrency throttling\n\n## Resolution\n\n**Fix what made requests slow,** by its runbook. Once requests are fast again, concurrency falls below the cap and throttling stops on its own.\n\n**Do not raise the cap to absorb slow requests.** More instances send more requests into the same pool of 20 connections and the same slow database or upstream: they queue longer and fail more. The cap protects what's behind it. Raise it only for a lasting rise in traffic at the usual speed, with the pool and API Gateway's throttle in mind (see `traffic-surge.md`).\n\n**Callers should retry throttled requests** with exponential backoff and jitter, not at once: immediate retries keep the function at its cap.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/lambda-throttling--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Lambda concurrency throttling",
+       "runbook": "lambda-throttling.md",
+       "x-amz-bedrock-kb-chunk-id": "5e628c37-f15a-4a40-9fb2-ada497c91079"
+      },
+      "score": 0.617187
+     },
+     {
+      "content": {
+       "text": "# Runbook: payments-api timeouts (a slow downstream)\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- Alarm on `payments_timeouts` and on payments-api's latency directly. Today a slow payments-api shows up only through the all-routes latency alarm, since err% leaves out 504s\n- Agree a latency objective with payments-api's owners, and set `PAYMENTS_TIMEOUT_MS` from it\n- Before any retry on the charge, require an idempotency key that payments-api honors\n- A circuit breaker on the payments call, so a slow payments-api fails checkouts fast instead of holding each one for the full timeout",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/downstream-timeout--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "payments-api timeouts (a slow downstream)",
+       "runbook": "downstream-timeout.md",
+       "x-amz-bedrock-kb-chunk-id": "16349a8c-406c-45bd-acc7-9900acc4a82c"
+      },
+      "score": 0.616789
+     },
+     {
+      "content": {
+       "text": "# Runbook: Slow database queries\n\n## Diagnosis\n\n1. Read the metrics over a window that starts before the onset. Confirm `db_query_p50_ms` rose, and find whether it moved before `pool_active_max`, `pool_wait_p99_ms`, latency, and err%. Query time moving first points here; pool wait moving first with query time flat points at the pool.\n2. Read the request lines on each route (failures only off, one route at a time). `db_query_ms` should be up on all three. A rise on one route only points at that route's query, not the whole database.\n3. Read `pool_max_size` on the lines. If it's below the configured 20, the pool shrank: see `db-pool-exhaustion.md`.\n4. Read the deploy history for the minutes before the onset. A release there may have changed a query: then the slow query is in this service's code, and rolling the release back should bring `db_query_ms` back (see `bad-deploy.md` for the rollback). If nothing changed in checkout-api, the slowdown is in the database itself.\n5. The database's own metrics, its load, locks, and slow-query log, are not in checkout-api's metrics or logs. Say what you couldn't check, and what the database's owners should look at.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/slow-database--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Slow database queries",
+       "runbook": "slow-database.md",
+       "x-amz-bedrock-kb-chunk-id": "f563dbb5-7371-4445-b940-ccbc3f4244e3"
+      },
+      "score": 0.61623
+     },
+     {
+      "content": {
+       "text": "# Runbook: Database connection pool exhaustion\n\n## What this is not\n\nIf error rate spikes instantly with no latency ramp, this is not pool exhaustion. Check for a recent deploy instead (see `bad-deploy.md`).\n\nIf latency climbs while errors stay flat, check where the time goes before deciding. Early pool exhaustion looks like that too, but its time is in `pool_wait_time_ms`. If `pool_wait_time_ms` is flat and the time is in an upstream call (`upstream_latency_ms`), the problem is downstream, not here (see `downstream-timeout.md`).\n\nIf `db_query_ms` rises with the wait, the queries are slow and the pool fills behind them: don't resize it (see `slow-database.md`).",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/db-pool-exhaustion--what-this-is-not.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "What this is not",
+       "title": "Database connection pool exhaustion",
+       "runbook": "db-pool-exhaustion.md",
+       "x-amz-bedrock-kb-chunk-id": "82c42bd7-7732-43ac-bba1-84e731353511"
+      },
+      "score": 0.613851
+     },
+     {
+      "content": {
+       "text": "# Runbook: Bad deploy (a release that fails requests)\n\n## Diagnosis\n\n1. Read the metrics. Note the first period in which err% rose, and check that latency, pool wait, database time, and payments-api stayed flat around it.\n2. Read the deploy history. Find the newest `kind: deploy` record before that period, and its time. Account for every other record you read: say why its time or its change doesn't fit.\n3. Read the failing lines (the log read's default, failures only). Note the `error_type`, the `error_message`, the top frame of the `stack`, and the `version`. Every failure should be on the new version.\n4. Read the requests that succeed on the same route (failures only off, the same route). Find what the failing lines have in common that the successful ones on the new version don't: a field's value, or the shape of the request. A bug in one code path fails only the requests that take it.\n5. Check which fields the failing lines lack (pool fields, `db_query_ms`, payments fields). They show the step the request stopped at, and that step should match the stack.\n6. If the onset, the failing step, and the stack all point at the new release, the fault is in this service's code. Name the release, its deploy record's time, and the function that raised.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/bad-deploy--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Bad deploy (a release that fails requests)",
+       "runbook": "bad-deploy.md",
+       "x-amz-bedrock-kb-chunk-id": "16878c9c-297d-4112-920c-582f6325c328"
+      },
+      "score": 0.610568
+     },
+     {
+      "content": {
+       "text": "# Runbook: Slow database queries\n\n## Resolution\n\n**If a release at the onset slowed a query:** roll it back, then fix the query in the code.\n\n**If nothing in checkout-api changed:** escalate to the database's owners with the onset time, `db_query_p50_ms` per minute, and which routes slowed. checkout-api has nothing to roll back.\n\n**Do not raise `POOL_MAX_SIZE`** to absorb the wait. More connections send more concurrent queries to a database that is already slow, and can push it past its own connection limit: a slow database becomes a down one.\n\n**Do not lower `POOL_ACQUIRE_TIMEOUT_MS`** to fail faster: it turns slow requests that would have succeeded into 500s.\n\nThe incident ends when query time returns to its usual level; pool wait and latency follow it down.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/slow-database--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Slow database queries",
+       "runbook": "slow-database.md",
+       "x-amz-bedrock-kb-chunk-id": "fce45efa-8657-45e2-a164-af9ed0aa66cf"
+      },
+      "score": 0.60098
+     },
+     {
+      "content": {
+       "text": "# Runbook: Database connection pool exhaustion\n\n## Diagnosis\n\n1. Check `pool_active_connections` and `pool_wait_time_ms` metrics in the `checkout-api` namespace.\n2. Compare current `pool_max_size` config against request concurrency (`concurrent_requests`). Sustained concurrency above pool size means requests queue.\n3. Check for recent changes to `POOL_MAX_SIZE` in the service config. This has been lowered by accident twice.\n4. Rule out leaked connections: if `pool_active_connections` stays pegged at max even as traffic drops, connections aren't being returned.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/db-pool-exhaustion--diagnosis.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Diagnosis",
+       "title": "Database connection pool exhaustion",
+       "runbook": "db-pool-exhaustion.md",
+       "x-amz-bedrock-kb-chunk-id": "3188f4b1-9b18-45b2-a28d-d181729b58ec"
+      },
+      "score": 0.589899
+     },
+     {
+      "content": {
+       "text": "# Runbook: Bad deploy (a release that fails requests)\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- After every deploy, a smoke test that sends one request of every shape the API accepts, on every route. Today's check after a deploy calls only `GET /health`, which never runs the checkout code\n- A canary: a new release serves a small share of traffic first, and is rolled back on its own if its err% rises\n- An error alarm per route, so a broken route shows even while the healthy routes keep the overall err% low",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/bad-deploy--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Bad deploy (a release that fails requests)",
+       "runbook": "bad-deploy.md",
+       "x-amz-bedrock-kb-chunk-id": "13ad8174-59ac-4c5a-802c-46986c822aee"
+      },
+      "score": 0.582139
+     },
+     {
+      "content": {
+       "text": "# Runbook: Bad deploy (a release that fails requests)\n\n## Resolution\n\n**Immediate:** roll back to the previous release, the `old` value in the deploy record's `version` change. A rollback is a deploy too, and shows in the history. Once the old release serves, err% falls back to 0 within a few periods. If it doesn't, the release wasn't the cause: reopen the diagnosis.\n\n**Then:** fix forward. Find the commit in the release that changed the failing function, revert or fix it, and add a test that sends the request that failed.\n\n**Do not** change config to make the errors stop. A bigger pool or a longer timeout doesn't fix code, and it adds a second change to untangle later.\n\n**Do not** roll back past the release before the bad one. Older releases drop every change made since, and each of those then has to be deployed again.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/bad-deploy--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Bad deploy (a release that fails requests)",
+       "runbook": "bad-deploy.md",
+       "x-amz-bedrock-kb-chunk-id": "89918944-2680-45bd-aa1b-8830953fbb4a"
+      },
+      "score": 0.57749
+     },
+     {
+      "content": {
+       "text": "# Runbook: Lambda concurrency throttling\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- Alarm on the function's `Throttles` metric, since throttled requests never reach this service's metrics or alarms\n- Alarm on `concurrent_max` near the cap, which this service does emit, before requests are refused\n- Turn on the stage's access logs with `$context.integration.integrationStatus` and `$context.integrationErrorMessage`, which record, for each request, the status Lambda returned to API Gateway and its error message",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/lambda-throttling--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Lambda concurrency throttling",
+       "runbook": "lambda-throttling.md",
+       "x-amz-bedrock-kb-chunk-id": "8f2dfa1f-059f-41da-a9fd-e7da19f911fb"
+      },
+      "score": 0.576793
+     },
+     {
+      "content": {
+       "text": "# Runbook: Memory leak\n\n## Resolution\n\n**Roll back the release that introduced the leak.** Instances on the old release start with fresh memory, so failures stop as the leaking instances are replaced. Then find what the code keeps between requests: anything added to a module-level list, dict, or cache on each request and never trimmed.\n\n**Do not raise the function's memory to fix it.** More memory only spaces the kills out, and every request pays for the larger size. Raise it only when each request really needs more, in which case `maxMemoryUsedMB` is flat at a higher level, not climbing.\n\n**A redeploy of the same release is not a fix:** it clears every instance's memory, so failures stop for a while and then come back.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/memory-leak--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Memory leak",
+       "runbook": "memory-leak.md",
+       "x-amz-bedrock-kb-chunk-id": "fc1abacd-92f6-48a4-babd-f4f2a2763330"
+      },
+      "score": 0.561436
+     },
+     {
+      "content": {
+       "text": "# Runbook: Database connection pool exhaustion\n\n## Prevention\n\n- Alarm on `pool_wait_time_ms` p99 above 100ms, which fires before user-visible errors\n- Config changes to pool sizing require a second reviewer\n- Load test at 1.5x expected peak before any pool config change",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/db-pool-exhaustion--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Database connection pool exhaustion",
+       "runbook": "db-pool-exhaustion.md",
+       "x-amz-bedrock-kb-chunk-id": "8a0bfe0b-6d1f-4e1f-bbda-3d75de69ea53"
+      },
+      "score": 0.558475
+     },
+     {
+      "content": {
+       "text": "# Runbook: Slow database queries\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- Alarm on `db_query_ms` itself. Today a slow database shows only through the latency and pool-wait alarms, after its effects reach them\n- Log each query's name beside its time, so a single slow query stands apart from a slow database\n- Link the database's own dashboards from this runbook, so its load and slow-query log are one click away",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/slow-database--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Slow database queries",
+       "runbook": "slow-database.md",
+       "x-amz-bedrock-kb-chunk-id": "bcc1cb20-ef7f-4d03-a5aa-fb62dde471b3"
+      },
+      "score": 0.553603
+     },
+     {
+      "content": {
+       "text": "# Runbook: Memory leak\n\n## Prevention\n\nNone of these exists today; each is a proposal.\n\n- Log each request's process memory (its peak resident size) on the request line, so this service's own metrics show the climb\n- Alarm on the function's `Errors` metric, which counts the failures this service never logs\n- A soak test before each release: one instance serving many requests in a row, with `maxMemoryUsedMB` checked for a climb",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/memory-leak--prevention.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Prevention",
+       "title": "Memory leak",
+       "runbook": "memory-leak.md",
+       "x-amz-bedrock-kb-chunk-id": "25c7a399-1992-43bf-a33e-4bd895081176"
+      },
+      "score": 0.551952
+     },
+     {
+      "content": {
+       "text": "# Runbook: Database connection pool exhaustion\n\n## Resolution\n\n**Immediate:** raise `POOL_MAX_SIZE` to 2x observed peak concurrency, redeploy. Takes effect in ~90 seconds.\n\n**If connections are leaking:** the fix is in code, not config. Look for a code path that acquires a connection and returns early without releasing it: usually an error branch missing a `finally` block or a context manager.\n\n**Do not** raise the pool size past the database's `max_connections` (every instance shares the one pool). That converts a service outage into a database outage.",
+       "type": "TEXT"
+      },
+      "location": {
+       "s3Location": {
+        "uri": "s3://sentinelops-runbooks-bucket/db-pool-exhaustion--resolution.md"
+       },
+       "type": "S3"
+      },
+      "metadata": {
+       "x-amz-bedrock-kb-data-source-id": "RECORDEDDS",
+       "x-amz-bedrock-kb-source-file-modality": "TEXT",
+       "corpus": "197a0201c9eb",
+       "section": "Resolution",
+       "title": "Database connection pool exhaustion",
+       "runbook": "db-pool-exhaustion.md",
+       "x-amz-bedrock-kb-chunk-id": "ba6ac1a6-4fdf-41e0-a24d-91e1c9fdd374"
+      },
+      "score": 0.549343
+     }
+    ]
+   }
+  }
+ ],
+ "text": "The 2 runbooks closest to the query, in full: Symptoms, What this is not, Diagnosis. The rest are listed after them, by name only.\n\n=== traffic-surge.md: Traffic surge ===\n\n## Symptoms\n\nMore requests arrive than usual. On its own that isn't a failure. The service scales out, one Lambda instance per request in flight, and each request that queries takes a connection from one shared pool of 20 for as long as its query runs. A surge the service absorbs looks like this:\n\n**`req` rises; little else moves**\n\n- `req` rises, and `concurrent_max` and `pool_active_max` rise with it, in proportion: connections in use are about requests a second times how long each query holds one\n- p50 latency stays at its usual level. p99 can rise while new instances start: each new instance's first request is slower than its warm ones (`cold_start: true` on that line)\n- err% stays at 0, `pool_wait_p99_ms` stays near zero, and `db_query_p50_ms` and `payments_p99_ms` stay flat\n- No alarm fires: none of the three alarms watches traffic. If one fired, the surge met a limit or arrived with a fault: see What this is not\n\n**At the edges: what the service never sees**\n\n- API Gateway throttles requests at the stage's default route settings: a rate limit of 30 requests a second, with up to 60 at once. Requests past them are throttled before they reach checkout-api, and callers get `429 Too Many Requests` from API Gateway. They leave no log line and no metric here: nothing in `req`, nothing in err%. A `req` that flattens while callers report errors is the sign\n- checkout-api is capped at 80 concurrent executions. Past that, Lambda refuses the invocation before the code runs. With API Gateway's throttle in front, traffic alone rarely reaches the cap: requests have to be slow too (see `lambda-throttling.md`)\n\n## What this is not\n\nIf the pool fills under traffic it has held before, check `pool_max_size` on the log lines and the deploy history. A smaller pool is a config change, not a surge (see `db-pool-exhaustion.md`).\n\nIf `db_query_p50_ms` rises with the traffic, the database is slowing under the load (see `slow-database.md`).\n\nIf only `POST /checkout` slows, with `payments_p99_ms` up, the time is in payments-api (see `downstream-timeout.md`).\n\nIf err% steps up to a steady share at once, with stack traces and a new version on the failing lines, it's a bad deploy that the traffic only made louder (see `bad-deploy.md`).\n\nIf callers see errors that leave no line in this service's logs, the requests were refused before the code ran, by API Gateway's throttle (429s, above) or by Lambda's concurrency cap (see `lambda-throttling.md`), or killed before they finished (see `memory-leak.md`).\n\nTraffic is the trigger, not the cause, whenever something else that acts on what failed changed at the onset: a config value, a release, a dependency. A surge is the cause only when nothing that acts on what failed changed, and the extra traffic alone reached one of the limits above.\n\n## Diagnosis\n\n1. Read the metrics over a window that starts before the rise. Note when `req` rose, which of err%, latency, `pool_wait_p99_ms`, and `db_query_p50_ms` moved, and whether each moved before or after it.\n2. If only `req`, `concurrent_max`, and `pool_active_max` moved, the service absorbed the surge, and an alarm that fired has another cause: follow the signal that moved.\n3. If pool wait rose, compare `pool_active_max` with `pool_max_size` on the log lines. Connections pegged at the configured 20, under much more traffic than usual and with query time flat, mean the pool is too small for this load. Pegged at a smaller size, the pool was changed (see `db-pool-exhaustion.md`).\n4. Read the deploy history for changes at the onset. A change whose time fits the onset is a suspect before the traffic is.\n5. Where the extra traffic comes from isn't in checkout-api's logs: the lines carry no client fields. Nor are the 429s, which are in API Gateway's own metrics, not this service's. Say what you couldn't check.\n\n=== downstream-timeout.md: payments-api timeouts (a slow downstream) ===\n\n## Symptoms\n\ncheckout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. The fault is in the dependency, not in this service: nothing in checkout-api changes, and its deploy history shows no change that acts on the payments call.\n\n**The latency alarm fires; the error and pool-wait alarms stay OK**\n\n- p99 latency over all routes passes the 1.5 s threshold soon after the slowdown begins and stays above it. Checkouts are a minority of requests, but their tail is the payments call, and it sets the p99\n- p99 above 2 s, checkout only: `POST /checkout` p99 sits just above the 2000 ms timeout. Other routes stay fast: `GET /products/{id}` and `POST /cart/items` never call payments-api\n- Payments p99 near the timeout: `payments_p99_ms` rises from its usual level to about the timeout, since a timed-out call is recorded at the timeout. The typical call (the request lines' `upstream_latency_ms`) slows well past its usual level, though most calls still finish inside the timeout\n- A few timeouts a minute: `payments_timeouts` stays above 0 under load, a small share of checkouts, not all of them\n- `concurrent_max` climbs under load, since each checkout holds its request open for the call. The extra instances' cold starts can lift the other routes' p99 a little; their warm requests are unchanged\n\n**err% stays at 0.** A 504 is the upstream's failure, not this service's: its log line has `error: 0`, and it counts under `payments_timeouts`, never err%. A flat error rate does not rule this out.\n\n**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect. On the slow checkouts that finish, `upstream_latency_ms` is most of `latency_ms`.\n\n**Throughout:** `pool_wait_p99_ms` stays near zero, `db_query_p50_ms` stays flat, and `pool_active_max` stays below `pool_max_size`. The order's connection goes back to the pool before the charge, so a slow payments-api holds no connection.\n\n## What this is not\n\nIf `pool_wait_p99_ms` rises with the latency, the time is spent waiting for a connection: that is pool exhaustion (see `db-pool-exhaustion.md`), not this.\n\nIf `db_query_p50_ms` rises with the latency, the time is in the database's queries, and every route slows, not only checkout (see `slow-database.md`).\n\nIf err% jumps, the failures are 500s with a stack, or a new version appears in the logs or the deploy history, check for a bad deploy (see `bad-deploy.md`). A slow payments-api produces no 500s.\n\nIf `payments_timeouts` rises while payments-api's typical call stays at its usual latency, the timeout itself may have been lowered. Check the deploy history for a change to `PAYMENTS_TIMEOUT_MS`, and read the timeout the 504 lines name. That change is in this service, and is fixed here.\n\n## Diagnosis\n\n1. Read the metrics. If `payments_p99_ms` and `payments_timeouts` rose at the onset while `pool_wait_p99_ms` and `db_query_p50_ms` stayed flat, the time is in payments-api.\n2. Read the failing log lines. 504s with `UpstreamTimeout` naming payments-api, and no 500s, confirm it.\n3. On the 504 lines, compare `upstream_latency_ms` with `upstream_timeout_ms`. `upstream_timeout_ms` is the limit in effect for that request, and a timed-out call's `upstream_latency_ms` sits at it: payments-api used the whole limit and never answered. If `upstream_timeout_ms` is below the configured `PAYMENTS_TIMEOUT_MS`, the timeout was lowered, a change in this service (see \"What this is not\"). Successful checkout lines carry the same two fields: calls that succeed close to the limit mean payments-api is slow for everyone, not only for the 504s.\n4. Compare routes: `GET /products/{id}` and `POST /cart/items` should be at their usual latency. If they are slow too, the cause is not payments-api alone.\n5. Read the deploy history for the minutes before the onset. If nothing was deployed or changed there, checkout-api did not cause it. A deploy or config change from well before the onset, or one already rolled back, did not start a slowdown that began just now.\n6. The fault is upstream: nothing in checkout-api's code or config fixes it, so no change to this service is proposed.\n\n=== Not shown, further from the query ===\n- bad-deploy.md: Bad deploy (a release that fails requests)\n- lambda-throttling.md: Lambda concurrency throttling\n- memory-leak.md: Memory leak\n- slow-database.md: Slow database queries\n- db-pool-exhaustion.md: Database connection pool exhaustion"
+}

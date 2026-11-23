@@ -23,7 +23,10 @@ SERVICE_OF = {
     "query": "dynamodb",
     "get_web_identity_token": "sts",
     "assume_role": "sts",
+    "retrieve": "bedrock-agent-runtime",
 }
+# The knowledge base's ID in the runbook fixtures (tools/tests/conftest.py's RECORDED_KB).
+RECORDED_KB = "RECORDEDKB"
 # The local sign-in role, and the keys STS hands out for it.
 LOCAL_ROLE_ARN = "arn:aws:iam::000011112222:role/sentinelops-local"
 ROLE_KEYS = {"AccessKeyId": "ASIATESTONLYROLEKEY1", "SecretAccessKey": "test-only", "SessionToken": "test-only"}

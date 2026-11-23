@@ -1,8 +1,9 @@
 """Each tool result as a source the model can cite: a label first, and numbered log lines.
 
 Typed evidence cites a result by its label (m1, the run's first metrics read;
-l2, its second log read; d1, its first deploy read) and log lines by number,
-so code can check each item against exactly what it points at (BUILD_PLAN.md,
+l2, its second log read; d1, its first deploy read; r1, its first runbook
+search) and log lines by number, so code can check each item against exactly
+what it points at (BUILD_PLAN.md,
 "The grader redesign", R1). The tools' own text is unchanged: the marks go on
 here, the same for local tools and Gateway's, and `unmark` takes them off, so
 the tools' parsers read their own text back.
@@ -17,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any, cast
 
-PREFIXES = {"get_metrics": "m", "get_recent_logs": "l", "get_deploy_history": "d"}
+PREFIXES = {"get_metrics": "m", "get_recent_logs": "l", "get_deploy_history": "d", "search_runbooks": "r"}
 ALARM = "alarm"
 _LABEL = re.compile(r"\[source ([a-z])([1-9]\d*)\]$")
 _NUMBERED = re.compile(r"\[([1-9]\d*)\] (\{.*)$")

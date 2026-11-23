@@ -22,6 +22,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # When the fixtures were recorded: CloudWatch had already dropped the runs'
 # 10-second data, so a replay of them reads 60-second periods.
 RECORDED_AT = datetime(2026, 10, 28, 4, 27, tzinfo=UTC)
+# The knowledge base's ID in the runbook fixtures, in place of the real one.
+RECORDED_KB = "RECORDEDKB"
 
 
 def _decode(value: Any) -> Any:
@@ -51,7 +53,7 @@ class Stubbed:
     """A ToolEnv on stubbed clients, with the investigation's now pinned."""
 
     def __init__(self, now: datetime, wall_clock: datetime = RECORDED_AT) -> None:
-        self.clients = {name: client(name) for name in ("logs", "cloudwatch", "dynamodb")}
+        self.clients = {name: client(name) for name in ("logs", "cloudwatch", "dynamodb", "bedrock-agent-runtime")}
         self.stubbers = {name: Stubber(c) for name, c in self.clients.items()}
         self.env = ToolEnv(
             logs=self.clients["logs"],
@@ -59,6 +61,8 @@ class Stubbed:
             dynamodb=self.clients["dynamodb"],
             now=lambda: now,
             wall_clock=lambda: wall_clock,
+            bedrock_agent_runtime=self.clients["bedrock-agent-runtime"],
+            knowledge_base_id=RECORDED_KB,
         )
 
     def expect(self, service: str, operation: str, params: dict[str, Any], response: dict[str, Any]) -> None:
@@ -85,6 +89,7 @@ SERVICE_OF = {
     "filter_log_events": "logs",
     "get_metric_data": "cloudwatch",
     "query": "dynamodb",
+    "retrieve": "bedrock-agent-runtime",
 }
 
 

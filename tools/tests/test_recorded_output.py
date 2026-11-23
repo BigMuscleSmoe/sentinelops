@@ -7,11 +7,12 @@ so a reworded header or a moved column is always a deliberate change.
 import json
 
 import pytest
-from conftest import FIXTURES
+from conftest import FIXTURES, load
 
 from sentinelops_tools.deploys import history
 from sentinelops_tools.logs import recent_lines
 from sentinelops_tools.metrics import metrics_table
+from sentinelops_tools.runbooks import search
 
 CASES = [
     ("metrics_bad_deploy", metrics_table, {}),
@@ -20,6 +21,8 @@ CASES = [
     ("logs_pool_errors", recent_lines, {}),
     ("history_bad_deploy", history, {}),
     ("history_pool", history, {"limit": 4}),
+    *((name, search, {"query": load(name)["calls"][0]["params"]["retrievalQuery"]["text"]})
+      for name in ("runbooks_pool", "runbooks_leak", "runbooks_none")),
 ]
 
 

@@ -14,11 +14,12 @@ rollback a break schedules, before its time.
 
 import dataclasses
 import inspect
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sentinelops_tools.env import ToolEnv, utc_now
+from sentinelops_tools.env import KNOWLEDGE_BASE_ENV, ToolEnv, utc_now
 from sentinelops_tools.toolset import make_tools
 
 AS_OF = "as_of"
@@ -41,6 +42,10 @@ def get_recent_logs(event: dict[str, Any], context: Any) -> dict[str, str]:
 
 def get_deploy_history(event: dict[str, Any], context: Any) -> dict[str, str]:
     return handle("get_deploy_history", event, context)
+
+
+def search_runbooks(event: dict[str, Any], context: Any) -> dict[str, str]:
+    return handle("search_runbooks", event, context)
 
 
 def handle(
@@ -92,5 +97,6 @@ def _clients_once() -> ToolEnv:
     if _clients is None:
         import boto3
 
-        _clients = ToolEnv.from_session(boto3.Session())
+        # Only the search tool's function has a knowledge base set.
+        _clients = ToolEnv.from_session(boto3.Session(), knowledge_base_id=os.environ.get(KNOWLEDGE_BASE_ENV))
     return _clients

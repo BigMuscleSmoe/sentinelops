@@ -12,9 +12,10 @@ locals {
   # Each Gateway target by name, with the tool its function runs. Gateway names
   # the tools <target>___<tool>.
   tool_targets = {
-    metrics = "get_metrics"
-    logs    = "get_recent_logs"
-    deploys = "get_deploy_history"
+    metrics  = "get_metrics"
+    logs     = "get_recent_logs"
+    deploys  = "get_deploy_history"
+    runbooks = "search_runbooks"
   }
 
   # The tools as the model sees them, in Gateway's schema: agent/gateway_tools.py
@@ -22,9 +23,19 @@ locals {
   gateway_tools = { for t in jsondecode(file("${path.module}/gateway_tools.json")) : t.name => t }
 
   tool_policies = {
-    metrics = data.aws_iam_policy_document.tool_metrics.json
-    logs    = data.aws_iam_policy_document.tool_logs.json
-    deploys = data.aws_iam_policy_document.tool_deploys.json
+    metrics  = data.aws_iam_policy_document.tool_metrics.json
+    logs     = data.aws_iam_policy_document.tool_logs.json
+    deploys  = data.aws_iam_policy_document.tool_deploys.json
+    runbooks = data.aws_iam_policy_document.tool_runbooks.json
+  }
+
+  # Only the search's function knows which knowledge base to search
+  # (sentinelops_tools/env.py, KNOWLEDGE_BASE_ENV).
+  tool_environment = {
+    metrics  = {}
+    logs     = {}
+    deploys  = {}
+    runbooks = { SENTINELOPS_RUNBOOKS_KB_ID = aws_bedrockagent_knowledge_base.runbooks.id }
   }
 }
 
@@ -42,6 +53,7 @@ module "tool" {
   # calls, each seconds long on a busy window; the others make one or two calls.
   timeout     = each.key == "logs" ? 60 : 30
   policy_json = local.tool_policies[each.key]
+  environment = local.tool_environment[each.key]
 
   build_dir                = "${path.module}/.build"
   log_retention_days       = var.log_retention_days
@@ -71,6 +83,16 @@ data "aws_iam_policy_document" "tool_deploys" {
     sid       = "QueryDeployHistory"
     actions   = ["dynamodb:Query"]
     resources = [aws_dynamodb_table.deploy_history.arn]
+  }
+}
+
+# Retrieve is the caller's only action: the knowledge base's own role embeds
+# the query and reads the vectors (runbooks_kb.tf).
+data "aws_iam_policy_document" "tool_runbooks" {
+  statement {
+    sid       = "SearchRunbooks"
+    actions   = ["bedrock:Retrieve"]
+    resources = [aws_bedrockagent_knowledge_base.runbooks.arn]
   }
 }
 
@@ -120,7 +142,7 @@ resource "aws_iam_role_policy" "tools_gateway" {
 
 # Callers sign with SigV4 and need bedrock-agentcore:InvokeGateway on it: the
 # agent's runtime role once it exists, and an admin testing by hand. No
-# semantic search: with three tools there's nothing to search, and it bills.
+# semantic search: with four tools there's nothing to search, and it bills.
 resource "aws_bedrockagentcore_gateway" "tools" {
   name            = "sentinelops-tools"
   description     = "checkout-api's investigation tools, for the SentinelOps agent"

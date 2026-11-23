@@ -9,9 +9,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from conftest import Stubbed, load
 from window import Window
 
 from sentinelops_tools import handlers
+from sentinelops_tools.env import KNOWLEDGE_BASE_ENV, ToolEnv
 from sentinelops_tools.toolset import make_tools
 
 WINDOW = Window("2026-10-29-live")
@@ -84,7 +86,32 @@ def test_an_unknown_argument_is_named_and_nothing_runs() -> None:
     assert answer == {"text": "get_metrics has no argument log_group."}
 
 
-@pytest.mark.parametrize("tool", [case[0] for case in CASES])
+def test_the_runbook_search_answers_through_gateway_as_it_does_here() -> None:
+    fixture = load("runbooks_pool")
+    (call,) = fixture["calls"]
+    stubbed = Stubbed(FIRED)
+    stubbed.replay(fixture)
+    event = {"query": call["params"]["retrievalQuery"]["text"], "as_of": FIRED.isoformat()}
+    with stubbed:
+        answer = handlers.handle("search_runbooks", event, gateway("search_runbooks"), env=stubbed.env, clock=lambda: LATER)
+
+    assert answer == {"text": fixture["text"]}
+
+
+def test_only_a_function_with_a_knowledge_base_set_makes_its_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    made = []
+    monkeypatch.setattr(ToolEnv, "from_session", classmethod(lambda cls, session, **kwargs: made.append(kwargs)))
+    monkeypatch.setattr(handlers, "_clients", None)
+    monkeypatch.setenv(KNOWLEDGE_BASE_ENV, "KB1")
+    handlers._clients_once()
+    monkeypatch.setattr(handlers, "_clients", None)
+    monkeypatch.delenv(KNOWLEDGE_BASE_ENV)
+    handlers._clients_once()
+
+    assert made == [{"knowledge_base_id": "KB1"}, {"knowledge_base_id": None}]
+
+
+@pytest.mark.parametrize("tool", [*(case[0] for case in CASES), "search_runbooks"])
 def test_each_entry_point_runs_its_own_tool(tool: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(handlers, "handle", lambda name, event, context: {"text": name})
 

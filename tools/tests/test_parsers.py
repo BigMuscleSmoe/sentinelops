@@ -16,6 +16,7 @@ from window import WINDOWS, Window
 from sentinelops_tools.deploys import _record, history, parse_history
 from sentinelops_tools.logs import parse_lines, recent_lines
 from sentinelops_tools.metrics import COLUMNS, _ceil, _cell, _query, metrics_table, parse_table
+from sentinelops_tools.runbooks import parse_results
 
 NAMES = sorted(p.name for p in WINDOWS.iterdir() if p.is_dir())
 METRIC_ARGS = [(10, 10), (20, 10), (30, 60), (5, 60), (200, 60)]
@@ -108,7 +109,7 @@ def test_deploys_round_trip(window: Window) -> None:
 def test_each_recorded_fixture_text_parses() -> None:
     import json
 
-    parsers = {"metrics": parse_table, "logs": parse_lines, "history": parse_history}
+    parsers = {"metrics": parse_table, "logs": parse_lines, "history": parse_history, "runbooks": parse_results}
     for path in FIXTURES.glob("*.json"):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         if "text" in fixture:
@@ -116,6 +117,6 @@ def test_each_recorded_fixture_text_parses() -> None:
 
 
 def test_other_text_is_not_a_page() -> None:
-    for parse in (parse_table, parse_lines, parse_history):
+    for parse in (parse_table, parse_lines, parse_history, parse_results):
         assert parse("") is None
         assert parse("Couldn't read the metrics: AccessDeniedException.") is None

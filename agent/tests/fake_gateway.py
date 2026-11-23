@@ -20,7 +20,12 @@ from sentinelops_tools.env import ToolEnv
 
 GATEWAY_TOOLS = Path(__file__).resolve().parents[2] / "infra" / "gateway_tools.json"
 # The targets as infra/agent_tools.tf names them.
-TARGETS = {"get_metrics": "metrics", "get_recent_logs": "logs", "get_deploy_history": "deploys"}
+TARGETS = {
+    "get_metrics": "metrics",
+    "get_recent_logs": "logs",
+    "get_deploy_history": "deploys",
+    "search_runbooks": "runbooks",
+}
 URL = "https://sentinelops-tools-0123456789.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
 INITIALIZED = {
     "protocolVersion": "2025-03-26",

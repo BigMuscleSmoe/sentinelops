@@ -76,7 +76,7 @@ class Gateway:
         self._http: httpx2.AsyncClient | None = None
 
     def tools(self, *, as_of: datetime | None = None) -> list[Callable[..., Awaitable[str]]]:
-        """The agent's three tools, run by Gateway. For a replay, `as_of` ends every read there."""
+        """The agent's tools, run by Gateway. For a replay, `as_of` ends every read there."""
         stamp = None if as_of is None else iso_ms(as_of)
         return [self._remote(local, stamp) for local in make_tools(SPECS_ONLY)]
 

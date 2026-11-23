@@ -7,7 +7,7 @@ written to the model. Implementation notes go in the modules behind them.
 from collections.abc import Callable
 from typing import Literal
 
-from sentinelops_tools import deploys, logs, metrics
+from sentinelops_tools import deploys, logs, metrics, runbooks
 from sentinelops_tools.env import ToolEnv
 
 Route = Literal["GET /products/{id}", "POST /cart/items", "POST /checkout"]
@@ -59,4 +59,17 @@ def make_tools(env: ToolEnv) -> list[Callable[..., str]]:
         """
         return deploys.history(env, limit=limit)
 
-    return [get_metrics, get_recent_logs, get_deploy_history]
+    def search_runbooks(query: str) -> str:
+        """checkout-api's runbooks that come closest to what you describe.
+
+        Describe what you measured in your own words: the alarm, which signals moved
+        and which stayed flat, which routes fail and how. The 2 closest runbooks come
+        back in full (Symptoms, What this is not, Diagnosis), the rest by name only.
+        The closest runbook is not always the one that fits.
+
+        Args:
+            query: What you measured, at most 500 characters.
+        """
+        return runbooks.search(env, query)
+
+    return [get_metrics, get_recent_logs, get_deploy_history, search_runbooks]
