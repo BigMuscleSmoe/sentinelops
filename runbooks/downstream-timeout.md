@@ -6,7 +6,7 @@
 
 ## Symptoms
 
-checkout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. Nothing in checkout-api changes.
+checkout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. The fault is in the dependency, not in this service: nothing in checkout-api changes, and its deploy history shows no change that acts on the payments call.
 
 **The latency alarm fires; the error and pool-wait alarms stay OK**
 
@@ -18,7 +18,7 @@ checkout-api calls payments-api once per checkout, after the order is written, a
 
 **err% stays at 0.** A 504 is the upstream's failure, not this service's: its log line has `error: 0`, and it counts under `payments_timeouts`, never err%. A flat error rate does not rule this out.
 
-**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect.
+**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect. On the slow checkouts that finish, `upstream_latency_ms` is most of `latency_ms`.
 
 **Throughout:** `pool_wait_p99_ms` stays near zero, `db_query_p50_ms` stays flat, and `pool_active_max` stays below `pool_max_size`. The order's connection goes back to the pool before the charge, so a slow payments-api holds no connection.
 

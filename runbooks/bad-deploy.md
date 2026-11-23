@@ -12,7 +12,7 @@ A release with a bug fails every request that takes the broken code path, from t
 
 - err% steps up at once, with no ramp before it, and holds at the share of requests that take the broken path. The error alarm needs err% above 5% in 2 of the last 3 10-second periods, so under load it fires soon after the onset. At baseline traffic a 10-second period holds only a few requests, so err% jumps between 0 and high values from one period to the next, and the alarm can go OK and fire again
 - p99 latency does not rise. A request that fails in its own code answers quickly, and one that fails before it takes a database connection answers faster than one that succeeds. p50 can fall a little, since the fast failures count in it
-- Only the routes that run the broken code fail. The other routes keep succeeding at their usual latency
+- Only the routes that run the broken code fail, often one route alone, such as `POST /checkout`, while latency, pool wait, and payments-api stay normal. The other routes keep succeeding at their usual latency
 
 **Logs:** each failure is a line with `status: 500`, `level: ERROR`, and `error: 1`, with `error_type`, `error_message` (the line's `message` is the two joined), and `stack`: the innermost frames, up to 10, each as `path:line in function`. The stack names the file and function that raised. Every failing line carries the new release's `version`.
 

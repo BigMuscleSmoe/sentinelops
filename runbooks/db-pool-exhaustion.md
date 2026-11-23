@@ -10,17 +10,17 @@ Pool exhaustion arrives in stages, and the early signs come minutes before any r
 
 **Early: the pool is saturated, nothing fails yet**
 
-- `pool_wait_time_ms` p99 rises above 100ms as soon as traffic outgrows the pool
-- p99 latency degrades steadily while the error rate stays flat. A 0% error rate does not rule this out
-- `pool_active_connections` is pegged at `pool_max_size`, and `concurrent_requests` is well above it
+- `pool_wait_p99_ms` (each line's `pool_wait_time_ms`) rises above 100ms as soon as traffic outgrows the pool, and the pool-wait alarm fires first
+- p99 latency degrades steadily while the error rate stays flat, and the latency alarm fires next. A 0% error rate does not rule this out
+- `pool_active_max` (each line's `pool_active_connections`) is pinned at `pool_max_size`, and `concurrent_max` (`concurrent_requests`) is well above it
 
 **Later: requests start timing out, typically 3 to 6 minutes after the wait first rises**
 
-- Error rate on `/checkout` climbs above 5% and keeps rising
-- Logs contain `TimeoutError: acquiring connection from pool`
+- Error rate climbs above 5% and keeps rising, and the error alarm fires: 500s on every route that queries, not only `/checkout`
+- Logs contain `TimeoutError: acquiring connection from pool`, on the version already running
 - Errors correlate with request volume, not with any particular endpoint
 
-**Throughout:** query time once a connection is acquired (`db_query_ms`) stays flat. The database itself is fine; requests are waiting for a connection, not for their queries.
+**Throughout:** query time once a connection is acquired (`db_query_p50_ms`, each line's `db_query_ms`) stays flat, and so does `payments_p99_ms`. The database itself is fine; requests are waiting for a connection, not for their queries.
 
 ## What this is not
 

@@ -14,11 +14,7 @@ Every route but `GET /health` takes a connection from the pool, runs one query, 
 - p50 and p99 latency rise with it, on every route, by about the extra query time. The latency alarm (p99 above 1,500 ms in 2 of the last 3 10-second periods) fires if queries slow enough
 - err% stays at 0 while there are still connections to spare
 
-**Then, under load: the pool fills**
-
-- Connections in use are about requests a second times how long each query holds one. At the same traffic, queries twice as slow keep twice as many connections busy, so `pool_active_max` climbs toward `pool_max_size` (20)
-- Once concurrency passes the pool, requests queue: `pool_wait_p99_ms` rises, and the pool-wait alarm (p99 above 100 ms) can fire
-- A request that can't get a connection within `POOL_ACQUIRE_TIMEOUT_MS` (1,500 ms) fails: a 500 with `TimeoutError: acquiring connection from pool (waited 1500 ms, pool_max_size=20)`, and err% rises. These failures follow the slow queries; they are not the cause
+**Then, under load, the pool can fill behind the slow queries:** `pool_wait_p99_ms` rises only after `db_query_p50_ms` has, and any pool timeouts are an effect, not the cause (see `db-pool-exhaustion.md`).
 
 **Logs:** lines that got a connection carry `db_query_ms` above its usual level, on every route. `pool_max_size` on the lines stays at the configured 20, and the version is the one already running.
 

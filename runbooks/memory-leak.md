@@ -14,12 +14,7 @@ Each Lambda instance keeps its process between requests, so whatever the code ho
 - p99 latency can rise with them, since a new instance's first request is slower than its warm ones. The latency alarm (p99 above 1,500 ms in 2 of the last 3 10-second periods) can fire
 - err% stays low, and the error alarm may never fire: a killed request leaves no log line, so it isn't in `req`, err%, or latency
 - `pool_wait_p99_ms`, `db_query_p50_ms`, and `payments_p99_ms` stay flat. A leak doesn't have to slow requests before the kill
-- The first failures come well after the change that caused them, since an instance has to serve many requests before it runs out. The busier the service, the sooner they start
-
-**What they don't show: Lambda's own records**
-
-- Lambda writes a `platform.report` record for every invocation into the function's log group, beside this service's lines but without their fields (`service`, `route`, `status`). Its `record.metrics` holds `maxMemoryUsedMB` and `memorySizeMB` (256), and its `record.status` is `success`, `error`, `failure`, or `timeout`. Under a leak, `maxMemoryUsedMB` climbs toward 256. A killed request's report has `status` `error`, memory at or near 256, and no line from this service with its request ID (`record.requestId`, which this service logs as `request_id`)
-- Lambda's `Errors` metric counts invocations that end in a function error, the runtime's as well as the code's. It isn't among this service's metrics
+- The first failures come hours after the release that caused them, since an instance has to serve many requests before it runs out. The busier the service, the sooner they start
 
 ## What this is not
 
@@ -31,14 +26,14 @@ If cold starts rise with `req`, Lambda is adding instances for more traffic (see
 
 A few cold starts at steady traffic are normal: Lambda replaces instances every few hours for maintenance, even under constant load. A leak makes them regular.
 
-A request that runs into the function's 10-second timeout also resets its instance and leaves no line, but its report says `timeout`, not `error`. This service's own limits (`POOL_ACQUIRE_TIMEOUT_MS`, `PAYMENTS_TIMEOUT_MS`) end its requests well before that.
+A request that runs into the function's 10-second timeout also resets its instance and leaves no line, but its `platform.report` record says `timeout`, not `error`. This service's own limits (`POOL_ACQUIRE_TIMEOUT_MS`, `PAYMENTS_TIMEOUT_MS`) end its requests well before that.
 
 ## Diagnosis
 
 1. Read the request lines over a long window (failures only off). Count the `cold_start: true` lines against `req`, and note when a steady stream of them began.
 2. Read the metrics over the same window. Confirm that `req` stayed steady, that `concurrent_max` stayed well under 80, and that pool wait, query time, and payments stayed flat.
 3. Read the deploy history further back than the onset: the release that introduced a leak can come well before the first failures. A release followed, after a delay, by the stream of cold starts is the suspect.
-4. Lambda's `platform.report` records and its `Errors` metric aren't in checkout-api's metrics, and the log reads return only this service's lines. Say what you couldn't check: whether `maxMemoryUsedMB` climbed toward 256, and whether the failed requests' reports show `status` `error`.
+4. Lambda's own records aren't in checkout-api's metrics, and the log reads return only this service's lines. Lambda writes a `platform.report` record for every invocation into the function's log group, beside this service's lines but without their fields (`service`, `route`, `status`). Its `record.metrics` holds `maxMemoryUsedMB` and `memorySizeMB` (256), and its `record.status` is `success`, `error`, `failure`, or `timeout`. Under a leak, `maxMemoryUsedMB` climbs toward 256, and a killed request's report has `status` `error`, memory at or near 256, and no line from this service with its request ID (`record.requestId`, which this service logs as `request_id`). Lambda's `Errors` metric counts invocations that end in a function error, the runtime's as well as the code's. Say what you couldn't check: whether `maxMemoryUsedMB` climbed toward 256, and whether the failed requests' reports show `status` `error`.
 
 ## Resolution
 
