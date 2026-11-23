@@ -136,19 +136,28 @@ def report() -> str:
     kb = {q["id"]: rank(recorded_hits(recording, q["id"])) for q in queries}
     kw = {q["id"]: keyword_rank(q["query"], corpus) for q in queries}
     lines = [f"Retrieval set: {len(queries)} queries, corpus {recording['corpus']}, recorded {recording['recorded_at']}", ""]
-    lines.append(f"{'query':<13} {'expect':<23} {'kb rank':>7}  {'kb top 2':<46} {'kw rank':>7}")
+    lines.append(f"{'query':<19} {'expect':<23} {'kb rank':>7}  {'kb top 2':<46} {'kw rank':>7}")
     for q in queries:
         expect = q["expect"] or "(none fits)"
         kb_at = kb[q["id"]].index(q["expect"]) + 1 if q["expect"] else "-"
         kw_at = kw[q["id"]].index(q["expect"]) + 1 if q["expect"] else "-"
-        lines.append(f"{q['id']:<13} {expect:<23} {kb_at!s:>7}  {', '.join(kb[q['id']][:2]):<46} {kw_at!s:>7}")
+        lines.append(f"{q['id']:<19} {expect:<23} {kb_at!s:>7}  {', '.join(kb[q['id']][:2]):<46} {kw_at!s:>7}")
     lines.append("")
+    subsets = {
+        "all": lambda q: True,
+        "round 1": lambda q: q.get("round", 1) == 1,
+        "round 2": lambda q: q.get("round", 1) == 2,
+        "injected": lambda q: q["group"] == "injected",
+        "neighbor": lambda q: q["group"] == "neighbor",
+    }
     for label, ranked in (("knowledge base", kb), ("keyword yardstick", kw)):
-        for group in ("all", "injected", "neighbor"):
-            chosen = [q for q in queries if q["expect"] and (group == "all" or q["group"] == group)]
+        for subset, keep in subsets.items():
+            chosen = [q for q in queries if q["expect"] and keep(q)]
+            if not chosen:
+                continue
             s = score(chosen, ranked)
             lines.append(
-                f"{label:<18} {group:<9} top-1 {s['top1']:6.1%}  top-2 {s['top2']:6.1%}  of {s['fitting']}"
+                f"{label:<18} {subset:<9} top-1 {s['top1']:6.1%}  top-2 {s['top2']:6.1%}  of {s['fitting']}"
                 + (f"  misses: {', '.join(s['misses'])}" if s["misses"] else "")
             )
         s = score(queries, ranked)

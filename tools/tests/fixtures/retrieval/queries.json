@@ -1,11 +1,12 @@
 {
-  "about": "The retrieval set (Phase 3 step 4, build step 4; 2026-11-23). Each query is worded the way the agent's answers describe what they measured: its column names and phrasing ('pinned at', 'stays flat', 'jumped', 'not the bottleneck'), taken from the tuning runs' root causes and evidence notes, not from the runbooks' text. No figures from any window: no versions, commits, authors, times, counts, or measured values. 'expect' is the runbook that fits, or null where none does. Fixed before the first search (committed first), and never changed to fit a result.",
+  "about": "The retrieval set (Phase 3 step 4, build step 4; 2026-11-23). Each query is worded the way the agent's answers describe what they measured: its column names and phrasing ('pinned at', 'stays flat', 'jumped', 'not the bottleneck'), taken from the tuning runs' root causes and evidence notes, not from the runbooks' text. No figures from any window: no versions, commits, authors, times, counts, or measured values. 'expect' is the runbook that fits, or null where none does. Fixed before the first search (committed first), and never changed to fit a result. Round 2 (ids fresh-*), committed before the fixes it checks: whether the fixes found on round 1 generalize.",
   "sources": {
     "pool": "the tuning runs' answers on the three db_pool_exhaustion alarms (pool-1027-1856, -1900, -1901), sweeps 20261113T201129Z to 20261114T221926Z",
     "deploy": "the tuning runs' answers on the six bad_deploy alarms (deploy-1027-1905 to deploy-1113-0257), the same sweeps",
     "downstream": "the 10 answers on the two downstream_timeout alarms in the 2026-11-17/18 test sweeps, its only runs; decision 12 moves those spent alarms to tuning",
     "neighbor": "no runs: never injected. The agent's vocabulary from the runs above, describing what that fault would measure",
-    "none": "symptoms no runbook covers, in the same vocabulary"
+    "none": "symptoms no runbook covers, in the same vocabulary",
+    "fresh": "round 2, written 2026-11-23 after the first measurement and before any fix was applied: phrasings from the same answers that the first 28 did not use, and for memory-leak.md the same vocabulary. Never shown to the fixes"
   },
   "queries": [
     {"id": "pool-1", "group": "injected", "from": "pool", "expect": "db-pool-exhaustion.md",
@@ -75,6 +76,31 @@
     {"id": "none-3", "group": "none", "from": "none", "expect": null,
      "query": "one client is getting 400 responses for malformed request bodies; no other client is affected"},
     {"id": "none-4", "group": "none", "from": "none", "expect": null,
-     "query": "GET /products is slow on its own while database query time, pool wait and payments-api are all flat"}
+     "query": "GET /products is slow on its own while database query time, pool wait and payments-api are all flat"},
+
+    {"id": "fresh-pool-1", "group": "injected", "from": "pool", "expect": "db-pool-exhaustion.md", "round": 2,
+     "query": "all the shown errors are pool-acquisition timeouts and every route fails the same way; active connections are capped at the new limit while concurrency keeps rising"},
+    {"id": "fresh-pool-2", "group": "injected", "from": "pool", "expect": "db-pool-exhaustion.md", "round": 2,
+     "query": "pool wait went from near zero to hundreds of milliseconds in the minute of a config change; query time is normal and no request has failed yet, so this is latency from queueing, not errors"},
+    {"id": "fresh-pool-3", "group": "injected", "from": "pool", "expect": "db-pool-exhaustion.md", "round": 2,
+     "query": "concurrency climbed past what the connection pool can serve; requests that waited out the acquire timeout return 500, and the version on the failing lines is the one that ran fine before"},
+    {"id": "fresh-deploy-1", "group": "injected", "from": "deploy", "expect": "bad-deploy.md", "round": 2,
+     "query": "new errors right after a redeploy; the failing requests return in a fraction of a millisecond and their lines carry no pool or payments fields"},
+    {"id": "fresh-deploy-2", "group": "injected", "from": "deploy", "expect": "bad-deploy.md", "round": 2,
+     "query": "every successful checkout in the same window carries a promo, and every failing line has has_promo false with the same top frame in its stack"},
+    {"id": "fresh-deploy-3", "group": "injected", "from": "deploy", "expect": "bad-deploy.md", "round": 2,
+     "query": "the error rate was zero in every minute before the deploy, then a steady share of requests fails with an exception the previous version never raised"},
+    {"id": "fresh-downstream-1", "group": "injected", "from": "downstream", "expect": "downstream-timeout.md", "round": 2,
+     "query": "checkout p99 tracks the payments latency and is over the threshold; there are no failed requests, so this is a latency problem only"},
+    {"id": "fresh-downstream-2", "group": "injected", "from": "downstream", "expect": "downstream-timeout.md", "round": 2,
+     "query": "the first payments timeouts in the window match the logged UpstreamTimeout lines, while the DB pool wait stays near zero and query time is normal"},
+    {"id": "fresh-downstream-3", "group": "injected", "from": "downstream", "expect": "downstream-timeout.md", "round": 2,
+     "query": "payments-api latency was normal before the incident and spiked to nearly the timeout in the alarm minute; product and cart routes are unaffected"},
+    {"id": "fresh-leak-1", "group": "neighbor", "from": "neighbor", "expect": "memory-leak.md", "round": 2,
+     "query": "cold_start lines keep appearing although req is flat and concurrent_max stays well under the cap; nothing is logged as an error"},
+    {"id": "fresh-leak-2", "group": "neighbor", "from": "neighbor", "expect": "memory-leak.md", "round": 2,
+     "query": "callers report failed checkouts that have no matching request line here, and the only release went out earlier in the day, well before the first failure"},
+    {"id": "fresh-leak-3", "group": "neighbor", "from": "neighbor", "expect": "memory-leak.md", "round": 2,
+     "query": "requests disappear: callers count failures this service never logged, while pool wait, query time and payments-api stay flat and new instances keep starting"}
   ]
 }

@@ -37,6 +37,19 @@ def test_every_runbook_has_queries_and_some_fit_none() -> None:
         assert q["group"] == ("injected" if q["expect"] in INJECTED else "neighbor" if q["expect"] else "none")
 
 
+def test_round_2_checks_the_four_runbooks_round_1_missed_on() -> None:
+    """Written after round 1 was measured and before its fixes, never changed since: 3 each."""
+    fresh = [q for q in load_queries() if q.get("round", 1) == 2]
+    assert Counter(q["expect"] for q in fresh) == {
+        "db-pool-exhaustion.md": 3,
+        "bad-deploy.md": 3,
+        "downstream-timeout.md": 3,
+        "memory-leak.md": 3,
+    }
+    assert all(q["id"].startswith("fresh-") for q in fresh)
+    assert all(q.get("round", 1) == 1 for q in load_queries()[:32])
+
+
 def test_no_query_holds_a_figure_or_what_only_the_staging_knows() -> None:
     for q in load_queries():
         text = q["query"]
