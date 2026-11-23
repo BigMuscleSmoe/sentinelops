@@ -96,10 +96,17 @@ _CLAUSE = re.compile(r"\s*[;:]\s+|,?\s+(?=(?:while|whereas|but|although|though|y
 # payments-api". It excuses the suspect it names and nothing else in the clause.
 # The past tense reads the same as the present: what failed before it reached
 # a suspect never got there. No saved answer uses it for an arrival.
+# A short list after "reaching" excuses its last suspect too ("fail with 500
+# before reaching the DB pool or payments-api", 2026-11-23), but only after a
+# failure in the same clause (fail, raise, throw, crash, an error, an
+# exception, a 5xx): "spend 2 s in pricing before reaching the DB pool and
+# payments-api" is an arrival.
 _NOT_REACHED = re.compile(
     r"\bbefore any\b[^,;:]{0,40}$"
     r"|\bbefore\b[^,;:]{0,30}\breach(?:es|ed|ing)?\s+(?:the\s+)?$"
-    r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$",
+    r"|\bnever\s+reach(?:es|ed|ing)?\s+(?:the\s+)?$"
+    r"|\b(?:fail\w*|rais(?:es|ed|ing)|throw\w*|crash\w*|errors?|errored|exceptions?|5\d\d)\b[^,;:]{0,60}?"
+    r"\bbefore\s+reach(?:es|ed|ing)?\s+(?:the\s+)?(?:[\w.-]+\s+){1,3}(?:or|and)\s+(?:the\s+)?$",
     re.I,
 )
 # An earlier incident, over before this one, isn't blamed for this one. The

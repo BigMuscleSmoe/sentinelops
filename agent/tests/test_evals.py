@@ -257,6 +257,9 @@ def test_an_adjective_doesnt_excuse_a_wrong_suspect(sentence: str, blamed: list[
         "When a cart has no promo (has_promo=false), it subscripts a None value and raises TypeError, so POST /checkout returns 500 before any payments-api call.",
         "This happens on the request path before any database or payments-api call.",
         "Its pricing path calls apply_promo on carts that have no promo, dereferences a None promo object, and raises TypeError before the request reaches payments-api.",
+        # A list after "reaching": the two saved sentences of tuning sweep 20261123T173506Z the rubric failed.
+        "Those requests fail with 500 before reaching the DB pool or payments-api, so err% jumps to about 10% of checkouts (roughly half of checkout traffic in the sampled lines) while latency, pool wait and payments stay normal.",
+        "In apply_promo (pricing.py:15), the code subscripts a value that is None whenever has_promo is false, so every such POST /checkout raises a TypeError and returns 500 before reaching the database or payments-api.",
     ],
 )
 def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
@@ -279,6 +282,10 @@ def test_a_suspect_the_failure_never_reached_isnt_blamed(sentence: str) -> None:
         ("The connection pool was exhausted before it reached payments-api.", ["connection pool"]),
         # No "before": the request got there.
         ("Every request reached payments-api and timed out there.", ["payments-api"]),
+        # A list after "reaching" with no failure before it: the request got there.
+        ("Checkouts spend about 2 s in pricing before reaching the DB pool and payments-api, which then time out.", ["payments-api"]),
+        # After a failure, the list excuses its suspects, and nothing named outside it.
+        ("Requests fail with 500 before reaching the DB pool or payments-api, and payments-api timed out.", ["payments-api"]),
     ],
 )
 def test_never_reached_excuses_only_the_suspect_it_names(sentence: str, blamed: list[str]) -> None:
