@@ -25,7 +25,7 @@ from collections.abc import Collection
 from enum import StrEnum
 from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, WithJsonSchema, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 PR_CONFIDENCE_THRESHOLD = 0.7
@@ -36,6 +36,14 @@ PR_CONFIDENCE_THRESHOLD = 0.7
 _MARKUP = re.compile(r"</[A-Za-z_]+>|<(?:parameter|invoke)\b")
 _TIME = re.compile(r"(\d{4}-\d\d-\d\dT)?\d\d:\d\d(:\d\d(\.\d{1,6})?)?Z?")
 _ITEM = re.compile(r"e([1-9]\d*)")
+# What evidence may cite: the alarm, or a metrics, log, or deploy-history result by its
+# label (the agent's sources.PREFIXES: m, l, d). A runbook search (r) or a code read (c)
+# observes nothing that happened, and the prompt's rule alone left 11 of 19 resends in
+# sweep 20261124T072730Z on code cited as evidence. Strict tool use decodes to the
+# pattern, so the model can't write another source. It's the schema's alone, not
+# Pydantic's: an answer valid when written still validates, and the checker grades
+# any such item miscited.
+EVIDENCE_SOURCE = r"^(alarm|[mld][1-9][0-9]*)$"
 
 
 def _no_markup(text: str) -> str:
@@ -122,11 +130,12 @@ class Evidence(BaseModel):
             "gap: seconds pass from start to end."
         )
     )
-    source: str | None = Field(
+    source: Annotated[str, WithJsonSchema({"type": "string", "pattern": EVIDENCE_SOURCE})] | None = Field(
         default=None,
         description=(
-            "The tool result this comes from, by the label on its first line, or alarm for the alarm message. "
-            "Every kind but gap needs one."
+            "The tool result this comes from: a metrics, log, or deploy-history result by the label on its "
+            "first line, or alarm for the alarm message. Never a runbook search or a code read: what a read "
+            "shows goes in inferences. Every kind but gap needs one."
         ),
     )
     column: str | None = Field(

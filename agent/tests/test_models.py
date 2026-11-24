@@ -8,7 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from answers import CHECKED_PATCH, PATCH, UPSTREAM_EVIDENCE, item
-from sentinelops_core.models import Evidence, FaultLocation, Hypothesis, Remediation, StopReason, trimmed_answer
+from sentinelops_core.code import READ_TOOL
+from sentinelops_core.models import EVIDENCE_SOURCE, Evidence, FaultLocation, Hypothesis, Remediation, StopReason, trimmed_answer
+from sources import ALARM, PREFIXES
 
 PROMPT = (Path(__file__).parents[1] / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -390,3 +392,28 @@ def test_a_leaked_tail_at_the_end_of_root_cause_is_cut_from_the_tag_on(tail: str
 )
 def test_anything_else_is_left_for_the_normal_rejection(answer) -> None:
     assert trimmed_answer(answer) is None
+
+
+# --- what evidence may cite ----------------------------------------------------------
+
+# The tools whose results observe the incident; a runbook search and a code read don't.
+OBSERVING = {"get_metrics", "get_recent_logs", "get_deploy_history"}
+
+
+def test_evidence_cites_the_alarm_or_a_result_that_observes_the_incident() -> None:
+    assert set(PREFIXES) == OBSERVING | {"search_runbooks", READ_TOOL}, "a new tool is sorted on purpose"
+    for tool, prefix in PREFIXES.items():
+        for n in (1, 2, 12):
+            assert bool(re.fullmatch(EVIDENCE_SOURCE, f"{prefix}{n}")) is (tool in OBSERVING), (tool, n)
+    assert re.fullmatch(EVIDENCE_SOURCE, ALARM)
+    for label in ("m0", "m01", "e1", "alarm1", "m1 ", " l2", "D1", "c1", "r2"):
+        assert not re.fullmatch(EVIDENCE_SOURCE, label), label
+
+
+def test_the_source_pattern_is_the_schemas_alone() -> None:
+    # The API decodes to it; Pydantic doesn't check it, so an answer valid when it was
+    # written still validates, and the checker grades such an item miscited.
+    source = Hypothesis.model_json_schema()["$defs"]["Evidence"]["properties"]["source"]
+    assert source["anyOf"] == [{"type": "string", "pattern": EVIDENCE_SOURCE}, {"type": "null"}]
+    for label in ("c1", "r2"):
+        assert Evidence.model_validate(item("count", source=label, count=1, note="read it")).source == label

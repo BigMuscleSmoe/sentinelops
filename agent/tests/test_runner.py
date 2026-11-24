@@ -16,7 +16,7 @@ from evals.arms import ARMS
 from guards import Limits
 from hooks import COUNTED_FIELDS, count_margin
 from sentinelops_core import code, patches
-from sentinelops_core.models import Hypothesis, StopReason
+from sentinelops_core.models import EVIDENCE_SOURCE, Hypothesis, StopReason
 from pricing import price_for
 from providers import Settings, build_model
 from runner import ANSWER_AS_TEXT, RunReport, investigate, running_release, system_prompt
@@ -619,6 +619,10 @@ def test_the_strict_schema_is_one_the_api_takes() -> None:
     ]
     assert not [path for path, node in nodes if "anyOf" in node and {"type", "properties"} & set(node)]
     assert all(node["additionalProperties"] is False for _, node in objects)
+    # Evidence cites only what observes the incident: the API decodes to the pattern, so a code
+    # read or a runbook search can't be written there at all.
+    source = schema["properties"]["evidence"]["items"]["properties"]["source"]
+    assert (source["type"], source["pattern"]) == (["string", "null"], EVIDENCE_SOURCE)
     # Every field required: with 14 optional ones the API refused the schema as too complex to compile.
     assert [(path, node["required"]) for path, node in objects] == [(path, list(node["properties"])) for path, node in objects]
     # The limits are over the whole request; this is its only strict tool.
