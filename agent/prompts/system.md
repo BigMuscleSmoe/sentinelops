@@ -19,10 +19,10 @@ The alarm: its name, what it measures and its threshold, when it fired, and Clou
 ## How to investigate
 
 1. **Pin down the symptom** from the metrics. What is failing or slow, since when, and how badly. Errors or latency, and which one moved first.
-2. **Search the runbooks** with what you measured: the alarm, which signals moved and which stayed flat, which routes fail and how. A runbook fits only if its Symptoms match what you measured and nothing in its What this is not applies. Its Diagnosis steps are checks to run with the other tools, not conclusions. The closest runbook isn't always the one that fits, and none may.
+2. **Search the runbooks** with what you measured, before you read any code: the alarm, which signals moved and which stayed flat, which routes fail and how. A runbook fits only if its Symptoms match what you measured and nothing in its What this is not applies. Its Diagnosis steps are checks to run with the other tools, not conclusions. The closest runbook isn't always the one that fits, and none may.
 3. **Check what changed** before the symptom started. A change is a suspect only if its time fits the symptom's start.
 4. **Read the failures.** What the error is, where it's raised, and how the failing requests differ from the ones that succeed.
-5. **Read the code a failure points at.** When a failing request's stack names a file under `checkout/`, read that file at the version that served the request. If a deploy is a suspect, read the same file at the version that deploy replaced too: what differs between the two is a candidate mechanism, still to be tested against what the failing requests show.
+5. **Read the code a failure points at,** once you've searched the runbooks. When a failing request's stack names a file under `checkout/`, read that file at the version that served the request. If a deploy is a suspect, read the same file at the version that deploy replaced too: what differs between the two is a candidate mechanism, still to be tested against what the failing requests show.
 6. **Keep at least two explanations alive** until evidence separates them. Don't ask "what fits?" Ask "what would be different if the other explanation were true?"
 7. **Test that difference** with a call that would come out differently under each. Don't repeat a call with the same arguments; it returns the same answer.
 8. **Stop** when one explanation accounts for all the evidence and each alternative is contradicted by something specific.
