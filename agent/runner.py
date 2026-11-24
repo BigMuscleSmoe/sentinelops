@@ -6,6 +6,7 @@ import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from hooks import GuardHooks, ModelCall, ModelRefused
 from pricing import ModelPrice
 from sentinelops_core import code, patches
 from sentinelops_core.models import Hypothesis
+from sentinelops_tools.deploys import parse_history
 from sentinelops_tools.runbooks import parse_results
 from sources import Sources, cited
 
@@ -74,6 +76,7 @@ async def investigate(
     max_output_tokens: int,
     limits: Limits = Limits(),
     clock: Callable[[], float] = time.monotonic,
+    fired_at: datetime | None = None,
 ) -> RunReport:
     """Run the agent on one alarm's prompt and return what it found, and what it spent.
 
@@ -81,7 +84,10 @@ async def investigate(
     else that stops the run, a refusal included, is reported as a failure
     with no Hypothesis. A cited runbook stays only if a search in this run
     showed it in full (check_citation), and a patch only if it passes its
-    checks against a file this run read in full (check_remediation).
+    checks against a file this run read in full (check_remediation). The
+    answer's running_version is the release running at fired_at, as the run's
+    own deploy-history reads show it (running_release); without fired_at it's
+    None, and no answer can open a PR.
     """
     from strands import Agent, ModelRetryStrategy, tool
     from strands.agent.conversation_manager import NullConversationManager
@@ -147,6 +153,8 @@ async def investigate(
     if hypothesis is not None:
         hypothesis, dropped = check_citation(hypothesis, sources)
         hypothesis, patch_dropped = check_remediation(hypothesis, sources)
+        # Always written over: the model's schema leaves it out, and only the run's reads say it.
+        hypothesis = hypothesis.model_copy(update={"running_version": running_release(sources, fired_at)})
 
     return RunReport(
         hypothesis=hypothesis,
@@ -218,6 +226,43 @@ def check_remediation(hypothesis: Hypothesis, sources: Sources) -> tuple[Hypothe
         update={"version": read.version, "file_sha256": code.digest(read.text), "diff": checked.diff}
     )
     return hypothesis.model_copy(update={"remediation": kept}), None
+
+
+def running_release(sources: Sources, fired_at: datetime | None) -> str | None:
+    """The release running when the alarm fired, from this run's deploy-history reads, or None.
+
+    Every record carries the version running after it, a config change's too,
+    so it's the version on the newest record at or before fired_at. A live read
+    runs past fired_at, and what it shows after (a rollback, say) is left out. A
+    page that ends before fired_at could miss a later record, so it doesn't
+    count; one whose records all came after fired_at shows nothing that does.
+    """
+    if fired_at is None:
+        return None
+    newest: tuple[datetime, str] | None = None
+    for tool, text in sources.results:
+        page = parse_history(text) if tool == "get_deploy_history" else None
+        up_to = _utc(page.up_to) if page is not None else None
+        if page is None or up_to is None or up_to < fired_at:
+            continue
+        for record in page.records:
+            ts, version = _utc(record.get("ts")), record.get("version")
+            if ts is None or ts > fired_at or not isinstance(version, str) or not version:
+                continue
+            if newest is None or ts > newest[0]:
+                newest = (ts, version)
+    return newest[1] if newest is not None else None
+
+
+def _utc(value: Any) -> datetime | None:
+    """An ISO 8601 time with its zone, as the deploy tool writes them, or None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _file_read(sources: Sources, label: str) -> code.FileRead:

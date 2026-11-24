@@ -11,6 +11,7 @@ from strands.models._native_output import _UNSUPPORTED_MECHANISMS
 
 from fake_anthropic import ACCESS_TOKEN, FakeAnthropic, Reply, answer, signed_in, text, thinking, tool_use
 from answers import DEPLOY_EVIDENCE, PATCH, PRICING_1_42_0, PRICING_1_43_0, item
+from evals.scenarios import BY_ID, load_window
 from evals.arms import ARMS
 from guards import Limits
 from hooks import COUNTED_FIELDS, count_margin
@@ -18,7 +19,8 @@ from sentinelops_core import code, patches
 from sentinelops_core.models import Hypothesis, StopReason
 from pricing import price_for
 from providers import Settings, build_model
-from runner import ANSWER_AS_TEXT, RunReport, investigate, system_prompt
+from runner import ANSWER_AS_TEXT, RunReport, investigate, running_release, system_prompt
+from sentinelops_tools import deploys
 from sentinelops_tools.runbooks import SHOWN_SECTIONS, Hit, parse_results, render
 from stubs import TOOL_FIXTURES, load
 
@@ -283,9 +285,9 @@ def test_each_call_is_counted_on_the_request_it_sends() -> None:
 
 
 def test_the_model_cannot_report_a_halt() -> None:
-    fake = patched(PATCH, halted_by="step_limit")
+    fake = patched(PATCH, history=True, halted_by="step_limit")
 
-    report = run(fake, reading())
+    report = run(fake, reading(), fired_at=FIRED_AT)
 
     assert report.hypothesis.halted_by is None
     assert report.hypothesis.can_open_pr
@@ -395,14 +397,22 @@ def test_the_check_reads_the_marked_results_the_model_was_given() -> None:
 
 # The read tool's result for 1.43.0's checkout/pricing.py, as the tool will render it.
 PRICING_READ = code.render_file("1.43.0", "checkout/pricing.py", PRICING_1_43_0)
+PRICING_READ_1_42_0 = code.render_file("1.42.0", "checkout/pricing.py", PRICING_1_42_0)
+
+# deploy-1112-2000's deploy history at its alarm, from its recorded window: 1.43.0 deployed
+# at 20:00:15, 30 s before; the 08:03 1.43.0 and its 08:04 rollback earlier that day.
+DEPLOY_1112_2000 = BY_ID["deploy-1112-2000"]
+FIRED_AT = DEPLOY_1112_2000.fired_at
+HISTORY = deploys.history(load_window(DEPLOY_1112_2000.window).env(FIRED_AT), limit=10)
 
 
 class Reading(Tools):
     """The scripted tools, and a code read that answers with each text in turn, the last one again after."""
 
-    def __init__(self, *texts: str) -> None:
+    def __init__(self, *texts: str, history: str = HISTORY) -> None:
         super().__init__()
         self.texts = list(texts)
+        self.history = history
 
     def all(self) -> list:
         def read_repo_file(path: str) -> str:
@@ -414,16 +424,27 @@ class Reading(Tools):
             self.runs.append("read_repo_file")
             return self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
 
-        return [*super().all(), read_repo_file]
+        def get_deploy_history(limit: int = 10) -> str:
+            """Stands in for the deploy history.
+
+            Args:
+                limit: How many.
+            """
+            self.runs.append("get_deploy_history")
+            return self.history
+
+        return [*super().all(), read_repo_file, get_deploy_history]
 
 
-def reading(*texts: str) -> Reading:
-    return Reading(*(texts or (PRICING_READ,)))
+def reading(*texts: str, history: str = HISTORY) -> Reading:
+    return Reading(*(texts or (PRICING_READ,)), history=history)
 
 
-def patched(remediation: dict[str, Any] | None, *, read: bool = True, **changes: Any) -> FakeAnthropic:
-    """A run that reads the metrics, then the file unless read is False, then answers."""
+def patched(remediation: dict[str, Any] | None, *, read: bool = True, history: bool = False, **changes: Any) -> FakeAnthropic:
+    """A run that reads the metrics, the deploy history if history is True, then the file unless read is False, then answers."""
     replies = [Reply([tool_use("get_metrics", {})])]
+    if history:
+        replies.append(Reply([tool_use("get_deploy_history", {})]))
     if read:
         replies.append(Reply([tool_use("read_repo_file", {"path": "checkout/pricing.py"})]))
     return FakeAnthropic([*replies, answer({**DIAGNOSIS, "remediation": remediation, **changes})])
@@ -432,10 +453,11 @@ def patched(remediation: dict[str, Any] | None, *, read: bool = True, **changes:
 def test_a_patch_that_passes_is_kept_with_what_only_the_check_sets(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.WARNING, logger="sentinelops.runner")
 
-    report = run(patched(PATCH), reading())
+    report = run(patched(PATCH, history=True), reading(), fired_at=FIRED_AT)
 
     kept = report.hypothesis.remediation
     assert kept is not None and report.remediation_dropped is None
+    assert report.hypothesis.running_version == "1.43.0"
     assert (kept.source, kept.file_path, kept.rationale) == (PATCH["source"], PATCH["file_path"], PATCH["rationale"])
     assert (kept.version, kept.file_sha256) == ("1.43.0", code.digest(PRICING_1_43_0))
     assert kept.diff.startswith("--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n")
@@ -993,3 +1015,101 @@ def test_a_tool_call_made_after_the_ask_again_counts_too(unforced: None) -> None
 
     assert report.hypothesis.root_cause == DIAGNOSIS["root_cause"]
     assert report.answers_in_text == 1 and report.tool_calls_after_ask == ["get_recent_logs"]
+
+
+# --- the release that was running -------------------------------------------------
+
+# deploy-1112-2000's patch in sweep 20261124T072730Z, as the model wrote it: against c2, the
+# read of 1.42.0, the release the 20:00:15 deploy replaced. The check kept it (its old text is
+# in 1.42.0's file), and its diff adds a second copy of the guard 1.42.0 already has.
+PATCH_ON_1_42_0 = {
+    "source": "c2",
+    "file_path": "checkout/pricing.py",
+    "edits": [
+        {
+            "old": '    return subtotal_cents - subtotal_cents * promo["percent_off"] // 100',
+            "new": '    if promo is None:\n        return subtotal_cents\n    return subtotal_cents - subtotal_cents * promo["percent_off"] // 100',
+        }
+    ],
+    "rationale": "Restores the None check that 1.42.0 has, so carts without a promo return the subtotal instead of subscripting None.",
+}
+
+
+def test_a_patch_against_the_release_a_deploy_replaced_opens_no_pr() -> None:
+    # deploy-1112-2000's run: the deploy history, 1.43.0's file (c1), 1.42.0's (c2), and a patch against c2.
+    replies = [
+        Reply([tool_use("get_deploy_history", {})]),
+        Reply([tool_use("read_repo_file", {"path": "checkout/pricing.py"})]),
+        Reply([tool_use("read_repo_file", {"path": "checkout/pricing.py"})]),
+    ]
+    fake = FakeAnthropic([*replies, answer({**DIAGNOSIS, "confidence": 0.85, "remediation": PATCH_ON_1_42_0})])
+
+    report = run(fake, reading(PRICING_READ, PRICING_READ_1_42_0), fired_at=FIRED_AT)
+
+    kept = report.hypothesis.remediation
+    assert kept is not None and report.remediation_dropped is None, "every check passes against 1.42.0's file"
+    assert kept.diff.count("+    if promo is None:") == 1 and PRICING_1_42_0.count("if promo is None:") == 1
+    assert (kept.version, report.hypothesis.running_version) == ("1.42.0", "1.43.0")
+    assert not report.hypothesis.can_open_pr
+    # The same answer with its patch against c1, 1.43.0's read, would open one.
+    fake = FakeAnthropic([*replies, answer({**DIAGNOSIS, "confidence": 0.85, "remediation": PATCH})])
+    assert run(fake, reading(PRICING_READ, PRICING_READ_1_42_0), fired_at=FIRED_AT).hypothesis.can_open_pr
+
+
+@pytest.mark.parametrize(
+    ("history", "fired_at", "why"),
+    [
+        (False, FIRED_AT, "no deploy-history read in the run"),
+        (True, None, "the run wasn't told when the alarm fired"),
+    ],
+)
+def test_without_the_running_release_a_patch_opens_no_pr(history: bool, fired_at: Any, why: str) -> None:
+    report = run(patched(PATCH, history=history), reading(), fired_at=fired_at)
+    assert report.hypothesis.remediation is not None and report.hypothesis.remediation.version == "1.43.0"
+    assert report.hypothesis.running_version is None and not report.hypothesis.can_open_pr, why
+
+
+def test_the_running_release_is_the_runs_own_reads_never_the_models() -> None:
+    # The strict schema leaves it out, so the API can't send it; if a model did, the run writes its own over it.
+    report = run(patched(PATCH, history=True, running_version="1.43.0"), reading(), fired_at=FIRED_AT)
+    assert report.hypothesis.running_version == "1.43.0"
+    report = run(patched(PATCH, running_version="1.43.0"), reading(), fired_at=FIRED_AT)
+    assert report.hypothesis.running_version is None and not report.hypothesis.can_open_pr
+
+
+class Results:
+    """Stands in for a run's Sources: its results as the tools wrote them."""
+
+    def __init__(self, *results: tuple[str, str]) -> None:
+        self.results = list(results)
+
+
+def page(up_to: str, *records: tuple[str, str, str]) -> str:
+    """A deploy-history result in the tool's own format: each record (ts, kind, version)."""
+    lines = [f"The {len(records)} most recent deploys and config changes to checkout-api up to {up_to}, newest first."]
+    lines += [json.dumps({"ts": ts, "kind": kind, "version": version}, separators=(",", ":")) for ts, kind, version in records]
+    return "\n".join(lines)
+
+
+def test_the_running_release_is_the_newest_record_at_or_before_the_alarm() -> None:
+    # The run's real read: 1.43.0 at 20:00:15, before the 20:00:45 alarm.
+    assert running_release(Results(("get_deploy_history", HISTORY)), FIRED_AT) == "1.43.0"
+    # A live read runs past the alarm: a rollback after it isn't what was running.
+    live = page(
+        "2026-11-12T20:02:30.000Z",
+        ("2026-11-12T20:01:40.000Z", "deploy", "1.42.0"),
+        ("2026-11-12T20:00:15.266Z", "deploy", "1.43.0"),
+    )
+    assert running_release(Results(("get_deploy_history", live)), FIRED_AT) == "1.43.0"
+    # A config change carries the version it ran on; a record at the alarm's own time counts.
+    config = page("2026-11-12T20:00:45.006Z", ("2026-11-12T20:00:45.006Z", "config", "1.42.0"), ("2026-11-12T08:04:55.634Z", "deploy", "1.42.0"))
+    assert running_release(Results(("get_deploy_history", config)), FIRED_AT) == "1.42.0"
+    # Records only after the alarm (a limit too small) show nothing; a page ending before it could miss one.
+    after = page("2026-11-12T20:02:30.000Z", ("2026-11-12T20:01:40.000Z", "deploy", "1.42.0"))
+    early = page("2026-11-12T20:00:00.000Z", ("2026-11-12T08:04:55.634Z", "deploy", "1.42.0"))
+    assert running_release(Results(("get_deploy_history", after), ("get_deploy_history", early)), FIRED_AT) is None
+    # Two reads: the newest record at or before the alarm across both.
+    assert running_release(Results(("get_deploy_history", early), ("get_deploy_history", live)), FIRED_AT) == "1.43.0"
+    # Only deploy-history results count, and only with a time to cut at.
+    assert running_release(Results(("get_recent_logs", live), ("get_deploy_history", "Could not read the deploy history.")), FIRED_AT) is None
+    assert running_release(Results(("get_deploy_history", HISTORY)), None) is None

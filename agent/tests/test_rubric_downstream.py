@@ -65,6 +65,8 @@ RIGHT = {
     "not_checked": ["Why payments-api slowed down: its own metrics and logs aren't readable from here."],
     "runbook_cited": "downstream-timeout.md",
     "halted_by": None,
+    # As the runner records it from the run's deploy-history read: 1.42.0 ran all day.
+    "running_version": "1.42.0",
 }
 
 

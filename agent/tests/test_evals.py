@@ -143,15 +143,19 @@ THIN = {
 def _rubric(name: str, **changes: Any) -> rubrics.RubricResult:
     """A fixture run's answer, changed, scored with the checker's checks of its evidence.
 
-    The fixtures predate the runbook search and patches, so each cites its
-    fault's own runbook, and a bad deploy's carries a patch, as a right answer
-    now does, unless a change says otherwise.
+    The fixtures predate the runbook search, patches, and the running release,
+    so each cites its fault's own runbook, a bad deploy's carries a patch, as a
+    right answer now does, and each records the release its scenario ran at the
+    alarm (1.43.0 for a bad deploy, 1.42.0 for the rest), unless a change says
+    otherwise.
     """
     transcript = copy.deepcopy(RUNS[name])
     fault = BY_ID[transcript["eval"]["scenario"]].fault
     transcript["hypothesis"]["runbook_cited"] = rubrics.RULES[fault].runbook
+    transcript["hypothesis"]["running_version"] = "1.42.0"
     if fault is Fault.BAD_DEPLOY:
         transcript["hypothesis"]["remediation"] = CHECKED_PATCH
+        transcript["hypothesis"]["running_version"] = "1.43.0"
     transcript["hypothesis"].update(changes)
     check = check_run(name, transcript)
     return rubrics.score(BY_ID[transcript["eval"]["scenario"]], transcript["hypothesis"], check.checks)
@@ -453,9 +457,10 @@ def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
         (DEPLOY_RUN, {"runbook_cited": None}, {"runbook"}),
         # No patch, or one the run's check dropped: right, but no PR.
         (DEPLOY_RUN, {"remediation": None}, {"pr_gate", "remediation"}),
-        # A kept patch to another file, or at the release that worked.
+        # A kept patch to another file; or at the release that worked, the one the deploy
+        # replaced, which opens no PR either (deploy-1112-2000, sweep 20261124T072730Z).
         (DEPLOY_RUN, {"remediation": {**CHECKED_PATCH, "file_path": "checkout/app.py"}}, {"remediation"}),
-        (DEPLOY_RUN, {"remediation": {**CHECKED_PATCH, "version": "1.42.0"}}, {"remediation"}),
+        (DEPLOY_RUN, {"remediation": {**CHECKED_PATCH, "version": "1.42.0"}}, {"pr_gate", "remediation"}),
         # A pool fault is a config change: a kept patch is wrong, and with it this confident answer would open a PR.
         (POOL_RUN, {"remediation": {**CHECKED_PATCH, "file_path": "checkout/config.py", "version": "1.42.0"}}, {"pr_gate", "remediation"}),
         (DEPLOY_RUN, {"runbook_cited": "db-pool-exhaustion.md"}, {"runbook"}),
@@ -488,13 +493,17 @@ def test_the_right_change_at_the_wrong_time_isnt_the_culprit() -> None:
 
 
 def test_a_confident_wrong_diagnosis_is_confidently_wrong() -> None:
-    # A pool fault blamed on the bad release, with the release's patch: a PR would open.
-    wrong = {"root_cause": "Release 1.43.0 broke promo pricing; checkouts without a promo raise TypeError.", "remediation": CHECKED_PATCH}
+    # A pool fault blamed on promo pricing, with a kept patch against 1.42.0, the release
+    # that was running: a PR would open.
+    on_running = {**CHECKED_PATCH, "version": "1.42.0"}
+    wrong = {"root_cause": "The promo pricing path raises TypeError on checkouts without a promo.", "remediation": on_running}
     result = _rubric(POOL_RUN, **wrong)
     assert not result.diagnosis and result.confidently_wrong
     assert not _rubric(POOL_RUN, **wrong, halted_by="step_limit").confidently_wrong
-    # Without a patch nothing opens (Phase 4): wrong, but not confidently so.
+    # Without a patch nothing opens (Phase 4), nor with one against a release that wasn't
+    # running: wrong, but not confidently so.
     assert not _rubric(POOL_RUN, **{**wrong, "remediation": None}).confidently_wrong
+    assert not _rubric(POOL_RUN, **{**wrong, "remediation": CHECKED_PATCH}).confidently_wrong
 
 
 # --- which model answered ---------------------------------------------------------

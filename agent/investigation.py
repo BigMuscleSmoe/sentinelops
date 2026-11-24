@@ -138,6 +138,7 @@ async def investigate_alarm(
             price=price,
             max_output_tokens=settings.max_output_tokens,
             limits=limits,
+            fired_at=fired_at,
         )
     finally:
         await model.client.close()

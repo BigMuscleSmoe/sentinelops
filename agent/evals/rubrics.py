@@ -28,7 +28,8 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     payments-api, upstream, for a downstream timeout
   pr_gate           Hypothesis.can_open_pr, read through the property, is what
                     the scenario expects: True for a bad deploy, whose fix is
-                    code (a patch the run's check kept), False for a pool fault,
+                    code (a patch the run's check kept, against the release
+                    running at the alarm), False for a pool fault,
                     a config change outside the code, and for a downstream
                     timeout (Phase 4 design, decision 10)
   remediation       the patch is the fault's: a bad deploy's answer carries one

@@ -24,6 +24,7 @@ CONFIDENT_ANSWER = Hypothesis(
     affected_component="checkout-api",
     fault_location=FaultLocation.THIS_SERVICE,
     remediation=Remediation.model_validate(CHECKED_PATCH),
+    running_version="1.43.0",  # as the runner sets it, after the guard
 )
 
 

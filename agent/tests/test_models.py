@@ -21,7 +21,14 @@ VALID = {
 }
 # The same answer, as if the fault were in this service, with a patch the
 # run's check kept: the gate can open.
-IN_SERVICE = {**VALID, "affected_component": "checkout-api", "fault_location": "this_service", "remediation": CHECKED_PATCH}
+# A bad deploy's answer as the runner leaves it: a kept patch on 1.43.0, the release running at the alarm.
+IN_SERVICE = {
+    **VALID,
+    "affected_component": "checkout-api",
+    "fault_location": "this_service",
+    "remediation": CHECKED_PATCH,
+    "running_version": "1.43.0",
+}
 
 
 def test_accepts_a_valid_hypothesis() -> None:
@@ -106,6 +113,30 @@ def test_a_pr_needs_a_patch_the_runs_check_kept() -> None:
     for field in ("version", "file_sha256", "diff"):
         missing = {**CHECKED_PATCH, field: None}
         assert not Hypothesis.model_validate({**confident, "remediation": missing}).can_open_pr, field
+
+
+@pytest.mark.parametrize(
+    ("patch_version", "running_version", "expected"),
+    [
+        ("1.43.0", "1.43.0", True),
+        # deploy-1112-2000 in sweep 20261124T072730Z: a patch against the release the deploy replaced.
+        ("1.42.0", "1.43.0", False),
+        # No deploy-history read showed what was running, or the run wasn't told when the alarm fired.
+        ("1.43.0", None, False),
+    ],
+)
+def test_a_pr_needs_its_patch_on_the_release_that_was_running(patch_version: str, running_version: str | None, expected: bool) -> None:
+    h = Hypothesis.model_validate(
+        {**IN_SERVICE, "confidence": 0.95, "remediation": {**CHECKED_PATCH, "version": patch_version}, "running_version": running_version}
+    )
+    assert h.can_open_pr is expected
+
+
+def test_the_running_release_is_hidden_from_the_model_and_survives_the_hop() -> None:
+    assert "running_version" not in Hypothesis.model_json_schema()["properties"]
+    assert Hypothesis.model_validate(VALID).running_version is None
+    sent = Hypothesis.model_validate({**IN_SERVICE, "confidence": 0.95})
+    assert Hypothesis.model_validate_json(sent.model_dump_json()).running_version == "1.43.0"
 
 
 def test_the_fields_only_the_check_sets_are_hidden_from_the_model() -> None:

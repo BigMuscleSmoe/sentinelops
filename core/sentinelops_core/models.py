@@ -325,6 +325,10 @@ class Hypothesis(BaseModel):
     # Set by the guard, never by the model, so it's left out of the output
     # schema the model sees. None means the investigation ran to completion.
     halted_by: SkipJsonSchema[StopReason | None] = None
+    # Set by the runner after every run, never by the model: the release running
+    # when the alarm fired, the version on the newest deploy-history record at or
+    # before then among the run's own reads. None if no read showed one.
+    running_version: SkipJsonSchema[str | None] = None
 
     @model_validator(mode="after")
     def _evidence_and_references(self) -> Self:
@@ -356,7 +360,10 @@ class Hypothesis(BaseModel):
         # A PR needs a patch the run's check kept (Phase 4): none means the fix
         # isn't in this service's code, or the patch failed the check and was
         # dropped. Only the check sets version, file_sha256, and diff, so an
-        # answer that never went through it opens nothing.
+        # answer that never went through it opens nothing. The patch must be
+        # against the release that was running: one made on the release a deploy
+        # replaced fixes code that wasn't serving (sweep 20261124T072730Z's
+        # deploy-1112-2000 restored a guard 1.42.0 already had, twice over).
         patch = self.remediation
         return (
             self.halted_by is None
@@ -364,6 +371,7 @@ class Hypothesis(BaseModel):
             and self.confidence >= PR_CONFIDENCE_THRESHOLD
             and patch is not None
             and None not in (patch.version, patch.file_sha256, patch.diff)
+            and patch.version == self.running_version
         )
 
 
