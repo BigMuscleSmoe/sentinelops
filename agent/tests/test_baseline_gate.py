@@ -16,6 +16,7 @@ pushed head only.
 
 import ast
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from evals.repo import REPO, Refusal
 from evals.scenarios import BY_ID
 from evals.score import PASS_BAR
 from sentinelops_core.releases import RELEASES
+from sources import PREFIXES
 
 AGENT = REPO / "agent"
 CORE = REPO / "core"  # the shared package, sentinelops_core
@@ -83,6 +85,24 @@ def test_nothing_the_model_is_sent_names_a_release_or_the_fault(sent_now: dict[s
     the settings name none of it, so whatever a run finds, it found in what the tools showed."""
     text = json.dumps(sent_now).lower()
     assert [hint for hint in HINTS if hint.lower() in text] == []
+
+
+# A result's label as the run gives it (sources.py): a tool's letter and a number, m1 or c2.
+READ_LABEL = re.compile(r"(?<![A-Za-z0-9_])[" + "".join(sorted(set(PREFIXES.values()))) + r"][1-9][0-9]*(?![A-Za-z0-9_])")
+
+
+def test_no_tool_spec_or_answer_field_gives_a_label_a_read_could_have(sent_now: dict[str, Any]) -> None:
+    """An example label beside a field is one the model can copy into it, and every label is some
+    run's real read: Remediation.source's (c2) was the replaced release's read in every bad_deploy run
+    of sweep 20261124T072730Z, and 2 of 9 patches cited it. The prompt keeps its labels: it defines
+    them and shows whole example items, apart from any field."""
+    found = {spec["name"]: sorted(set(READ_LABEL.findall(json.dumps(spec)))) for spec in [*sent_now["tool_specs"], sent_now["schema"]]}
+    assert {name: labels for name, labels in found.items() if labels} == {}
+
+
+def test_the_label_pattern_finds_labels_and_nothing_else() -> None:
+    assert READ_LABEL.findall("by its label (c2), or m1, l12 and d3; r1.") == ["c2", "m1", "l12", "d3", "r1"]
+    assert READ_LABEL.findall("e1 rests on it; lines [1, 30]; m0, c02, mc1, x1, 2.7.0, at 18:59:00") == []
 
 
 def test_the_baseline_holds_the_sweeps_answered_runs_and_nothing_else() -> None:

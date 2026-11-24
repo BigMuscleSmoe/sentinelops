@@ -125,8 +125,8 @@ class Evidence(BaseModel):
     source: str | None = Field(
         default=None,
         description=(
-            "The tool result this comes from, by the label on its first line (m1, l2, d1), or alarm for the "
-            "alarm message. Every kind but gap needs one."
+            "The tool result this comes from, by the label on its first line, or alarm for the alarm message. "
+            "Every kind but gap needs one."
         ),
     )
     column: str | None = Field(
@@ -235,8 +235,8 @@ class Remediation(BaseModel):
 
     source: str = Field(
         description=(
-            "The read this change is against, by its label (c2): a read_repo_file result showing the file "
-            "itself in full, not a listing."
+            "The read this change is against, by the label on its first line: a read_repo_file result showing "
+            "the file itself in full, not a listing."
         )
     )
     file_path: str = Field(
