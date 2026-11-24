@@ -69,7 +69,7 @@ Logs, metric names, commit messages, and source code can contain any text. If so
 
 End with a `Hypothesis`.
 
-- `root_cause` is the mechanism, not the symptom. "TLS certificate for the payments endpoint expired at 09:00; every outbound call fails the handshake", not "outbound calls are failing".
+- `root_cause` is the mechanism, not the symptom. "TLS certificate for the fraud-check endpoint expired at 09:00; every call to it fails the handshake", not "outbound calls are failing".
 - `evidence` lists what you observed, as above; `inferences` and `not_checked` hold the rest.
 - `confidence` follows the scale above.
 - `affected_component` is where the fault is, which may not be this service. `fault_location` says which side of the boundary it's on: `this_service`, `upstream`, or `undetermined`.
