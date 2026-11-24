@@ -133,6 +133,7 @@ I wanted a result I couldn't adjust after the fact, so I committed the pass bar 
 
 **Caveats.**
 
+- **Erratum, 2026-11-24.** From Phase 3 through 2026-11-23, the answer schema's examples included 1.43.0, TypeError, POOL_MAX_SIZE and 20->2: the bad deploy's release and error, and the pool fault's config key and its change. So the 3 bad-deploy and 6 pool exhaustion incidents in the 55-of-55 result weren't fully held out. The 2 downstream incidents had no leak like that. The prompt and schema did name payments-api, as the dependency whose latency and timeouts the metrics show and in two examples, but never the downstream fault itself: not its timeout setting, the 504, or the error type. The next evaluation cycle uses the clean schema.
 - Three fault types on one small service: 55 of 55 shows the agent handles these well, not that it generalizes to new kinds of failure.
 - The slip labels come from one labeler: Claude, working from the transcripts alone, blind to the checker. Claude also hand-checked the flags. I labeled 3 runs blind for the diagnosis and agreed on all 3.
 - The intervals treat every item as independent, but slips cluster within runs, so the true intervals are wider. Even so, neither model's recall interval comes near 70%.

@@ -125,3 +125,11 @@ uv run python -m evals grade scratch/evals/20261118T050147Z-sonnet --audit evals
 ```
 
 The grader's output, verbatim, is beside this file: `20261117T192758Z.grade.txt` and `20261118T050147Z-sonnet.grade.txt`. It's the record that lasts. The grader refuses to regrade a test sweep once its scenarios or windows change, and the next iteration changes them.
+
+## Erratum (2026-11-24)
+
+From Phase 3 through 2026-11-23, the answer schema's evidence examples included `1.43.0`, `TypeError`, `POOL_MAX_SIZE` and `20->2`, and both test sweeps sent them (`d0a6ad4`, `bf3fffd`). They are the bad deploy's release and error, and the pool fault's config key and its change. So the 3 bad-deploy and 6 pool exhaustion alarms in the 55-of-55 result, 45 of the 55 runs, weren't fully held out.
+
+The 2 downstream_timeout alarms had no leak like that. The prompt and schema did name payments-api: as the dependency whose latency and timeouts the metrics table shows, in the fault location's description, in an evidence example that rules it out, and in a root-cause example about an expired TLS certificate on its endpoint. None of them named the downstream fault itself: not its timeout setting, the 504 it returns, or its error type.
+
+The numbers in this report are unchanged. The next evaluation cycle uses the clean schema: since 2026-11-24 its examples are values this service doesn't have, and a test fails if anything the model is sent names a release, a commit, or a fault's file, function, error, or config key.
