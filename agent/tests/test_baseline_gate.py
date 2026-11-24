@@ -100,6 +100,38 @@ def test_no_tool_spec_or_answer_field_gives_a_label_a_read_could_have(sent_now: 
     assert {name: labels for name, labels in found.items() if labels} == {}
 
 
+# checkout-api's real dependencies: payments-api (checkout/payments.py's DEPENDENCY) and its
+# database (checkout/db.py).
+DEPENDENCY = re.compile(r"payments|database|(?<![A-Za-z0-9_])db(?![A-Za-z0-9_])", re.IGNORECASE)
+GET_METRICS_LINE = "- `get_metrics`: "
+
+
+def test_no_example_names_a_dependency_the_service_really_calls(sent_now: dict[str, Any]) -> None:
+    """A real dependency is named only where get_metrics' columns are described: its spec, and its
+    line in the prompt's tool list. Anywhere else it's an example, and one naming payments-api (its
+    latency ruled out, a TLS failure on its endpoint, an upstream "such as payments-api") points at
+    downstream_timeout's culprit, the one scenario where it's the cause."""
+    (system,) = sent_now["prompt"]["system"]
+    found = [line[:80] for line in system["text"].splitlines() if DEPENDENCY.search(line) and not line.startswith(GET_METRICS_LINE)]
+    for spec in [*sent_now["tool_specs"], sent_now["schema"]]:
+        rest = {k: v for k, v in spec.items() if not (spec["name"] == "get_metrics" and k == "description")}
+        found += [f"{spec['name']}: {m.group(0)}" for m in DEPENDENCY.finditer(json.dumps(rest))]
+    found += [f"model_settings: {m.group(0)}" for m in DEPENDENCY.finditer(json.dumps(sent_now["model_settings"]))]
+    assert found == []
+    # Where they may be named, they are: the check would pass on a prompt that named nothing.
+    assert any(line.startswith(GET_METRICS_LINE) and DEPENDENCY.search(line) for line in system["text"].splitlines())
+
+
+def test_the_dependency_pattern_is_the_services_own() -> None:
+    payments = (REPO / "services" / "checkout-api" / "checkout" / "payments.py").read_text(encoding="utf-8")
+    assert 'DEPENDENCY = "payments-api"' in payments
+    assert (REPO / "services" / "checkout-api" / "checkout" / "db.py").exists()
+    assert [m.group(0) for m in DEPENDENCY.finditer("payments-api, payments_p99_ms, the database, a db, db.py")] == [
+        "payments", "payments", "database", "db", "db"
+    ]
+    assert DEPENDENCY.findall("db_query_ms, dbx, fraud-check, loyalty-api, pool_wait_p99_ms") == []
+
+
 def test_the_label_pattern_finds_labels_and_nothing_else() -> None:
     assert READ_LABEL.findall("by its label (c2), or m1, l12 and d3; r1.") == ["c2", "m1", "l12", "d3", "r1"]
     assert READ_LABEL.findall("e1 rests on it; lines [1, 30]; m0, c02, mc1, x1, 2.7.0, at 18:59:00") == []

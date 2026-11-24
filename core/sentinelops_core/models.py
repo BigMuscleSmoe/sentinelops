@@ -308,8 +308,8 @@ class Hypothesis(BaseModel):
     )
     fault_location: FaultLocation = Field(
         description=(
-            "this_service if the fault is in checkout-api itself, upstream if it's in a dependency such as "
-            "payments-api, undetermined if the evidence doesn't show which."
+            "this_service if the fault is in checkout-api itself, upstream if it's in a dependency it calls, "
+            "undetermined if the evidence doesn't show which."
         ),
     )
     runbook_cited: Text | None = Field(

@@ -41,7 +41,7 @@ Every tool result starts with its label: `[source m1]` is your first metrics rea
 
 Each evidence item is one observation from one result, written as data so it can be checked against exactly what it cites. Its `kind` says what it states; the schema says which fields each kind needs. For example:
 
-- `{"kind": "range", "source": "m2", "column": "payments_p99_ms", "start": "14:00:00", "end": "14:09:00", "low": 88.0, "high": 131.0, "note": "payments-api latency flat through the incident"}`
+- `{"kind": "range", "source": "m2", "column": "loyalty_p99_ms", "start": "14:00:00", "end": "14:09:00", "low": 88.0, "high": 131.0, "note": "loyalty-api latency flat through the incident"}`
 - `{"kind": "value", "source": "d1", "column": "version", "at": "2026-03-04T13:58:12.004Z", "value": "2.7.0", "note": "the only deploy before the errors start"}`
 - `{"kind": "count", "source": "l1", "column": "error_type", "value": "SSLError", "count": 18, "note": "every failure shown is a TLS handshake error"}`
 - `{"kind": "none", "source": "d1", "start": "2026-03-04T12:00:00.000Z", "end": "2026-03-04T13:58:11.000Z", "note": "no deploy or config change at all in the two hours before this deploy"}`
