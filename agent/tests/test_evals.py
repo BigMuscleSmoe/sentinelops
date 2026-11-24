@@ -18,7 +18,8 @@ import httpx
 import pytest
 
 from alarm import AlarmEvent
-from answers import CHECKED_PATCH, item
+from answers import CHECKED_PATCH, PATCH, PRICING_1_43_0, item
+from code_snapshot import CodeSnapshot, CodeSnapshotError
 import evals.__main__ as evals_cli
 from evals import rubrics, score, sweep
 from evals.__main__ import main as evals_main
@@ -31,6 +32,7 @@ from pricing import price_for
 from providers import Settings
 from knowledge_base import KnowledgeBase, KnowledgeBaseError
 from stubs import RECORDED_KB, TOOL_FIXTURES, FakeSession, load
+from sentinelops_core import code as checkout_code
 
 # The alarms of step 1's 12 saved runs, which the first grader's rules were written on (kept at 57455ab).
 SEEN = {"deploy-1027-1905", "deploy-1029-0156", "deploy-1112-2000"}
@@ -449,6 +451,13 @@ def _culprit_cited_by(evidence: list[dict[str, Any]], minute: str) -> list[int]:
         # Not confident enough to open a PR; no runbook cited, or another fault's.
         (DEPLOY_RUN, {"confidence": 0.5}, {"pr_gate"}),
         (DEPLOY_RUN, {"runbook_cited": None}, {"runbook"}),
+        # No patch, or one the run's check dropped: right, but no PR.
+        (DEPLOY_RUN, {"remediation": None}, {"pr_gate", "remediation"}),
+        # A kept patch to another file, or at the release that worked.
+        (DEPLOY_RUN, {"remediation": {**CHECKED_PATCH, "file_path": "checkout/app.py"}}, {"remediation"}),
+        (DEPLOY_RUN, {"remediation": {**CHECKED_PATCH, "version": "1.42.0"}}, {"remediation"}),
+        # A pool fault is a config change: a kept patch is wrong, and with it this confident answer would open a PR.
+        (POOL_RUN, {"remediation": {**CHECKED_PATCH, "file_path": "checkout/config.py", "version": "1.42.0"}}, {"pr_gate", "remediation"}),
         (DEPLOY_RUN, {"runbook_cited": "db-pool-exhaustion.md"}, {"runbook"}),
         (POOL_RUN, {"runbook_cited": "slow-database.md"}, {"runbook"}),
         # Thin evidence: counts that hold show no change, failure, or metric.
@@ -754,6 +763,38 @@ def test_a_sweep_searches_the_checked_knowledge_base_through_the_sign_in_and_rec
         _sweep([BY_ID["pool-1027-1856"]], 1, FakeAnthropic([]), FakeSession(), tmp_path, knowledge_base=KnowledgeBase(RECORDED_KB, "0123456789ab"))
 
 
+def test_a_sweep_reads_the_code_it_was_given_keeps_a_patch_against_it_and_records_its_digest(tmp_path: Path) -> None:
+    code = CodeSnapshot({"1.43.0": {"checkout/pricing.py": PRICING_1_43_0}}, "a" * 64)
+    fake = FakeAnthropic(
+        [
+            Reply([tool_use("read_repo_file", {"version": "1.43.0", "path": "checkout/pricing.py"})]),
+            answer({**DEPLOY_ANSWER, "remediation": PATCH}),
+        ]
+    )
+
+    (record,) = _sweep([BY_ID["deploy-1113-0257"]], 1, fake, _sts(1), tmp_path, code=code)
+
+    assert (record.status, record.tool_calls) == ("answered", 1)
+    assert fake.tool_results(1)[0].startswith("[source c1]\n" + checkout_code.render_file("1.43.0", "checkout/pricing.py", PRICING_1_43_0))
+    transcript = json.loads((tmp_path / "deploy-1113-0257-r1.json").read_text(encoding="utf-8"))
+    assert transcript["hypothesis"]["remediation"] == CHECKED_PATCH and transcript["remediation_dropped"] is None
+    assert json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))["code_snapshot"] == "a" * 64
+
+    # Resumed, the sweep must read the same code.
+    with pytest.raises(ValueError, match=f"read code snapshot {'a' * 64}, and this run's is {'b' * 64}"):
+        _sweep([BY_ID["deploy-1113-0257"]], 1, FakeAnthropic([]), FakeSession(), tmp_path, code=CodeSnapshot(code.files, "b" * 64))
+
+
+def test_a_sweep_given_no_code_answers_a_read_that_there_is_none(tmp_path: Path) -> None:
+    fake = FakeAnthropic([Reply([tool_use("read_repo_file", {"version": "1.43.0"})]), answer(DEPLOY_ANSWER)])
+
+    (record,) = _sweep([BY_ID["deploy-1113-0257"]], 1, fake, _sts(1), tmp_path)
+
+    assert record.status == "answered"
+    assert fake.tool_results(1)[0].startswith("[source c1]\nread_repo_file has no code to read here.")
+    assert json.loads((tmp_path / "sweep.json").read_text(encoding="utf-8"))["code_snapshot"] is None
+
+
 def test_a_window_session_hands_out_only_the_search_and_the_sign_in_from_aws() -> None:
     sign_in = FakeSession()
     session = sweep.WindowSession(load_window("2026-11-13-0257"), sign_in)
@@ -780,6 +821,28 @@ def test_a_sweep_on_a_knowledge_base_that_fails_its_check_is_refused_before_it_s
     assert evals_main(["sweep", "--go", "--runs", "1", "--scenario", "pool-1027-1856"]) == 1
 
     assert "Refused: sentinelops-runbooks doesn't hold this checkout's runbooks (corpus abc)" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []  # no sweep folder: nothing started
+
+
+def test_a_sweep_whose_code_snapshot_cant_be_built_is_refused_before_it_reaches_aws_or_spends(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_sweep: None
+) -> None:
+    def missing() -> CodeSnapshot:
+        raise CodeSnapshotError("checkout-api's code snapshot can't be built from this clone:\n1.43.0: commit ee9ef23a8d7e isn't in this clone")
+
+    def no_session(**kwargs: Any) -> Any:
+        raise AssertionError("the snapshot is built before any AWS session")
+
+    monkeypatch.setattr("code_snapshot.build", missing)
+    monkeypatch.setattr("boto3.Session", no_session)
+    monkeypatch.delenv("SENTINELOPS_MODEL_ID", raising=False)
+    for name, value in FEDERATION_IDS.items():  # CI has none of its own
+        monkeypatch.setenv(name, value)
+    monkeypatch.chdir(tmp_path)  # a sweep that got past the refusal would write here, not in scratch/
+
+    assert evals_main(["sweep", "--go", "--runs", "1", "--scenario", "deploy-1113-0257"]) == 1
+
+    assert "Refused: checkout-api's code snapshot can't be built from this clone:\n1.43.0: commit ee9ef23a8d7e" in capsys.readouterr().err
     assert list(tmp_path.iterdir()) == []  # no sweep folder: nothing started
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from answers import CHECKED_PATCH, PATCH, PATCH_OLD, PRICING_1_42_0, PRICING_1_43_0, checked
 from checked_runs import RUNS
 
 from evals import tuning
@@ -58,8 +59,12 @@ def _folder(tmp_path: Path, *, error: bool = False) -> Path:
     return folder
 
 
+def _never() -> dict[str, dict[str, str]]:
+    raise AssertionError("no run kept a patch: the report needs no code")
+
+
 def test_each_citation_is_counted_by_the_faults_own_runbook(tmp_path: Path) -> None:
-    result = tuning.report(_folder(tmp_path))
+    result = tuning.report(_folder(tmp_path), snapshot=_never)
     by_run = {r.run: r for r in result.runs}
 
     assert {name: r.citation for name, r in by_run.items()} == {
@@ -88,7 +93,8 @@ def test_the_report_lists_every_wrong_and_dropped_citation_and_rubric_failure(tm
     assert "  pool-1027-1901-r1: cited pool.md (never shown); the fault's runbook is db-pool-exhaustion.md" in text
     # The thin trial run the rubric tests name (test_evals.THIN), listed for a hand read.
     assert "  pool-1027-1900-r1: diagnosis right; fails evidence_symptom" in text
-    assert "Evidence items citing a runbook search (miscited):\n  pool-1027-1856-r1: e" in text
+    assert "Evidence items citing a runbook search or code read (miscited):\n  pool-1027-1856-r1: e" in text
+    assert "Patches, each to read by hand:\n  (none)" in text and "Code reads:\n  (none)" in text
     assert "runbook" not in text.split("Rubric failures")[1].split("Citations wrong")[0]  # counted apart, not as a failure
 
 
@@ -111,3 +117,51 @@ def test_a_run_without_an_answer_has_no_citation(tmp_path: Path) -> None:
 
     assert result.runs[0].citation is None and result.runs[0].diagnosis is None
     assert result.summary["all"]["answered"] == 8 and result.summary["all"]["without_answer"] == 1
+
+
+def test_every_patch_and_code_read_is_listed_for_a_hand_read(tmp_path: Path) -> None:
+    folder = _folder(tmp_path)
+    kept, dropped = folder / "deploy-1027-1905-r1.json", folder / "deploy-1029-0156-r1.json"
+    run = json.loads(kept.read_text(encoding="utf-8"))
+    run["hypothesis"]["remediation"] = CHECKED_PATCH
+    reads = [
+        {"toolUse": {"name": "read_repo_file", "toolUseId": "t8", "input": {"version": "1.43.0", "path": "checkout/pricing.py"}}},
+        {"toolUse": {"name": "read_repo_file", "toolUseId": "t9", "input": {"version": "1.42.0"}}},
+    ]
+    run["messages"] += [{"role": "assistant", "content": reads}]
+    kept.write_text(json.dumps(run), encoding="utf-8")
+    run = json.loads(dropped.read_text(encoding="utf-8"))
+    run["remediation_dropped"] = {"source": "c1", "file_path": "checkout/pricing.py", "reason": "edit 1: old text isn't in the file"}
+    dropped.write_text(json.dumps(run), encoding="utf-8")
+    snapshot = {"1.42.0": {"checkout/pricing.py": PRICING_1_42_0}, "1.43.0": {"checkout/pricing.py": PRICING_1_43_0}}
+
+    result = tuning.report(folder, snapshot=lambda: snapshot)
+    text = tuning.render(result)
+
+    by_run = {r.run: r for r in result.runs}
+    assert by_run["deploy-1027-1905-r1"].reads == ["1.43.0 checkout/pricing.py", "1.42.0 (listing)"]
+    assert by_run["deploy-1027-1905-r1"].patched_is == ["1.42.0"]  # the null check put back, exactly
+    assert [result.summary["all"][f"patch_{k}"] for k in tuning.PATCHES] == [1, 1, 7]
+    assert result.summary["all"]["reads"] == 2 and result.summary["all"]["runs_read"] == 1
+    assert "  patches: 1 kept, 1 dropped, 4 none" in text  # the bad deploys' group
+    assert (
+        "  deploy-1027-1905-r1 (bad_deploy): kept, checkout/pricing.py at 1.43.0; the file as patched is 1.42.0's exactly\n"
+        f"    rationale: {CHECKED_PATCH['rationale']}\n"
+    ) in text
+    assert "    +    if promo is None:\n    +        return subtotal_cents\n" in text
+    assert "  deploy-1029-0156-r1 (bad_deploy): dropped, checkout/pricing.py from c1: edit 1: old text isn't in the file" in text
+    assert "Code reads:\n  deploy-1027-1905-r1: 1.43.0 checkout/pricing.py; 1.42.0 (listing)\n" in text
+
+
+def test_a_kept_patch_that_makes_no_releases_file_says_so(tmp_path: Path) -> None:
+    folder = _folder(tmp_path)
+    path = folder / "deploy-1027-1905-r1.json"
+    run = json.loads(path.read_text(encoding="utf-8"))
+    other = {**PATCH, "edits": [{"old": PATCH_OLD, "new": PATCH_OLD.replace("    return ", "    if not promo:\n        return subtotal_cents\n    return ")}]}
+    run["hypothesis"]["remediation"] = checked(other, PRICING_1_43_0, "1.43.0")
+    path.write_text(json.dumps(run), encoding="utf-8")
+    snapshot = {"1.42.0": {"checkout/pricing.py": PRICING_1_42_0}, "1.43.0": {"checkout/pricing.py": PRICING_1_43_0}}
+
+    text = tuning.render(tuning.report(folder, snapshot=lambda: snapshot))
+
+    assert "  deploy-1027-1905-r1 (bad_deploy): kept, checkout/pricing.py at 1.43.0; the file as patched is no release's" in text

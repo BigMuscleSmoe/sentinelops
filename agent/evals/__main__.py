@@ -11,8 +11,10 @@
 
 plan calls nothing: it replays each scenario's alarm from its window and prints
 the runs and the cost bound. sweep without --go does the same and stops; with
-it, the live runbook knowledge base is checked first (knowledge_base.connect),
-and every run is a real model call, billed to Anthropic. Both take one split's
+it, checkout-api's code snapshot is built from each release's commit
+(code_snapshot.build) and the live runbook knowledge base is checked
+(knowledge_base.connect) first, and every run is a real model call, billed to
+Anthropic. Both take one split's
 scenarios: the tuning split unless --split test, and a test sweep starts only
 once the pass bar is frozen and the tree could be graded as it stands. The rest
 call no model and no AWS: report gives a tuning sweep's outcomes, costs, rubric
@@ -30,6 +32,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import code_snapshot
 from alarm import AlarmEvent
 from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.scenarios import BY_ID, SCENARIOS, Scenario, Split, load_window
@@ -171,6 +174,12 @@ def sweep(args: argparse.Namespace) -> int:
     except UnknownModelPrice as e:
         print(f"Refused: {e}", file=sys.stderr)
         return EXIT_FAILED
+    try:
+        # Before any AWS call: the code a read shows, from each release's commit in this clone.
+        code = code_snapshot.build()
+    except code_snapshot.CodeSnapshotError as e:
+        print(f"Refused: {e}", file=sys.stderr)
+        return EXIT_FAILED
     sign_in = boto3.Session(profile_name=args.profile, region_name=settings.region)
     try:
         # Before any folder or model call: the live runbooks must be this checkout's.
@@ -180,6 +189,7 @@ def sweep(args: argparse.Namespace) -> int:
         return EXIT_FAILED
     print()
     print(f"runbooks: the knowledge base {KNOWLEDGE_BASE} holds this checkout's, corpus {runbooks.corpus}")
+    print(f"code: releases {', '.join(sorted(code.files))}, snapshot sha256 {code.digest}")
     out_dir = args.resume or SWEEPS / (datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + ("" if arm.name == DEFAULT_ARM else f"-{arm.name}"))
     out_dir.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(out_dir / "sweep.log", encoding="utf-8")
@@ -201,10 +211,11 @@ def sweep(args: argparse.Namespace) -> int:
                 api_transport=lambda: httpx.AsyncHTTPTransport(),
                 arm=arm,
                 knowledge_base=runbooks,
+                code=code,
                 pause_s=args.pause,
             )
         )
-    except ValueError as e:  # a sweep resumed as another arm's or split's, or on another commit
+    except ValueError as e:  # a sweep resumed as another arm's or split's, on another commit, runbooks, or code
         print(f"Refused: {e}", file=sys.stderr)
         return EXIT_FAILED
     wanted = {run_id(s, n) for s, n in plan(scenarios, args.runs)}

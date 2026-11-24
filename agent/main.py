@@ -8,7 +8,9 @@ alarm's last change into ALARM at or before that time, and every tool reads
 as of that moment. The tools run here, unless --gateway (or
 SENTINELOPS_GATEWAY_URL) names the AgentCore Gateway to run them. Run here,
 the runbook search uses the knowledge base sentinelops-runbooks, found by name
-and checked to hold this checkout's runbooks first (knowledge_base.py). The
+and checked to hold this checkout's runbooks first (knowledge_base.py), and
+the code read shows each release's code, built from its commit in this clone
+(code_snapshot.py). The
 Hypothesis goes to stdout as JSON. The summary and the guard's JSON log lines
 go to stderr, and the transcript to scratch/runs/.
 """
@@ -24,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+import code_snapshot
 import knowledge_base
 from investigation import Refused, investigate_alarm, parse_utc
 from pricing import ModelPrice, UnknownModelPrice, price_for
@@ -90,12 +93,14 @@ async def run(
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
     connect_knowledge_base: Callable[[Any], knowledge_base.KnowledgeBase] = knowledge_base.connect,
+    build_code_snapshot: Callable[[], code_snapshot.CodeSnapshot] = code_snapshot.build,
 ) -> int:
-    knowledge_base_id = None
+    knowledge_base_id = code = None
     if not args.gateway:
         try:
+            code = build_code_snapshot().files
             knowledge_base_id = connect_knowledge_base(session).id
-        except knowledge_base.KnowledgeBaseError as e:
+        except (code_snapshot.CodeSnapshotError, knowledge_base.KnowledgeBaseError) as e:
             return refuse(str(e), stderr)
     outcome = await investigate_alarm(
         args.alarm,
@@ -108,6 +113,7 @@ async def run(
         token_http_client=token_http_client,
         gateway_transport=gateway_transport,
         knowledge_base_id=knowledge_base_id,
+        code=code,
     )
     if isinstance(outcome, Refused):
         return refuse(outcome.reason, stderr)

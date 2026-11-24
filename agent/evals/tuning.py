@@ -3,8 +3,9 @@
 No audit, no pass bar, no model, no AWS: what `evals grade` reports needs a
 hand audit and, once the bar is frozen, a test sweep, and a tuning sweep has
 neither. For every run, its outcome and cost, the rubric's items, the answers
-sent back and trimmed, its runbook searches, the checker's flags, and its
-citation, held to the scenario's own runbook (rubrics.RULES):
+sent back and trimmed, its runbook searches and code reads, its patch, the
+checker's flags, and its citation, held to the scenario's own runbook
+(rubrics.RULES):
 
 - right: runbook_cited is the fault's runbook;
 - wrong: it names another;
@@ -14,11 +15,15 @@ citation, held to the scenario's own runbook (rubrics.RULES):
 Groups: every run, then each fault's. Every rubric failure, wrong or dropped
 citation, and miscited item is listed by run, for a hand read: the rubric's
 diagnosis matches words, so a failure there may be a right answer it misreads.
+So is every patch, kept or dropped (runner.check_remediation), a kept one with
+its diff and whether the file as patched is another release's exactly, by the
+code snapshot built from each release's commit (code_snapshot.build, git only).
 """
 
 import statistics
 from collections import Counter
 from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +33,12 @@ from evals.rubrics import RULES
 from evals.rubrics import score as rubric_score
 from evals.scenarios import BY_ID, WINDOW_NOTES
 from evals.score import load_sweep
+from sentinelops_core import code, patches
 
 CITATIONS = ("right", "wrong", "dropped", "none")
 # Reported apart from the rest: the citation has its own counts, and pr_gate_value is a value, not a pass.
 _NOT_LISTED = ("runbook", "pr_gate_value")
+PATCHES = ("kept", "dropped", "none")
 
 
 @dataclass
@@ -53,7 +60,12 @@ class TuningRun:
     citation: str | None = None  # right, wrong, dropped, or none; None without an answer
     dropped: dict[str, str] | None = None  # what the model cited and why the run cleared it
     flags: dict[str, str] = field(default_factory=dict)  # evidence item -> verdict
-    miscited: list[str] = field(default_factory=list)  # evidence items citing a runbook search
+    miscited: list[str] = field(default_factory=list)  # evidence items citing a runbook search or code read
+    reads: list[str] = field(default_factory=list)  # each read_repo_file call: its version and path
+    patch: str | None = None  # kept, dropped, or none; None without an answer
+    kept: dict[str, Any] | None = None  # the kept patch, as the answer holds it
+    patch_dropped: dict[str, str] | None = None  # what the run's check cleared, and why
+    patched_is: list[str] = field(default_factory=list)  # releases whose file the kept patch's result is, exactly
 
 
 @dataclass
@@ -86,6 +98,9 @@ class TuningReport:
             **{f"cited_{kind}": citations[kind] for kind in CITATIONS},
             "flags": sum(len(r.flags) for r in rows),
             "miscited": sum(len(r.miscited) for r in rows),
+            "reads": sum(len(r.reads) for r in rows),
+            "runs_read": sum(bool(r.reads) for r in rows),
+            **{f"patch_{kind}": sum(r.patch == kind for r in answered) for kind in PATCHES},
         }
 
     @property
@@ -104,8 +119,38 @@ def citation(cited: str | None, dropped: dict[str, str] | None, expected: str) -
     return "right" if cited == expected else "wrong"
 
 
-def report(folder: Path) -> TuningReport:
+def code_reads(transcript: dict[str, Any]) -> list[str]:
+    """Each read_repo_file call the model made, as 'version path', or 'version (listing)' with no path."""
+    reads = []
+    for message in transcript.get("messages") or []:
+        for block in message.get("content") or []:
+            use = block.get("toolUse") if isinstance(block, dict) else None
+            if use and use.get("name") == code.READ_TOOL:
+                args = use.get("input") or {}
+                reads.append(f"{args.get('version')} {args.get('path') or '(listing)'}")
+    return reads
+
+
+def patched_is(kept: dict[str, Any], snapshot: Mapping[str, Mapping[str, str]]) -> list[str]:
+    """The other releases whose file the kept patch turns its release's file into, exactly."""
+    path, version = kept["file_path"], kept["version"]
+    original = snapshot.get(version, {}).get(path)
+    if original is None:
+        return []
+    result = patches.apply_edits(path, original, [(e["old"], e["new"]) for e in kept["edits"]])
+    return sorted(v for v, files in snapshot.items() if v != version and files.get(path) == result.text)
+
+
+def _snapshot() -> Mapping[str, Mapping[str, str]]:
+    import code_snapshot
+
+    return code_snapshot.build().files
+
+
+def report(folder: Path, snapshot: Callable[[], Mapping[str, Mapping[str, str]]] = _snapshot) -> TuningReport:
+    """The sweep's report. snapshot gives each release's code, asked for only if a run kept a patch."""
     sweep = load_sweep(folder)
+    code_by_release: Mapping[str, Mapping[str, str]] | None = None
     errors = sum(r["status"] == "error" for r in sweep.meta["records"])
     runs = []
     for record in sweep.records:
@@ -122,6 +167,7 @@ def report(folder: Path) -> TuningReport:
             resends=rejected_answers(transcript),
             trims=len(transcript.get("trims") or []),
             searches=sum(name == "search_runbooks" for name in transcript.get("tool_calls") or []),
+            reads=code_reads(transcript),
         )
         check = sweep.checks[record["run"]]
         hypothesis = transcript.get("hypothesis")
@@ -135,6 +181,13 @@ def report(folder: Path) -> TuningReport:
             row.citation = citation(row.cited, row.dropped, row.expected)
             row.flags = {c.id: c.verdict.value for c in check.flagged}
             row.miscited = [c.id for c in check.checks if c.verdict is Verdict.MISCITED]
+            row.kept = hypothesis.get("remediation")
+            row.patch_dropped = transcript.get("remediation_dropped")
+            row.patch = "kept" if row.kept else "dropped" if row.patch_dropped else "none"
+            if row.kept:
+                if code_by_release is None:
+                    code_by_release = snapshot()
+                row.patched_is = patched_is(row.kept, code_by_release)
         runs.append(row)
     return TuningReport(sweep.name, sweep.meta, runs, errors)
 
@@ -164,7 +217,9 @@ def render(result: TuningReport) -> str:
             f"  answers sent back: {g['resends']} (in {g['runs_resent']} runs); trimmed: {g['trims']} (in {g['runs_trimmed']} runs)",
             f"  runbook searches: {g['searches']}, in {g['runs_searched']} of {g['runs']} runs",
             "  citations: " + ", ".join(f"{g[f'cited_{kind}']} {kind}" for kind in CITATIONS),
-            f"  checker flags: {g['flags']} ({g['miscited']} miscited: a runbook search cited as evidence)",
+            f"  code reads: {g['reads']}, in {g['runs_read']} of {g['runs']} runs",
+            "  patches: " + ", ".join(f"{g[f'patch_{kind}']} {kind}" for kind in PATCHES),
+            f"  checker flags: {g['flags']} ({g['miscited']} miscited: a runbook search or code read cited as evidence)",
         ]
 
     failed = [r for r in result.runs if r.failed]
@@ -183,17 +238,36 @@ def render(result: TuningReport) -> str:
             + f"; the fault's runbook is {r.expected}"
             for r in rows
         ] or ["  (none)"]
+    out += ["", "Patches, each to read by hand:"]
+    for r in result.runs:
+        if r.patch == "dropped":
+            d = r.patch_dropped or {}
+            out.append(f"  {r.run} ({r.fault}): dropped, {d.get('file_path')} from {d.get('source')}: {d.get('reason')}")
+        elif r.patch == "kept" and r.kept:
+            same = f"the file as patched is {', '.join(r.patched_is)}'s exactly" if r.patched_is else "the file as patched is no release's"
+            out.append(f"  {r.run} ({r.fault}): kept, {r.kept['file_path']} at {r.kept['version']}; {same}")
+            out.append(f"    rationale: {r.kept.get('rationale')}")
+            out += [f"    {line}" for line in (r.kept.get("diff") or "").splitlines()]
+    if not any(r.patch in ("kept", "dropped") for r in result.runs):
+        out.append("  (none)")
+    out += ["", "Code reads:"]
+    out += [f"  {r.run}: {'; '.join(r.reads)}" for r in result.runs if r.reads] or ["  (none)"]
+
     miscited = [r for r in result.runs if r.miscited]
-    out += ["", "Evidence items citing a runbook search (miscited):"]
+    out += ["", "Evidence items citing a runbook search or code read (miscited):"]
     out += [f"  {r.run}: {', '.join(r.miscited)}" for r in miscited] or ["  (none)"]
 
-    out += ["", "Runs:", f"  {'run':<26} {'status':<14} {'cost':>8}  {'diagnosis':<9} {'citation':<8} {'cited':<22} resends trims searches flags"]
+    out += [
+        "",
+        "Runs:",
+        f"  {'run':<26} {'status':<14} {'cost':>8}  {'diagnosis':<9} {'citation':<8} {'cited':<22} resends trims searches reads patch   flags",
+    ]
     for r in result.runs:
         diagnosis = "-" if r.diagnosis is None else "right" if r.diagnosis else "wrong"
         cited = r.cited or ((r.dropped or {}).get("cited") or "-")
         out.append(
             f"  {r.run:<26} {r.status:<14} {_money(r.cost_usd):>8}  {diagnosis:<9} {r.citation or '-':<8} {cited[:22]:<22} "
-            f"{r.resends:>7} {r.trims:>5} {r.searches:>8} {len(r.flags):>5}"
+            f"{r.resends:>7} {r.trims:>5} {r.searches:>8} {len(r.reads):>5} {r.patch or '-':<7} {len(r.flags):>5}"
         )
     notes = sorted({r.window for r in result.runs} & set(WINDOW_NOTES))
     if notes:

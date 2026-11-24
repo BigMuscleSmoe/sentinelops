@@ -101,6 +101,7 @@ def test_a_right_upstream_answer_passes_every_item():
         "location": True,
         "pr_gate_value": False,
         "pr_gate": True,
+        "remediation": True,
         "runbook": True,
         "evidence_change": True,
         "evidence_failure": True,
@@ -166,6 +167,9 @@ def test_payments_api_named_but_placed_in_this_service_is_the_failure_that_would
     assert result.items["names_culprit"] and result.items["names_mechanism"] and result.items["blames_no_other"]
     assert not result.items["location"]
     assert result.items["pr_gate_value"] and not result.items["pr_gate"]
+    # An upstream fault's right answer carries no patch.
+    assert not result.items["remediation"]
+    assert result.notes["remediation"] == "a patch to checkout/config.py at 1.42.0, where none is right"
     assert not result.diagnosis and result.confidently_wrong
 
 

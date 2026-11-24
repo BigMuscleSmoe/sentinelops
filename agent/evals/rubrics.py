@@ -31,6 +31,11 @@ Items, each scored on its own (BUILD_PLAN.md, Phase 3 design):
                     code (a patch the run's check kept), False for a pool fault,
                     a config change outside the code, and for a downstream
                     timeout (Phase 4 design, decision 10)
+  remediation       the patch is the fault's: a bad deploy's answer carries one
+                    the run's check kept, to checkout/pricing.py at 1.43.0;
+                    every other fault's carries none (a config change, an
+                    upstream fault). Whether a kept patch is the right fix is
+                    read by hand: the tuning report lists each one
   runbook           runbook_cited is the fault's own runbook
                     (db-pool-exhaustion.md, bad-deploy.md, or
                     downstream-timeout.md), exactly, after the run's own
@@ -209,6 +214,8 @@ class FaultRules:
     location: FaultLocation = FaultLocation.THIS_SERVICE
     component: re.Pattern[str] = re.compile(r"checkout|pool", re.I)
     expect_pr: bool = True  # what Hypothesis.can_open_pr should say
+    # The release and file a right answer's kept patch changes; None: a right answer carries no patch.
+    patch: tuple[str, str] | None = None
     # A fault with no culprit record: its evidence_change is the history's
     # silence before the onset, and evidence_health one of this service's signals.
     no_culprit_record: bool = False
@@ -231,6 +238,7 @@ RULES = {
         failure_value=re.compile(r"TypeError|NoneType|apply_promo|pricing\.py"),
         failure_column=None,
         runbook="bad-deploy.md",
+        patch=("1.43.0", "checkout/pricing.py"),
     ),
     Fault.DB_POOL_EXHAUSTION: FaultRules(
         culprit=re.compile(
@@ -454,6 +462,21 @@ def pr_gate(hypothesis: dict[str, Any]) -> bool:
     return Hypothesis.model_validate(hypothesis).can_open_pr
 
 
+def patch_problem(remediation: Any, wanted: tuple[str, str] | None) -> str | None:
+    """Why the answer's patch isn't the fault's, or None if it is: a kept patch to that release's file, or none at all.
+
+    The run's check either keeps a patch, setting its version and diff, or clears it to null.
+    """
+    if wanted is None:
+        if remediation is None:
+            return None
+        return f"a patch to {remediation.get('file_path')} at {remediation.get('version')}, where none is right"
+    if not isinstance(remediation, dict) or remediation.get("diff") is None:
+        return "no kept patch"
+    got = (remediation.get("version"), remediation.get("file_path"))
+    return None if got == wanted else f"a patch to {got[1]} at {got[0]}, not {wanted[1]} at {wanted[0]}"
+
+
 def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck]) -> RubricResult:
     """The rubric for one answer, with the checker's checks of its evidence (`checker.checks`)."""
     rules = RULES[scenario.fault]
@@ -477,6 +500,10 @@ def score(scenario: Scenario, hypothesis: dict[str, Any], checks: list[ItemCheck
     gate = pr_gate(hypothesis)
     result.items["pr_gate_value"] = gate
     result.items["pr_gate"] = gate is rules.expect_pr
+    problem = patch_problem(hypothesis.get("remediation"), rules.patch)
+    result.items["remediation"] = problem is None
+    if problem:
+        result.notes["remediation"] = problem
     result.items["runbook"] = hypothesis.get("runbook_cited") == rules.runbook
 
     evidence = hypothesis.get("evidence")

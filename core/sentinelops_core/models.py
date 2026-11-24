@@ -134,7 +134,7 @@ class Evidence(BaseModel):
         description=(
             "The metric column as the table heads it (err%, pool_wait_p99_ms), the log line's field "
             "(latency_ms, error_type), or the deploy record's field (version, kind). For a config change, "
-            "the changed key's own name, as its key shows it: POOL_MAX_SIZE."
+            "the changed key's own name, as its key shows it: MAX_RETRIES."
         ),
     )
     at: Time = Field(
@@ -167,8 +167,8 @@ class Evidence(BaseModel):
     value: str | None = Field(
         default=None,
         description=(
-            "The value as the source shows it: 19.5, 1.43.0, false, TypeError. A changed key's value as "
-            "old->new: 20->2."
+            "The value as the source shows it: 19.5, 2.7.0, false, SSLError. A changed key's value as "
+            "old->new: 30->5."
         ),
     )
     low: float | None = Field(default=None, description="For range: the smallest value among the cited rows or lines.")
@@ -239,7 +239,9 @@ class Remediation(BaseModel):
             "itself in full, not a listing."
         )
     )
-    file_path: str = Field(description="The file's path exactly as that read's first line shows it: checkout/pricing.py.")
+    file_path: str = Field(
+        description="The file's path exactly as that read's first line shows it, as checkout/<module>.py."
+    )
     edits: list[Edit] = Field(
         description="One to three replacements in that file, none overlapping another, together the smallest change that removes the root cause."
     )

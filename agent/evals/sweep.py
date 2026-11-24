@@ -4,8 +4,10 @@ The run is main.py's replay with the window in AWS's place: the window answers
 the alarm, metrics, logs, and deploy history. Only the sign-in (STS, as
 main.py's runs do) and the runbook search reach AWS: the search reads the live
 knowledge base, which the sweep's command first checks holds this checkout's
-runbooks (knowledge_base.connect) and records by its corpus digest. The model
-is the real one, so a sweep is billed.
+runbooks (knowledge_base.connect) and records by its corpus digest. The code
+read shows the snapshot the command builds from each release's commit
+(code_snapshot.build), recorded by its digest. The model is the real one, so a
+sweep is billed.
 
 Each run's transcript is kept whole in scratch/evals/<sweep>/, and sweep.json
 records every outcome as it lands. Errors are kept apart from outcomes and
@@ -20,7 +22,7 @@ $0.10 and $1.00 for Haiku, the production cap. sweep.json records the arm and
 the commit the sweep ran on, so a test sweep can be held to the freeze. A sweep
 is one split's (tuning or test) and one commit's: one already begun is resumed
 only as the same arm's and split's, on the commit it started on, against the
-same runbooks. The sweep never grades.
+same runbooks and code. The sweep never grades.
 """
 
 import asyncio
@@ -38,6 +40,7 @@ import httpx
 from evals import repo
 from evals.arms import ARMS, DEFAULT_ARM, Arm
 from evals.scenarios import Scenario, Split, load_window, window_module
+from code_snapshot import CodeSnapshot
 from evals.witness import ModelWitness, same_model
 from guards import Limits
 from investigation import Refused, investigate_alarm
@@ -151,6 +154,7 @@ async def run_one(
     token_http_client: Any = None,
     limits: Limits = Limits(),
     knowledge_base_id: str | None = None,
+    code: CodeSnapshot | None = None,
 ) -> RunRecord:
     import anthropic
 
@@ -173,6 +177,7 @@ async def run_one(
             token_http_client=token_http_client,
             limits=limits,
             knowledge_base_id=knowledge_base_id,
+            code=code.files if code else None,
         )
     except Exception as e:  # an error of the harness or the recording, never the model's
         record.detail = _short(f"{type(e).__name__}: {e}")
@@ -248,12 +253,20 @@ def _sha(commit: str | None) -> str:
 
 
 def check_resumed(
-    name: str, was: dict[str, Any], arm: Arm, split: Split, commit: str | None, dirty: list[str], corpus: str | None = None
+    name: str,
+    was: dict[str, Any],
+    arm: Arm,
+    split: Split,
+    commit: str | None,
+    dirty: list[str],
+    corpus: str | None = None,
+    code: str | None = None,
 ) -> None:
     """A sweep already begun is resumed only as what it is; raises ValueError otherwise.
 
-    The same arm's and split's, on the commit it started on, and searching the
-    same runbooks: sweep.json holds one commit and one corpus for all its runs,
+    The same arm's and split's, on the commit it started on, searching the same
+    runbooks and reading the same code: sweep.json holds one commit, one corpus,
+    and one code snapshot for all its runs,
     and a test sweep is held to the freeze by it. A sweep from before the split
     was recorded is a tuning one.
     """
@@ -270,6 +283,8 @@ def check_resumed(
         raise ValueError(f"{name} ran on a clean tree, and it has uncommitted changes now: {', '.join(dirty[:5])}")
     if was.get("runbooks_corpus") != corpus:
         raise ValueError(f"{name} searched runbooks corpus {was.get('runbooks_corpus')}, and this run's is {corpus}")
+    if was.get("code_snapshot") != code:
+        raise ValueError(f"{name} read code snapshot {was.get('code_snapshot')}, and this run's is {code}")
 
 
 async def run_sweep(
@@ -284,6 +299,7 @@ async def run_sweep(
     token_http_client: Any = None,
     arm: Arm = ARMS[DEFAULT_ARM],
     knowledge_base: KnowledgeBase | None = None,
+    code: CodeSnapshot | None = None,
     cap_usd: float | None = None,
     per_run_usd: float | None = None,
     pause_s: float = 10.0,
@@ -294,7 +310,8 @@ async def run_sweep(
 
     The arm sets both caps; cap_usd and per_run_usd override them, for tests. The
     knowledge base is the runbook search's, already checked (knowledge_base.connect);
-    without one, a run's search says there's none. The scenarios must be one
+    without one, a run's search says there's none. The code is the read tool's
+    (code_snapshot.build); without it, a read says there's no code. The scenarios must be one
     split's, and a sweep already begun is resumed only as what it is
     (check_resumed): ValueError otherwise, before anything runs."""
     cap_usd = arm.cap_usd if cap_usd is None else cap_usd
@@ -306,9 +323,11 @@ async def run_sweep(
     split = splits[0]
     commit, dirty = repo.head(), repo.dirty()
     corpus = knowledge_base.corpus if knowledge_base else None
+    snapshot = code.digest if code else None
     earlier = out_dir / "sweep.json"
     if earlier.exists():
-        check_resumed(out_dir.name, json.loads(earlier.read_text(encoding="utf-8")), arm, split, commit, dirty, corpus)
+        was = json.loads(earlier.read_text(encoding="utf-8"))
+        check_resumed(out_dir.name, was, arm, split, commit, dirty, corpus, snapshot)
     records = load_records(out_dir)
     done = {r.run for r in records if r.scored}
     attempts = {r.run: r.attempt for r in records}
@@ -333,6 +352,7 @@ async def run_sweep(
             token_http_client=token_http_client,
             limits=limits,
             knowledge_base_id=knowledge_base.id if knowledge_base else None,
+            code=code,
         )
         records.append(record)
         attempts[rid] = record.attempt
@@ -348,6 +368,7 @@ async def run_sweep(
                 "commit": commit,
                 "dirty": dirty,
                 "runbooks_corpus": corpus,
+                "code_snapshot": snapshot,
                 "runs_per_scenario": runs,
                 "scenarios": [s.id for s in scenarios],
                 "records": [asdict(r) for r in records],

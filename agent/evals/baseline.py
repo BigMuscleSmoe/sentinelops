@@ -86,6 +86,7 @@ FLAGGED = ("contradicted", "outside_read", "unresolved", "miscited")
 # is every agent module a sweep's run imports (tests/test_baseline_gate.py).
 RUN_SHAPING = (
     "agent/alarm.py",  # the alarm message
+    "agent/code_snapshot.py",  # the code a read shows, built from each release's commit
     "agent/evals/__init__.py",
     "agent/evals/__main__.py",  # the sweep command: its sign-in and the knowledge base's check
     "agent/evals/arms.py",  # the model, its settings and caps

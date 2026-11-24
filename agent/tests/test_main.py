@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 
 import main
-from answers import DEPLOY_EVIDENCE
+from answers import CHECKED_PATCH, DEPLOY_EVIDENCE, PATCH, PRICING_1_43_0
+from code_snapshot import CodeSnapshot, CodeSnapshotError
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, Reply, answer, text, tool_use
 from fake_gateway import URL, FakeGateway
 from pricing import price_for
@@ -21,6 +22,7 @@ from sources import unmark
 from providers import FEDERATION_ENV, FEDERATION_ROLE_ENV, Settings
 from sentinelops_tools.env import ToolEnv
 from knowledge_base import KnowledgeBase, KnowledgeBaseError
+from sentinelops_core import code as checkout_code
 from stubs import AGENT_FIXTURES, RECORDED_KB, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 
 HAIKU = price_for("anthropic", "claude-haiku-5-5")
@@ -37,6 +39,8 @@ DIAGNOSIS = {
     "affected_component": "checkout-api",
     "fault_location": "this_service",
 }
+# What a run here reads: a stand-in for the snapshot built from each release's commit (test_code_snapshot.py).
+CODE = CodeSnapshot({"1.43.0": {"checkout/pricing.py": PRICING_1_43_0}}, "0" * 64)
 
 
 def replay_session(tools: list[str] = TOOL_FIXTURE_NAMES) -> FakeSession:
@@ -65,6 +69,7 @@ def run(
     args = main.parse_args([*argv, "--transcript", str(transcript)])
     # Run here, the tools search the recorded knowledge base: its check is knowledge_base's tests'.
     kwargs.setdefault("connect_knowledge_base", lambda session: KnowledgeBase(RECORDED_KB, RECORDED_CORPUS))
+    kwargs.setdefault("build_code_snapshot", lambda: CODE)
     out, err = io.StringIO(), io.StringIO()
     code = asyncio.run(
         main.run(
@@ -133,9 +138,12 @@ def test_a_replay_through_the_gateway_gives_the_model_what_a_local_one_does(tmp_
     def never(session: object) -> KnowledgeBase:
         raise AssertionError("through Gateway, the search's Lambda has the knowledge base")
 
+    def no_build() -> CodeSnapshot:
+        raise AssertionError("through Gateway, the read tool's Lambda ships its own snapshot")
+
     code, out, _ = run(
         [*REPLAY, "--gateway", URL], session, fake, tmp_path / "run.json", gateway_transport=gateway.transport(),
-        connect_knowledge_base=never,
+        connect_knowledge_base=never, build_code_snapshot=no_build,
     )
 
     assert code == main.EXIT_OK
@@ -199,6 +207,7 @@ def test_a_hypothesis_beyond_ascii_prints_on_a_cp1252_stdout(tmp_path: Path) -> 
             stdout=stdout,
             stderr=io.StringIO(),
             connect_knowledge_base=lambda session: KnowledgeBase(RECORDED_KB, RECORDED_CORPUS),
+            build_code_snapshot=lambda: CODE,
         )
     )
     stdout.flush()
@@ -318,3 +327,35 @@ def test_as_of_needs_a_time_zone() -> None:
     assert main.parse_args(REPLAY).as_of.isoformat() == "2026-10-27T19:06:00+00:00"
     with pytest.raises(SystemExit):
         main.parse_args(["--alarm", ERRORS, "--as-of", "2026-10-27T19:06:00"])
+
+
+def test_a_run_here_reads_the_code_built_from_each_releases_commit_and_keeps_a_patch_against_it(tmp_path: Path) -> None:
+    session = replay_session(tools=[])
+    fake = FakeAnthropic(
+        [
+            Reply([tool_use("read_repo_file", {"version": "1.43.0", "path": "checkout/pricing.py"})]),
+            answer({**DIAGNOSIS, "remediation": PATCH}),
+        ]
+    )
+
+    code, out, _ = run(REPLAY, session, fake, tmp_path / "run.json")
+
+    assert code == main.EXIT_OK
+    (result,) = fake.tool_results(1)
+    assert unmark(result.rsplit("\n", 1)[0])[:2] == ("c1", checkout_code.render_file("1.43.0", "checkout/pricing.py", PRICING_1_43_0))
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    assert record["hypothesis"]["remediation"] == CHECKED_PATCH and record["remediation_dropped"] is None
+    assert json.loads(out)["remediation"]["diff"] == CHECKED_PATCH["diff"]
+
+
+def test_a_run_here_whose_code_snapshot_cant_be_built_is_refused_before_any_model_call(tmp_path: Path) -> None:
+    def missing() -> CodeSnapshot:
+        raise CodeSnapshotError("checkout-api's code snapshot can't be built from this clone:\n1.43.0: commit ee9ef23a8d7e isn't in this clone")
+
+    session, fake = FakeSession(), FakeAnthropic([])
+    code, out, err = run(REPLAY, session, fake, tmp_path / "run.json", build_code_snapshot=missing)
+
+    assert code == main.EXIT_REFUSED and out == ""
+    assert err == "Refused: checkout-api's code snapshot can't be built from this clone:\n1.43.0: commit ee9ef23a8d7e isn't in this clone\n"
+    assert fake.requests == [] and not (tmp_path / "run.json").exists()
+    assert session.made == []  # not even the alarm was read

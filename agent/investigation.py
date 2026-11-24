@@ -8,6 +8,7 @@ the guarded investigation. A refusal comes back as a Refused, never an
 exception, so each entry point reports it its own way.
 """
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -90,12 +91,15 @@ async def investigate_alarm(
     gateway_transport: Any = None,
     limits: Limits = Limits(),
     knowledge_base_id: str | None = None,
+    code: Mapping[str, Mapping[str, str]] | None = None,
 ) -> Investigation | Refused:
     """Investigate the alarm live, or as of a past moment, where every tool reads as of then.
 
     limits are the guard's: the default everywhere but an eval arm's runs.
     knowledge_base_id is the runbook search's, for tools run here (knowledge_base.connect
     finds and checks it); through Gateway, the search's Lambda has its own.
+    code is checkout-api's code by release, for the read tool run here
+    (code_snapshot.build); through Gateway, the read tool's Lambda ships its own.
     http_client, token_http_client, and gateway_transport are for tests: a fake
     Messages API, token endpoint, and Gateway.
     """
@@ -123,7 +127,7 @@ async def investigate_alarm(
         tools = gateway.tools(as_of=fired_at if replay else None)
     else:
         env = ToolEnv.from_session(
-            session, now=(lambda: fired_at) if replay else utc_now, knowledge_base_id=knowledge_base_id
+            session, now=(lambda: fired_at) if replay else utc_now, knowledge_base_id=knowledge_base_id, code=code
         )
         tools = make_tools(env)
     try:

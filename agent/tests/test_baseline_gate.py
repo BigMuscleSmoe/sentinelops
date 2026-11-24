@@ -29,6 +29,7 @@ from evals.arms import ARMS
 from evals.repo import REPO, Refusal
 from evals.scenarios import BY_ID
 from evals.score import PASS_BAR
+from sentinelops_core.releases import RELEASES
 
 AGENT = REPO / "agent"
 CORE = REPO / "core"  # the shared package, sentinelops_core
@@ -53,6 +54,35 @@ def test_what_the_model_is_sent_is_as_the_baseline_was_sent(sent_now: dict[str, 
         "A change to what the model is sent needs a new sweep's baseline: commit the change, sweep on "
         "that commit (on the user's go), build and commit the baseline, push both (this file's docstring)."
     )
+
+
+# What would point the model at an answer: this service's releases and their commits, deploy
+# history's made-up commits, each fault's file, function, error, and config key, and the simulator.
+HINTS = (
+    *RELEASES,
+    *(release.commit[:7] for release in RELEASES.values()),
+    "3f8a2d1",
+    "9c41e7b",
+    "pricing",
+    "promo",
+    "subtotal",
+    "TypeError",
+    "NoneType",
+    "UpstreamTimeout",
+    "POOL_MAX_SIZE",
+    "POOL_ACQUIRE_TIMEOUT",
+    "PAYMENTS_TIMEOUT",
+    "20->2",
+    "simulat",
+    "sim/",
+)
+
+
+def test_nothing_the_model_is_sent_names_a_release_or_the_fault(sent_now: dict[str, Any]) -> None:
+    """The answer stays hidden from the agent: the prompt, the tool specs, the answer's schema, and
+    the settings name none of it, so whatever a run finds, it found in what the tools showed."""
+    text = json.dumps(sent_now).lower()
+    assert [hint for hint in HINTS if hint.lower() in text] == []
 
 
 def test_the_baseline_holds_the_sweeps_answered_runs_and_nothing_else() -> None:
