@@ -1,0 +1,30 @@
+[project]
+name = "sentinelops-remediation"
+version = "0.1.0"
+# Lambda durable functions run on Python 3.13 or 3.14 (BUILD_PLAN.md, Phase 4
+# design, decision 11).
+requires-python = ">=3.13,<3.14"
+# boto3 comes with the Lambda Python runtime. sentinelops-core (with pydantic)
+# is bundled into the zip, as evening 5's durable execution SDK will be. GitHub
+# is called with urllib: no HTTP, JWT, or crypto library, since the App's key
+# never leaves KMS.
+dependencies = [
+    "sentinelops-core",
+]
+
+[dependency-groups]
+# boto3 for botocore's Stubber, which checks each KMS call against the real
+# API, and for check_app.py's real calls.
+dev = [
+    "boto3>=1.43",
+    "pytest>=9.1.1",
+]
+
+[tool.uv.sources]
+sentinelops-core = { path = "../core", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# ../.githooks holds commit_scan.py, the commit hooks' rules, which the
+# validation step imports as they are: one copy.
+pythonpath = [".", "../.githooks"]

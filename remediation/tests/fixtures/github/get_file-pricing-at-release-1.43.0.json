@@ -1,0 +1,29 @@
+{
+  "about": "Recorded 2026-11-25T03:12Z without a token (public repository); ruleset and node IDs replaced.",
+  "endpoint": "get_file",
+  "params": {
+    "path": "services/checkout-api/checkout/pricing.py"
+  },
+  "query": {
+    "ref": "ee9ef23a8d7eb51670b5c00e655a9d1814e0a640"
+  },
+  "status": 200,
+  "json": {
+    "name": "pricing.py",
+    "path": "services/checkout-api/checkout/pricing.py",
+    "sha": "7a78d9fe549077bc448fa4bde339ac468ff6a7e7",
+    "size": 486,
+    "url": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/contents/services/checkout-api/checkout/pricing.py?ref=ee9ef23a8d7eb51670b5c00e655a9d1814e0a640",
+    "html_url": "https://github.com/BigMuscleSmoe/sentinelops/blob/ee9ef23a8d7eb51670b5c00e655a9d1814e0a640/services/checkout-api/checkout/pricing.py",
+    "git_url": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/git/blobs/7a78d9fe549077bc448fa4bde339ac468ff6a7e7",
+    "download_url": "https://raw.githubusercontent.com/BigMuscleSmoe/sentinelops/ee9ef23a8d7eb51670b5c00e655a9d1814e0a640/services/checkout-api/checkout/pricing.py",
+    "type": "file",
+    "content": "IiIiT3JkZXIgcHJpY2luZy4iIiIKCmZyb20gY29sbGVjdGlvbnMuYWJjIGlt\ncG9ydCBNYXBwaW5nCmZyb20gdHlwaW5nIGltcG9ydCBBbnkKCmZyb20gY2hl\nY2tvdXQuY2F0YWxvZyBpbXBvcnQgUHJvZHVjdAoKCmRlZiBwcmljZV9jYXJ0\nKGl0ZW1zOiBsaXN0W3R1cGxlW1Byb2R1Y3QsIGludF1dLCBwcm9tbzogTWFw\ncGluZ1tzdHIsIEFueV0gfCBOb25lKSAtPiBpbnQ6CiAgICBzdWJ0b3RhbCA9\nIHN1bShwcm9kdWN0LnByaWNlX2NlbnRzICogcXVhbnRpdHkgZm9yIHByb2R1\nY3QsIHF1YW50aXR5IGluIGl0ZW1zKQogICAgcmV0dXJuIGFwcGx5X3Byb21v\nKHN1YnRvdGFsLCBwcm9tbykKCgpkZWYgYXBwbHlfcHJvbW8oc3VidG90YWxf\nY2VudHM6IGludCwgcHJvbW86IE1hcHBpbmdbc3RyLCBBbnldIHwgTm9uZSkg\nLT4gaW50OgogICAgcmV0dXJuIHN1YnRvdGFsX2NlbnRzIC0gc3VidG90YWxf\nY2VudHMgKiBwcm9tb1sicGVyY2VudF9vZmYiXSAvLyAxMDAK\n",
+    "encoding": "base64",
+    "_links": {
+      "self": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/contents/services/checkout-api/checkout/pricing.py?ref=ee9ef23a8d7eb51670b5c00e655a9d1814e0a640",
+      "git": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/git/blobs/7a78d9fe549077bc448fa4bde339ac468ff6a7e7",
+      "html": "https://github.com/BigMuscleSmoe/sentinelops/blob/ee9ef23a8d7eb51670b5c00e655a9d1814e0a640/services/checkout-api/checkout/pricing.py"
+    }
+  }
+}

@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [agent, core, tools, services/checkout-api, trigger]
+        project: [agent, core, tools, services/checkout-api, trigger, remediation]
     defaults:
       run:
         working-directory: ${{ matrix.project }}

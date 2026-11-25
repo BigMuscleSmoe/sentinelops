@@ -1,0 +1,10 @@
+{
+  "about": "Recorded 2026-11-25T03:12Z without a token (public repository); ruleset and node IDs replaced.",
+  "endpoint": "branch_rules",
+  "params": {
+    "branch": "sentinelops/fix-1.43.0-pricing"
+  },
+  "query": {},
+  "status": 200,
+  "json": []
+}

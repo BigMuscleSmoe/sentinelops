@@ -1,0 +1,53 @@
+{
+  "about": "Recorded 2026-11-25T03:12Z without a token (public repository); ruleset and node IDs replaced.",
+  "endpoint": "branch_rules",
+  "params": {
+    "branch": "release/1.43.0"
+  },
+  "query": {},
+  "status": 200,
+  "json": [
+    {
+      "type": "deletion",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 1
+    },
+    {
+      "type": "non_fast_forward",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 1
+    },
+    {
+      "type": "creation",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 1
+    },
+    {
+      "type": "update",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 1
+    },
+    {
+      "type": "deletion",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 2
+    },
+    {
+      "type": "non_fast_forward",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 2
+    },
+    {
+      "type": "update",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "BigMuscleSmoe/sentinelops",
+      "ruleset_id": 2
+    }
+  ]
+}

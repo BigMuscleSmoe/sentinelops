@@ -93,6 +93,10 @@ Titan's price is from AWS's Price List API, effective 2026-11-01 (read 2026-11-2
 - **Not a Managed Knowledge Base,** AWS's recommended default: $1.00 per 1,000 `Retrieve` calls and $5.00 per GB of raw data a month (the Bedrock pricing page, read 2026-11-12). Still small at this scale, but 400 times the query fee above, for a job this one does.
 - **Never OpenSearch Serverless** (below).
 
+### The GitHub App's key (KMS)
+
+The remediation flow's GitHub App signs its JWTs with an RSA 2048 key in KMS, whose key material I import once by hand (`infra/github_app.tf`); the key itself is never readable. **$1 a month**, prorated hourly, from the moment Terraform creates it, imported or not. Signing costs $0.03 per 10,000 requests for an RSA 2048 key, and the flow signs a JWT only to get an installation token, so the requests cost nothing measurable. Both prices are from AWS's Price List API (`awskms`, us-east-1, read 2026-11-24). Terraform may never destroy the key, since no copy of the private key exists, and a deletion by any other route waits out a 7-day window in which it can be cancelled.
+
 ### Memory, Code Interpreter
 
 Consumption-based, small at demo scale. Not worth optimizing until they show up in Cost Explorer.

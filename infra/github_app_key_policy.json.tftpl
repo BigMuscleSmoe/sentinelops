@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Id": "sentinelops-github-app-key",
+  "Statement": [
+    {
+      "Sid": "AccountRootAdministers",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::${account_id}:root" },
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "OnlyTheAdminUserUsesTheKey",
+      "Effect": "Deny",
+      "Principal": { "AWS": "*" },
+      "Action": ["kms:Sign", "kms:Verify", "kms:GetPublicKey"],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotEquals": { "aws:PrincipalArn": "arn:aws:iam::${account_id}:user/sentinelops-dev" }
+      }
+    }
+  ]
+}

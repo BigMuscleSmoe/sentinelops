@@ -1,0 +1,19 @@
+{
+  "about": "Recorded 2026-11-25T03:12Z without a token (public repository); ruleset and node IDs replaced.",
+  "endpoint": "get_ref",
+  "params": {
+    "branch": "release/1.43.0"
+  },
+  "query": {},
+  "status": 200,
+  "json": {
+    "ref": "refs/heads/release/1.43.0",
+    "node_id": "NODE_ID",
+    "url": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/git/refs/heads/release/1.43.0",
+    "object": {
+      "sha": "ee9ef23a8d7eb51670b5c00e655a9d1814e0a640",
+      "type": "commit",
+      "url": "https://api.github.com/repos/BigMuscleSmoe/sentinelops/git/commits/ee9ef23a8d7eb51670b5c00e655a9d1814e0a640"
+    }
+  }
+}
