@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import boto3
 import pytest
 from botocore.stub import Stubber
-from fake_github import CLIENT_ID, NOW, TOKEN, TOKEN_ANSWER, FakeGitHub, FakeKMS, app, recorded
+from fake_github import CLIENT_ID, FIXTURES, NOW, TOKEN, TOKEN_ANSWER, FakeGitHub, FakeKMS, app, recorded
 
 from sentinelops_remediation import github
 
@@ -460,3 +460,28 @@ def test_an_answer_for_another_ref_or_file_is_refused() -> None:
         client.head_commit("release/1.43.0")
     with pytest.raises(github.Refused):
         client.file_at(FILE, SHA)
+
+
+# --- the App's own answers, recorded 2026-11-25 ---------------------------------------------------------------
+
+
+def test_the_client_asks_for_the_grant_it_asked_for_live_and_takes_the_one_github_gave() -> None:
+    exchange = recorded("installation_token")
+    fake = FakeGitHub()
+    fake.add_token()  # the recorded grant, its token and expiry the tests' own
+    fake.add_recorded("branch_rules-main")
+    app(fake).branch_rules("main")
+    sent = fake.requests[0]
+    assert (sent.method, sent.url) == ("POST", github.url("installation_token", exchange["params"]))
+    assert json.loads(sent.body or b"") == exchange["request_json"]
+    assert fake.requests[1].headers["Authorization"] == f"Bearer {TOKEN}"
+
+
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*.json")), ids=lambda p: p.stem)
+def test_every_fixture_is_an_endpoint_the_client_may_call(path) -> None:
+    exchange = json.loads(path.read_text(encoding="utf-8"))
+    endpoint = github.ENDPOINTS[exchange["endpoint"]]
+    assert exchange.get("method", "GET") == endpoint.method
+    assert github.url(exchange["endpoint"], exchange["params"], exchange["query"]).startswith(github.API)
+    answer = exchange["json"]
+    assert not isinstance(answer, dict) or answer.get("token", "TOKEN_REPLACED") == "TOKEN_REPLACED"

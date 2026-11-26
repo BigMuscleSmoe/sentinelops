@@ -1,0 +1,58 @@
+{
+  "about": "Recorded 2026-11-26T04:43Z as the App (KMS-signed JWT, one installation token, revoked after); the token and every ID replaced (record_responses.py).",
+  "endpoint": "app_installations",
+  "params": {},
+  "query": {
+    "per_page": 100
+  },
+  "status": 200,
+  "json": [
+    {
+      "id": 4242,
+      "client_id": "Iv23liTestClientId",
+      "account": {
+        "login": "BigMuscleSmoe",
+        "id": 2,
+        "node_id": "NODE_ID",
+        "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/BigMuscleSmoe",
+        "html_url": "https://github.com/BigMuscleSmoe",
+        "followers_url": "https://api.github.com/users/BigMuscleSmoe/followers",
+        "following_url": "https://api.github.com/users/BigMuscleSmoe/following{/other_user}",
+        "gists_url": "https://api.github.com/users/BigMuscleSmoe/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/BigMuscleSmoe/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/BigMuscleSmoe/subscriptions",
+        "organizations_url": "https://api.github.com/users/BigMuscleSmoe/orgs",
+        "repos_url": "https://api.github.com/users/BigMuscleSmoe/repos",
+        "events_url": "https://api.github.com/users/BigMuscleSmoe/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/BigMuscleSmoe/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "repository_selection": "selected",
+      "access_tokens_url": "https://api.github.com/app/installations/4242/access_tokens",
+      "repositories_url": "https://api.github.com/installation/repositories",
+      "html_url": "https://github.com/settings/installations/4242",
+      "app_id": 101,
+      "app_slug": "sentinelops-remediation",
+      "target_id": 2,
+      "target_type": "User",
+      "permissions": {
+        "checks": "read",
+        "contents": "write",
+        "metadata": "read",
+        "pull_requests": "write"
+      },
+      "events": [],
+      "created_at": "2026-11-26T04:25:38.000Z",
+      "updated_at": "2026-11-26T04:32:34.000Z",
+      "single_file_name": null,
+      "has_multiple_single_files": false,
+      "single_file_paths": [],
+      "suspended_by": null,
+      "suspended_at": null
+    }
+  ]
+}

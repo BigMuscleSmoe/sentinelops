@@ -2,6 +2,8 @@
 
     uv run python check_app.py --client-id <id> --installation-id <n> [--attempts --test-pr <n>]
 
+(The IDs are in remediation/.env.github-app, gitignored.)
+
 From remediation/, with the sentinelops profile (kms:Sign on the App's key).
 Neither ID is a secret, and neither goes in the repo. It checks, as the flow's
 own client:
@@ -27,7 +29,13 @@ import json
 import re
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+
+# validate imports the commit hooks' scanner, .githooks/commit_scan.py: on
+# pytest's pythonpath, and staged beside the package in the flow's zip. Run as
+# a script, this puts it on the path the same way (the repo's one copy).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".githooks"))
 
 from sentinelops_remediation import github
 from sentinelops_remediation.validate import protected

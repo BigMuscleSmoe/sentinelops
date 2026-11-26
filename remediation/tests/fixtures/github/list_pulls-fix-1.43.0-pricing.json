@@ -1,0 +1,12 @@
+{
+  "about": "Recorded 2026-11-26T04:43Z as the App (KMS-signed JWT, one installation token, revoked after); the token and every ID replaced (record_responses.py).",
+  "endpoint": "list_pulls",
+  "params": {},
+  "query": {
+    "head": "BigMuscleSmoe:sentinelops/fix-1.43.0-pricing",
+    "base": "release/1.43.0",
+    "state": "all"
+  },
+  "status": 200,
+  "json": []
+}

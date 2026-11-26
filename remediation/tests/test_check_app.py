@@ -1,33 +1,37 @@
-"""check_app.py, step 11's script, against GitHub's answers as its docs show them: what passes, what fails, what it prints."""
+"""check_app.py, step 11's script, against GitHub's answers as recorded (the App's own, 2026-11-25): what passes, fails, prints."""
 
 import json
 
 import check_app
-from fake_github import INSTALLATION_ID, TOKEN, FakeGitHub, FakeKMS, app
+from fake_github import INSTALLATION_ID, TOKEN, FakeGitHub, FakeKMS, app, recorded
 
 from sentinelops_remediation import github
 
 MAIN_SHA = "776d432dce254ea28bb45acfafc2cc3fdd9d5c2d"  # main after step 7
 BASE_SHA = "6cbadbbee3d734b9e90d442ae81a4f4cbc993038"  # release/merge-test, made from main before it
-APP = {"slug": "sentinelops-remediation", "permissions": dict(github.PERMISSIONS), "events": []}
-INSTALLATIONS = [
-    {"id": INSTALLATION_ID, "account": {"login": "BigMuscleSmoe"}, "repository_selection": "selected", "permissions": dict(github.PERMISSIONS)}
-]
-REPOSITORIES = {"total_count": 1, "repositories": [{"full_name": github.REPO}]}
-PROTECTED = [{"type": "update"}, {"type": "deletion"}, {"type": "non_fast_forward"}]
+APP = recorded("app")["json"]
+SETTINGS = recorded("repository")["json"]
 
 
 def github_answering(app_answer: dict | None = None, settings: dict | None = None) -> FakeGitHub:
+    """GitHub as recorded on 2026-11-25, as the App: every answer step 11 reads."""
     fake = FakeGitHub()
-    fake.add("GET", github.url("app"), 200, app_answer or APP)
-    fake.add("GET", github.url("app_installations", query={"per_page": 100}), 200, INSTALLATIONS)
+    fake.add_recorded("app", app_answer)
+    fake.add_recorded("app_installations")
     fake.add_token()
-    fake.add("GET", github.url("installation_repositories", query={"per_page": 100}), 200, REPOSITORIES)
-    fake.add("GET", github.url("branch_rules", {"branch": "main"}), 200, PROTECTED)
-    fake.add("GET", github.url("branch_rules", {"branch": "release/1.43.0"}), 200, PROTECTED)
-    fake.add("GET", github.url("repository"), 200, settings or {"full_name": github.REPO, "allow_auto_merge": False})
+    fake.add_recorded("installation_repositories")
+    fake.add_recorded("branch_rules-main")
+    fake.add_recorded("branch_rules-release-1.43.0")
+    fake.add_recorded("repository", settings)
     fake.add_revoke()
     return fake
+
+
+def test_the_recorded_app_is_the_one_step_11_passed() -> None:
+    assert APP["permissions"] == github.PERMISSIONS and APP["events"] == []
+    (install,) = recorded("app_installations")["json"]
+    assert install["id"] == INSTALLATION_ID and install["repository_selection"] == "selected"
+    assert SETTINGS["allow_auto_merge"] is False
 
 
 def run(fake: FakeGitHub, **kwargs: object) -> tuple[bool, list[str]]:
@@ -54,7 +58,8 @@ def test_a_fifth_permission_fails_and_the_token_is_still_revoked() -> None:
 
 
 def test_auto_merge_unseen_is_a_skip_not_a_pass() -> None:
-    ok, printed = run(github_answering(settings={"full_name": github.REPO}))
+    unseen = {k: v for k, v in SETTINGS.items() if k != "allow_auto_merge"}
+    ok, printed = run(github_answering(settings=unseen))
     assert ok and any(line.startswith("SKIP  auto-merge") for line in printed)
 
 
@@ -136,3 +141,17 @@ def test_a_missing_base_fails_and_no_merge_is_tried() -> None:
     assert not ok
     assert not [r for r in fake.requests if r.method == "PUT"]
     assert [line for line in printed if line.startswith("FAIL")] == ["FAIL  release/merge-test not found: no merge attempted"]
+
+
+def test_it_runs_as_a_script_without_pytests_path() -> None:
+    """Its documented command: `uv run python check_app.py ...` finds the hooks' scanner by itself."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    here = Path(check_app.__file__).parent
+    done = subprocess.run([sys.executable, "check_app.py", "--help"], cwd=here, env=env, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-300:]
+    assert "--installation-id" in done.stdout

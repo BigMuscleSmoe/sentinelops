@@ -1,9 +1,10 @@
 """A stand-in for api.github.com and for KMS: recorded answers served in order, every request kept.
 
-Recorded answers come from tests/fixtures/github/ (record_responses.py: public
-reads, no token). The App's own endpoints can't be recorded before it's
-installed (evening 4, step 11), so their answers here are written from GitHub's
-REST docs, shaped as the docs show them; no token in them is real.
+Recorded answers come from tests/fixtures/github/ (record_responses.py): the
+public reads without a token, and the App's own (GET /app, its installations,
+a token's grant, the installation's repositories, the repository, a check run,
+the fix branch's PRs) as the App, 2026-11-25, with the token and every ID
+replaced. No token here is real.
 """
 
 import hashlib
@@ -21,19 +22,16 @@ CLIENT_ID = "Iv23liTestClientId"
 INSTALLATION_ID = 4242
 TOKEN = "test-installation-token-not-real"
 
-# POST /app/installations/{id}/access_tokens, as GitHub's docs show it, for a
-# token scoped to one repository and the App's four permissions.
-TOKEN_ANSWER = {
-    "token": TOKEN,
-    "expires_at": "2026-11-25T04:00:00Z",
-    "permissions": dict(github.PERMISSIONS),
-    "repository_selection": "selected",
-    "repositories": [{"id": 1, "name": github.NAME, "full_name": github.REPO, "private": False}],
-}
 
 
 def recorded(slug: str) -> dict[str, Any]:
     return json.loads((FIXTURES / f"{slug}.json").read_text(encoding="utf-8"))
+
+
+# POST /app/installations/{id}/access_tokens as recorded: a token scoped to this
+# repository and the App's four permissions. Its token is the tests' own, and
+# its expiry is moved to an hour after the fake clock's NOW, as GitHub's was.
+TOKEN_ANSWER = {**recorded("installation_token")["json"], "token": TOKEN, "expires_at": "2026-11-25T04:00:00Z"}
 
 
 class FakeKMS:
@@ -66,7 +64,8 @@ class FakeGitHub:
         """A recorded exchange, optionally with its JSON replaced."""
         exchange = recorded(slug)
         target = github.url(exchange["endpoint"], exchange["params"], exchange["query"])
-        self.add("GET", target, exchange["status"], exchange["json"] if body is None else body)
+        method = exchange.get("method", "GET")
+        self.add(method, target, exchange["status"], exchange["json"] if body is None else body)
 
     def add_token(self, answer: dict[str, Any] | None = None) -> None:
         target = github.url("installation_token", {"installation_id": INSTALLATION_ID})

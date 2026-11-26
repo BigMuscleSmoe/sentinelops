@@ -1,0 +1,48 @@
+{
+  "about": "Recorded 2026-11-26T04:43Z as the App (KMS-signed JWT, one installation token, revoked after); the token and every ID replaced (record_responses.py).",
+  "endpoint": "app",
+  "params": {},
+  "query": {},
+  "status": 200,
+  "json": {
+    "id": 101,
+    "client_id": "Iv23liTestClientId",
+    "slug": "sentinelops-remediation",
+    "node_id": "NODE_ID",
+    "owner": {
+      "login": "BigMuscleSmoe",
+      "id": 2,
+      "node_id": "NODE_ID",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/BigMuscleSmoe",
+      "html_url": "https://github.com/BigMuscleSmoe",
+      "followers_url": "https://api.github.com/users/BigMuscleSmoe/followers",
+      "following_url": "https://api.github.com/users/BigMuscleSmoe/following{/other_user}",
+      "gists_url": "https://api.github.com/users/BigMuscleSmoe/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/BigMuscleSmoe/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/BigMuscleSmoe/subscriptions",
+      "organizations_url": "https://api.github.com/users/BigMuscleSmoe/orgs",
+      "repos_url": "https://api.github.com/users/BigMuscleSmoe/repos",
+      "events_url": "https://api.github.com/users/BigMuscleSmoe/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/BigMuscleSmoe/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "name": "sentinelops-remediation",
+    "description": "Opens draft fix PRs for SentinelOps incidents in one repository. Never merges.",
+    "external_url": "https://github.com/BigMuscleSmoe/sentinelops",
+    "html_url": "https://github.com/apps/sentinelops-remediation",
+    "created_at": "2026-11-25T05:43:35Z",
+    "updated_at": "2026-11-26T04:19:00Z",
+    "permissions": {
+      "checks": "read",
+      "contents": "write",
+      "metadata": "read",
+      "pull_requests": "write"
+    },
+    "events": [],
+    "installations_count": 1
+  }
+}
