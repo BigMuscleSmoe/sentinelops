@@ -12,6 +12,31 @@ wheels = [
 ]
 
 [[package]]
+name = "aws-durable-execution-sdk-python"
+version = "3.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/56/c6a36243968ba6fc3dc63ffe0a7484659a7b1bd5535f18a4e4a98a28ee3a/aws_durable_execution_sdk_python-3.1.0.tar.gz", hash = "sha256:4e5f1050e6859b0fcc32b7e6d0492ca3d45dbe17c051e93dcea318f1f60bb93a", size = 431272, upload-time = "2026-11-19T00:03:12.292Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/9e/f8ff0a43c302ea4e7d09646c9c9d068aad9d7471cd76908f086fb0546afe/aws_durable_execution_sdk_python-3.1.0-py3-none-any.whl", hash = "sha256:e8329612f0e5a518ff54a10f6e418cd9d75bb518bb99377845b19ae15a21c8a9", size = 164744, upload-time = "2026-11-19T00:03:10.726Z" },
+]
+
+[[package]]
+name = "aws-durable-execution-sdk-python-testing"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aws-durable-execution-sdk-python" },
+    { name = "boto3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/87/1a/9a3da9916477aa6d1b6decfab3996857386d5d3d2d2d44e1d5fc4bde08c5/aws_durable_execution_sdk_python_testing-1.5.0.tar.gz", hash = "sha256:2ffa3370941a971375179fa941b369b8d78bf39047d86842d907f871e4977d06", size = 126727, upload-time = "2026-11-19T00:03:12.755Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/5a/22fa794402416676f93a4626da1253f15c79ab9a2fe9b0bb52bf9161bfef/aws_durable_execution_sdk_python_testing-1.5.0-py3-none-any.whl", hash = "sha256:5205fdf23d6b23623e7a387ad4c89e95fefae715ae862f7d9384437617ca4380", size = 158676, upload-time = "2026-11-19T00:03:11.312Z" },
+]
+
+[[package]]
 name = "boto3"
 version = "1.44.11"
 source = { registry = "https://pypi.org/simple" }
@@ -196,20 +221,26 @@ name = "sentinelops-remediation"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aws-durable-execution-sdk-python" },
     { name = "sentinelops-core" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "aws-durable-execution-sdk-python-testing" },
     { name = "boto3" },
     { name = "pytest" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "sentinelops-core", editable = "../core" }]
+requires-dist = [
+    { name = "aws-durable-execution-sdk-python", specifier = "==3.1.0" },
+    { name = "sentinelops-core", editable = "../core" },
+]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aws-durable-execution-sdk-python-testing", specifier = "==1.5.0" },
     { name = "boto3", specifier = ">=1.43" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]

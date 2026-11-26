@@ -495,13 +495,20 @@ class GitHubApp:
         return sha
 
     def file_at(self, path: str, ref: str) -> bytes:
-        """A file's bytes at a commit."""
+        """A file's bytes at a commit or on a branch."""
+        return self.file_and_blob(path, ref)[0]
+
+    def file_and_blob(self, path: str, ref: str) -> tuple[bytes, str]:
+        """A file's bytes and its blob SHA, which an update through the Contents API must name."""
         found = self.call("get_file", {"path": path}, {"ref": ref})
         if not isinstance(found, dict) or found.get("type") != "file" or found.get("path") != path:
             raise Refused("get_file", 200, "not that file")
         if found.get("encoding") != "base64" or not isinstance(found.get("content"), str):
             raise Refused("get_file", 200, "no content in the answer")
-        return base64.b64decode("".join(found["content"].split()), validate=True)
+        blob = found.get("sha")
+        if not isinstance(blob, str) or not _SHA.fullmatch(blob):
+            raise Refused("get_file", 200, "no blob SHA in the answer")
+        return base64.b64decode("".join(found["content"].split()), validate=True), blob
 
 
 def _rate_limited(headers: Mapping[str, str]) -> bool:

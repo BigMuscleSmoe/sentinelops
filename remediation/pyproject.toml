@@ -4,11 +4,12 @@ version = "0.1.0"
 # Lambda durable functions run on Python 3.13 or 3.14 (BUILD_PLAN.md, Phase 4
 # design, decision 11).
 requires-python = ">=3.13,<3.14"
-# boto3 comes with the Lambda Python runtime. sentinelops-core (with pydantic)
-# is bundled into the zip, as evening 5's durable execution SDK will be. GitHub
-# is called with urllib: no HTTP, JWT, or crypto library, since the App's key
-# never leaves KMS.
+# Everything is bundled into the zip (build_flow.py): the durable execution
+# SDK, the boto3 it pins (so the flow never depends on the runtime's), and
+# sentinelops-core with pydantic. GitHub is called with urllib: no HTTP, JWT,
+# or crypto library, since the App's key never leaves KMS.
 dependencies = [
+    "aws-durable-execution-sdk-python==3.1.0",
     "sentinelops-core",
 ]
 
@@ -16,6 +17,7 @@ dependencies = [
 # boto3 for botocore's Stubber, which checks each KMS call against the real
 # API, and for check_app.py's real calls.
 dev = [
+    "aws-durable-execution-sdk-python-testing==1.5.0",
     "boto3>=1.43",
     "pytest>=9.1.1",
 ]

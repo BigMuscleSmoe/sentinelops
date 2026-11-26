@@ -111,11 +111,9 @@ def validate(
     if checked.diff != patch.diff:
         return Rejected("patch", "the edits don't render the diff the run kept")
 
-    findings = scan({path: checked.text, **(outgoing or {})}, account_id)
-    if findings:
-        shown = "; ".join(findings[:MAX_FINDINGS_SHOWN])
-        more = len(findings) - MAX_FINDINGS_SHOWN
-        return Rejected("scan", shown + (f"; and {more} more" if more > 0 else ""))
+    rejected = scanned({path: checked.text, **(outgoing or {})}, account_id)
+    if rejected is not None:
+        return rejected
 
     for branch in ("main", release.branch):
         if not protected(github, branch):
@@ -130,6 +128,16 @@ def validate(
         diff=checked.diff,
         branch=fix_branch(patch.version, patch.file_path),
     )
+
+
+def scanned(texts: Mapping[str, str], account_id: str) -> Rejected | None:
+    """The scan check over these texts: Rejected("scan") naming up to five findings, or None if clean."""
+    findings = scan(texts, account_id)
+    if not findings:
+        return None
+    shown = "; ".join(findings[:MAX_FINDINGS_SHOWN])
+    more = len(findings) - MAX_FINDINGS_SHOWN
+    return Rejected("scan", shown + (f"; and {more} more" if more > 0 else ""))
 
 
 def scan(texts: Mapping[str, str], account_id: str) -> list[str]:
