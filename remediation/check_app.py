@@ -15,7 +15,8 @@ own client:
   - auto-merge is off, if GitHub shows that setting to the installation
 and then revokes the token, whatever happened. With --attempts, as the App
 itself, test-only calls that the client's list doesn't have:
-  - merging the test PR, by each method: refused, and its base unmoved
+  - merging the test PR, by each method: refused, and its base's commit the
+    same after the attempts as before them
   - creating merge-test-app: refused
   - creating and deleting sentinelops/app-check: both allowed
 It prints no token, JWT, or ID. Exit 0 only if every check passed.
@@ -34,7 +35,7 @@ from sentinelops_remediation.validate import protected
 PROFILE = "sentinelops"
 REGION = "us-east-1"
 RELEASE = "release/1.43.0"
-MERGE_BASE = "release/merge-test"  # step 1's throwaway base, equal to main
+MERGE_BASE = "release/merge-test"  # step 1's throwaway base: the test PR merges into it
 MERGE_METHODS = ("merge", "squash", "rebase")
 _TWELVE = re.compile(r"(?<![0-9A-Za-z.])[0-9]{12}(?![0-9A-Za-z]|\.[0-9])")  # the hooks' 12-digit rule
 
@@ -117,11 +118,13 @@ def _attempts(
 
     if test_pr is None:
         report(None, "merging the test PR: no --test-pr given")
+    elif (before := head(MERGE_BASE)) is None:
+        report(False, f"{MERGE_BASE} not found: no merge attempted")
     else:
         for method in MERGE_METHODS:
             status = send("PUT", f"/pulls/{test_pr}/merge", {"merge_method": method})
             report(status not in (200, 201), f"the App merging PR {test_pr} by {method}: refused (HTTP {status})")
-        report(head(MERGE_BASE) == main, f"{MERGE_BASE} still at main's commit: nothing merged")
+        report(head(MERGE_BASE) == before, f"{MERGE_BASE} at the same commit after the attempts: nothing merged")
     status = send("POST", "/git/refs", {"ref": "refs/heads/merge-test-app", "sha": main})
     report(status not in (200, 201), f"the App creating merge-test-app: refused (HTTP {status})")
     if status in (200, 201):

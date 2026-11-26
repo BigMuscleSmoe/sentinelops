@@ -7,7 +7,8 @@ from fake_github import INSTALLATION_ID, TOKEN, FakeGitHub, FakeKMS, app
 
 from sentinelops_remediation import github
 
-MAIN_SHA = "6cbadbbee3d734b9e90d442ae81a4f4cbc993038"
+MAIN_SHA = "776d432dce254ea28bb45acfafc2cc3fdd9d5c2d"  # main after step 7
+BASE_SHA = "6cbadbbee3d734b9e90d442ae81a4f4cbc993038"  # release/merge-test, made from main before it
 APP = {"slug": "sentinelops-remediation", "permissions": dict(github.PERMISSIONS), "events": []}
 INSTALLATIONS = [
     {"id": INSTALLATION_ID, "account": {"login": "BigMuscleSmoe"}, "repository_selection": "selected", "permissions": dict(github.PERMISSIONS)}
@@ -69,9 +70,10 @@ def test_the_apps_own_attempts_pass_only_when_github_refuses_them() -> None:
     fake = github_answering()
     fake.add("GET", github.url("get_ref", {"branch": "main"}), 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": MAIN_SHA}})
     base = f"{github.API}/repos/{github.REPO}"
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": BASE_SHA}})
     for _ in check_app.MERGE_METHODS:
         fake.add("PUT", f"{base}/pulls/1/merge", 405, {"message": "Repository rule violations found"})
-    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": MAIN_SHA}})
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": BASE_SHA}})
     fake.add("POST", f"{base}/git/refs", 422, {"message": "Repository rule violations found"})
     fake.add("POST", f"{base}/git/refs", 201, {"ref": "refs/heads/sentinelops/app-check"})
     fake.add("DELETE", f"{base}/git/refs/heads/sentinelops/app-check", 204)
@@ -86,6 +88,7 @@ def test_a_merge_that_goes_through_fails() -> None:
     fake = github_answering()
     fake.add("GET", github.url("get_ref", {"branch": "main"}), 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": MAIN_SHA}})
     base = f"{github.API}/repos/{github.REPO}"
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": BASE_SHA}})
     fake.add("PUT", f"{base}/pulls/1/merge", 200, {"merged": True})
     for _ in check_app.MERGE_METHODS[1:]:
         fake.add("PUT", f"{base}/pulls/1/merge", 405, {})
@@ -97,5 +100,39 @@ def test_a_merge_that_goes_through_fails() -> None:
     assert not ok
     assert [line for line in printed if line.startswith("FAIL")] == [
         "FAIL  the App merging PR 1 by merge: refused (HTTP 200)",
-        "FAIL  release/merge-test still at main's commit: nothing merged",
+        "FAIL  release/merge-test at the same commit after the attempts: nothing merged",
     ]
+
+
+def test_the_base_is_compared_with_itself_not_with_main() -> None:
+    """main moves on (step 7's push did); only a change to the base's own commit is a merge."""
+    assert BASE_SHA != MAIN_SHA
+    fake = github_answering()
+    fake.add("GET", github.url("get_ref", {"branch": "main"}), 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": MAIN_SHA}})
+    base = f"{github.API}/repos/{github.REPO}"
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": BASE_SHA}})
+    for _ in check_app.MERGE_METHODS:
+        fake.add("PUT", f"{base}/pulls/1/merge", 405, {})
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 200, {"object": {"sha": MAIN_SHA}})
+    fake.add("POST", f"{base}/git/refs", 422, {})
+    fake.add("POST", f"{base}/git/refs", 201, {})
+    fake.add("DELETE", f"{base}/git/refs/heads/sentinelops/app-check", 204)
+    ok, printed = run(fake, attempts=True, test_pr=1)
+    assert not ok
+    assert [line for line in printed if line.startswith("FAIL")] == [
+        "FAIL  release/merge-test at the same commit after the attempts: nothing merged",
+    ]
+
+
+def test_a_missing_base_fails_and_no_merge_is_tried() -> None:
+    fake = github_answering()
+    fake.add("GET", github.url("get_ref", {"branch": "main"}), 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": MAIN_SHA}})
+    base = f"{github.API}/repos/{github.REPO}"
+    fake.add("GET", f"{base}/git/ref/heads/release/merge-test", 404, {"message": "Not Found"})
+    fake.add("POST", f"{base}/git/refs", 422, {})
+    fake.add("POST", f"{base}/git/refs", 201, {})
+    fake.add("DELETE", f"{base}/git/refs/heads/sentinelops/app-check", 204)
+    ok, printed = run(fake, attempts=True, test_pr=1)
+    assert not ok
+    assert not [r for r in fake.requests if r.method == "PUT"]
+    assert [line for line in printed if line.startswith("FAIL")] == ["FAIL  release/merge-test not found: no merge attempted"]
