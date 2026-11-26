@@ -10,10 +10,20 @@ for 120 s, stores the answer on the incident, and releases the lock.
 
 Timeouts nest, each outlasting the one inside it: the agent's guard ends a run
 at 300 s, the runtime ends a session at 360 s, the trigger waits 370 s for the
-answer, Lambda ends the trigger at 400 s, and the lock expires at 420 s
-(tests/test_timeouts.py holds them in that order). The invoke is sent once and
+answer, Lambda ends the trigger at 410 s, 20 s past that wait and the 10 s
+handoff below, and the lock expires at 430 s, 20 s past that
+(tests/test_timeouts.py holds them in that order, with those margins). The invoke is sent once and
 never retried, and Lambda doesn't retry this function, so no failure here can
 start a second investigation.
+
+Then, with the lock released, an answered incident (status done) is handed to
+the remediation flow (remediation/): a durable execution named by the
+incident's ID, started asynchronously. The trigger doesn't gate it: only
+Hypothesis.can_open_pr decides, in the flow's first step. This one call may
+be retried, since a second start with the same name and payload is the same
+execution. The incident notes the handoff in its own fields (handoff,
+handoff_at, handoff_error), apart from the flow's remediation map, so neither
+write can undo the other.
 """
 
 import gzip
@@ -30,6 +40,10 @@ from store import Store
 from triage import ALARM, OK, Change, Incident, Verdict, iso, parse_time, service_for
 
 INVOKE_READ_TIMEOUT_S = 370
+# The handoff's bound: an async start answers at once (tests/test_timeouts.py).
+HANDOFF_CONNECT_TIMEOUT_S = 2
+HANDOFF_READ_TIMEOUT_S = 3
+HANDOFF_ATTEMPTS = 2
 QUALIFIER = "DEFAULT"
 # What agent/app.py answers with; anything else is stored as an error.
 OUTCOMES = {"done", "failed", "refused", "invalid"}
@@ -84,11 +98,38 @@ class AgentRuntime:
         return "stopped"
 
 
+class RemediationFlow:
+    """The remediation flow, started once per answered incident: a durable execution named by its ID."""
+
+    def __init__(self, client: Any, alias_arn: str) -> None:
+        self._client = client
+        self._arn = alias_arn
+
+    @property
+    def ready(self) -> bool:
+        """Whether this boto3 knows Invoke's DurableExecutionName: the runtime's boto3, whose version AWS sets."""
+        try:
+            members = self._client.meta.service_model.operation_model("Invoke").input_shape.members
+        except Exception:  # noqa: BLE001 - any failure to read the model means not ready
+            return False
+        return "DurableExecutionName" in members
+
+    def start(self, service: str, incident_id: str) -> None:
+        """Start the flow for the incident, or raise. The same name and payload again is the same execution."""
+        self._client.invoke(
+            FunctionName=self._arn,
+            InvocationType="Event",
+            DurableExecutionName=incident_id,
+            Payload=json.dumps({"service": service, "incident_id": incident_id}).encode(),
+        )
+
+
 class Trigger:
     def __init__(
         self,
         store: Store,
         runtime: AgentRuntime,
+        flow: RemediationFlow,
         *,
         clock: Callable[[], float] = time.time,
         session_id: Callable[[Incident], str] | None = None,
@@ -96,6 +137,7 @@ class Trigger:
         """`clock` and `session_id` are for tests."""
         self._store = store
         self._runtime = runtime
+        self._flow = flow
         self._clock = clock
         self._session_id = session_id or new_session_id
 
@@ -103,7 +145,9 @@ class Trigger:
         change = parse_change(event)
         service = None if change is None else service_for(change.alarm)
         if change is None or service is None:
-            return log({"event": "ignored", "id": event.get("id"), "detail_type": event.get("detail-type")})
+            # handoff_ready: after a deploy, an ignored event shows whether this boto3 can start the flow.
+            ignored = {"event": "ignored", "id": event.get("id"), "detail_type": event.get("detail-type")}
+            return log(ignored | {"handoff_ready": self._flow.ready})
 
         result = self._store.triage(service, change)
         line = log(
@@ -118,7 +162,10 @@ class Trigger:
         )
         if result.verdict is not Verdict.NEW or result.incident is None:
             return line
-        return self._investigate(service, result.incident, change.alarm)
+        investigated = self._investigate(service, result.incident, change.alarm)
+        if investigated.get("status") == "done":
+            investigated["handoff"] = self._hand_off(service, result.incident)
+        return investigated
 
     def _investigate(self, service: str, incident: Incident, alarm: str) -> dict[str, Any]:
         session_id = self._session_id(incident)
@@ -151,6 +198,21 @@ class Trigger:
             return self._finish(service, incident, fields)
         finally:
             self._store.unlock(session_id)
+
+    def _hand_off(self, service: str, incident: Incident) -> str:
+        """Start the remediation flow, and note on the incident that it was started or why it wasn't."""
+        fields: dict[str, Any] = {"handoff": "handed_off", "handoff_at": iso_epoch(self._clock())}
+        try:
+            self._flow.start(service, incident.id)
+        except (ClientError, BotoCoreError) as e:
+            fields |= {"handoff": "handoff_failed", "handoff_error": error_name(e)}
+        try:
+            self._store.update_incident(service, incident.id, fields)
+            noted = "stored"
+        except (ClientError, BotoCoreError) as e:  # the answer is stored already; only this note is lost
+            noted = error_name(e)
+        log({"event": "handoff", "incident": incident.id, **fields, "noted": noted})
+        return fields["handoff"]
 
     def _finish(self, service: str, incident: Incident, fields: dict[str, Any]) -> dict[str, Any]:
         self._store.update_incident(service, incident.id, fields)

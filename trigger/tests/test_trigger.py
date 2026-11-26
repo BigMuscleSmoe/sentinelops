@@ -9,7 +9,7 @@ from typing import Any
 
 import boto3
 import pytest
-from botocore.exceptions import ClientError, ReadTimeoutError
+from botocore.exceptions import ClientError, ParamValidationError, ReadTimeoutError
 from botocore.response import StreamingBody
 from botocore.stub import Stubber
 
@@ -18,6 +18,7 @@ from triage import ALARM, OK, Change, Incident, ServiceState, Verdict, classify,
 from trigger import (
     MAX_RECORD_GZ_BYTES,
     AgentRuntime,
+    RemediationFlow,
     Trigger,
     answer_fields,
     new_session_id,
@@ -27,6 +28,7 @@ from trigger import (
 INCIDENT = "checkout-api-20261027T190557Z"
 SESSION = f"{INCIDENT}-session"
 RUNTIME_ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/sentinelops_agent-abc123"
+FLOW_ARN = "arn:aws:lambda:us-east-1:123456789012:function:sentinelops-remediation:live"
 HYPOTHESIS = {
     "root_cause": "Deploy 1.43.0 broke checkout for carts without a promo.",
     "confidence": 0.9,
@@ -110,7 +112,7 @@ class FakeStore:
         return self.cap_open
 
     def update_incident(self, service: str, incident_id: str, fields: dict[str, Any]) -> None:
-        self.calls.append(("update", fields.get("status")))
+        self.calls.append(("update", fields.get("status", fields.get("handoff"))))
         if self.fail_final_update and fields.get("status") != "investigating":
             raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException"}}, "UpdateItem")
         self.incidents[incident_id].update(fields)
@@ -133,17 +135,35 @@ class FakeRuntime:
         return "stopped"
 
 
-def make(answer: Any = DONE, error: Exception | None = None) -> tuple[Trigger, FakeStore, list]:
+class FakeFlow:
+    def __init__(self, calls: list, error: Exception | None = None) -> None:
+        self.calls = calls
+        self.error = error
+        self.ready = True
+
+    def start(self, service: str, incident_id: str) -> None:
+        self.calls.append(("start", service, incident_id))
+        if self.error is not None:
+            raise self.error
+
+
+def make(
+    answer: Any = DONE, error: Exception | None = None, flow_error: Exception | None = None
+) -> tuple[Trigger, FakeStore, list]:
     calls: list = []
     store = FakeStore(calls)
     clock = iter(range(1_000, 2_000, 10))
     trigger = Trigger(
-        store, FakeRuntime(calls, answer, error), clock=lambda: float(next(clock)), session_id=lambda i: SESSION
+        store,
+        FakeRuntime(calls, answer, error),
+        FakeFlow(calls, flow_error),
+        clock=lambda: float(next(clock)),
+        session_id=lambda i: SESSION,
     )
     return trigger, store, calls
 
 
-def test_a_new_incident_runs_one_investigation_then_stops_stores_and_unlocks() -> None:
+def test_a_new_incident_runs_one_investigation_then_stops_stores_unlocks_and_hands_off() -> None:
     trigger, store, calls = make()
 
     line = trigger.handle(FIRED)
@@ -156,6 +176,8 @@ def test_a_new_incident_runs_one_investigation_then_stops_stores_and_unlocks() -
         ("stop", SESSION),
         ("update", "done"),
         ("unlock", SESSION),
+        ("start", "checkout-api", INCIDENT),
+        ("update", "handed_off"),
     ]
     stored = store.incidents[INCIDENT]
     assert stored["status"] == "done"
@@ -167,6 +189,9 @@ def test_a_new_incident_runs_one_investigation_then_stops_stores_and_unlocks() -
     assert stored["invoked_at"] < stored["finished_at"]
     assert line["hypothesis"] == HYPOTHESIS
     assert store.holder is None
+    assert (line["handoff"], stored["handoff"]) == ("handed_off", "handed_off")
+    assert stored["handoff_at"] > stored["finished_at"]
+    assert "remediation" not in stored  # the flow's own map; the trigger never writes it
 
 
 def test_only_the_first_of_a_days_alarms_reaches_the_runtime() -> None:
@@ -302,11 +327,17 @@ def test_the_session_and_then_the_diagnosis_reach_the_log(capsys: pytest.Capture
     trigger.handle(FIRED)
 
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert [line["event"] for line in lines] == ["alarm_change", "investigating", "investigation"]
+    assert [line["event"] for line in lines] == ["alarm_change", "investigating", "investigation", "handoff"]
     # Logged before the invoke, so the kill switch can find the session to stop.
     assert (lines[1]["incident"], lines[1]["session_id"]) == (INCIDENT, SESSION)
     assert lines[2]["hypothesis"]["root_cause"] == HYPOTHESIS["root_cause"]
     assert "record_gz" not in lines[2]
+    assert {k: v for k, v in lines[3].items() if k != "handoff_at"} == {
+        "event": "handoff",
+        "incident": INCIDENT,
+        "handoff": "handed_off",
+        "noted": "stored",
+    }
 
 
 def runtime_with_stub() -> tuple[AgentRuntime, Stubber]:
@@ -345,3 +376,118 @@ def test_stopping_reports_a_session_already_gone_by_its_code() -> None:
     with stubber:
         assert runtime.stop(SESSION) == "stopped"
         assert runtime.stop(SESSION) == "ResourceNotFoundException"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"outcome": "failed", "failure": "x"},
+        {"outcome": "refused", "reason": "OK, not ALARM"},
+        {"outcome": "invalid"},
+        {"outcome": "exploded"},
+    ],
+)
+def test_only_an_answered_incident_is_handed_off(answer: dict) -> None:
+    trigger, store, calls = make(answer=answer)
+
+    line = trigger.handle(FIRED)
+
+    assert not any(c[0] == "start" for c in calls)
+    assert "handoff" not in line and "handoff" not in store.incidents[INCIDENT]
+
+
+@pytest.mark.parametrize("blocked", ["lock", "cap"])
+def test_nothing_is_handed_off_when_the_lock_is_held_or_the_cap_is_reached(blocked: str) -> None:
+    trigger, store, calls = make()
+    if blocked == "lock":
+        store.holder = "another-session"
+    else:
+        store.cap_open = False
+
+    trigger.handle(FIRED)
+
+    assert not any(c[0] == "start" for c in calls)
+
+
+@pytest.mark.parametrize(
+    ("error", "name"),
+    [
+        (ClientError({"Error": {"Code": "TooManyRequestsException", "Message": "arn:..."}}, "Invoke"), "TooManyRequestsException"),
+        (ReadTimeoutError(endpoint_url="https://lambda.us-east-1.amazonaws.com"), "ReadTimeoutError"),
+        (ParamValidationError(report="Unknown parameter in input: DurableExecutionName"), "ParamValidationError"),
+    ],
+)
+def test_a_failed_handoff_is_noted_by_its_name_and_the_answer_kept(error: Exception, name: str) -> None:
+    trigger, store, calls = make(flow_error=error)
+
+    line = trigger.handle(FIRED)
+
+    stored = store.incidents[INCIDENT]
+    assert (line["handoff"], stored["handoff"], stored["handoff_error"]) == ("handoff_failed", "handoff_failed", name)
+    assert stored["status"] == "done" and "hypothesis" in stored
+    assert "arn" not in json.dumps({k: v for k, v in stored.items() if k.startswith("handoff")})
+
+
+def test_a_note_that_cant_be_stored_doesnt_fail_the_trigger(capsys: pytest.CaptureFixture[str]) -> None:
+    trigger, store, calls = make()
+    original = store.update_incident
+
+    def failing(service: str, incident_id: str, fields: dict[str, Any]) -> None:
+        if "handoff" in fields:
+            raise ClientError({"Error": {"Code": "ThrottlingException"}}, "UpdateItem")
+        original(service, incident_id, fields)
+
+    store.update_incident = failing  # type: ignore[method-assign]
+
+    assert trigger.handle(FIRED)["handoff"] == "handed_off"
+    handoff = [json.loads(x) for x in capsys.readouterr().out.splitlines()][-1]
+    assert (handoff["event"], handoff["noted"]) == ("handoff", "ThrottlingException")
+
+
+def test_an_ignored_event_says_whether_the_flow_can_be_started() -> None:
+    trigger, _, _ = make()
+    assert trigger.handle({"source": "aws.events", "detail-type": "Scheduled Event"})["handoff_ready"] is True
+
+
+def flow_with_stub() -> tuple[RemediationFlow, Stubber]:
+    client = boto3.client("lambda", region_name="us-east-1", aws_access_key_id="testing", aws_secret_access_key="testing")
+    return RemediationFlow(client, FLOW_ARN), Stubber(client)
+
+
+def test_the_flow_is_started_asynchronously_named_by_the_incident() -> None:
+    flow, stubber = flow_with_stub()
+    expected = {
+        "FunctionName": FLOW_ARN,
+        "InvocationType": "Event",
+        "DurableExecutionName": INCIDENT,
+        "Payload": b'{"service": "checkout-api", "incident_id": "checkout-api-20261027T190557Z"}',
+    }
+    stubber.add_response("invoke", {"StatusCode": 202}, expected)
+    stubber.add_response("invoke", {"StatusCode": 202}, expected)  # a second start: the same request exactly
+
+    with stubber:
+        flow.start("checkout-api", INCIDENT)
+        flow.start("checkout-api", INCIDENT)
+    stubber.assert_no_pending_responses()
+    assert flow.ready
+
+
+def test_an_incident_id_is_a_valid_execution_name() -> None:
+    # Invoke's DurableExecutionName: 1 to 64 of [a-zA-Z0-9-_].
+    incident = classify(ServiceState(), parse_change(FIRED), "checkout-api").incident
+    assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", incident.id)
+
+
+def test_a_boto3_without_durable_starts_isnt_ready() -> None:
+    class Model:
+        @staticmethod
+        def operation_model(name: str) -> Any:
+            raise KeyError(name)
+
+    class Meta:
+        service_model = Model()
+
+    class Old:
+        meta = Meta()
+
+    assert RemediationFlow(Old(), FLOW_ARN).ready is False

@@ -24,9 +24,9 @@ from botocore.exceptions import ClientError
 from triage import Change, Incident, ServiceState, Triage, Verdict, classify, iso
 
 GLOBAL = "global"
-# Past the runtime's 360 s and this function's 400 s, so a lock outlives any run
+# Past the runtime's 360 s and this function's 410 s, so a lock outlives any run
 # that holds it, and a crashed run's lock still expires.
-LOCK_TTL_S = 420
+LOCK_TTL_S = 430
 CAP_PER_HOUR = 20
 HOUR_S = 3600
 TRIAGE_TRIES = 5

@@ -49,9 +49,11 @@ module "trigger" {
   description = "Triages checkout-api's alarms, and starts one investigation per incident"
   source_dir  = local.trigger_dir
   excludes    = local.trigger_tooling
-  # It waits up to 370 s for the Runtime, whose sessions end by 360 s, and the
-  # lock's 420 s outlasts it (trigger/tests/test_timeouts.py).
-  timeout = 400
+  # It waits up to 380 s for the Runtime (10 s to connect, 370 s for the
+  # answer; sessions end by 360 s), then up to 10 s to hand the answer to the
+  # remediation flow: 410 s leaves 20 s past both, and the lock's 430 s
+  # outlasts it by 20 s more (trigger/tests/test_timeouts.py).
+  timeout = 410
 
   environment = {
     INCIDENTS_TABLE          = aws_dynamodb_table.incidents.name

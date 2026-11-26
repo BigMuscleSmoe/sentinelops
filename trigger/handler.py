@@ -1,6 +1,7 @@
 """Lambda entry point for the trigger. EventBridge's rule sentinelops-alarms
 invokes it asynchronously, never retried, with each of checkout-api's alarms
-going into ALARM or back to OK. See trigger.py.
+going into ALARM or back to OK. It hands each answered incident to the
+remediation flow. See trigger.py.
 """
 
 import os
@@ -10,7 +11,15 @@ import boto3  # provided by the Lambda runtime
 from botocore.config import Config
 
 from store import Store
-from trigger import INVOKE_READ_TIMEOUT_S, AgentRuntime, Trigger
+from trigger import (
+    HANDOFF_ATTEMPTS,
+    HANDOFF_CONNECT_TIMEOUT_S,
+    HANDOFF_READ_TIMEOUT_S,
+    INVOKE_READ_TIMEOUT_S,
+    AgentRuntime,
+    RemediationFlow,
+    Trigger,
+)
 
 _trigger = Trigger(
     Store(
@@ -29,6 +38,19 @@ _trigger = Trigger(
             ),
         ),
         os.environ["AGENT_RUNTIME_ARN"],
+    ),
+    RemediationFlow(
+        # Retried: a second start with the same name and payload is the same
+        # execution, so a retry can't start a second flow.
+        boto3.client(
+            "lambda",
+            config=Config(
+                connect_timeout=HANDOFF_CONNECT_TIMEOUT_S,
+                read_timeout=HANDOFF_READ_TIMEOUT_S,
+                retries={"total_max_attempts": HANDOFF_ATTEMPTS},
+            ),
+        ),
+        os.environ["REMEDIATION_FUNCTION_ARN"],
     ),
 )
 

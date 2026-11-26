@@ -92,7 +92,7 @@ Hitting a limit doesn't throw. The run ends with a normal `Hypothesis` at confid
 
 **How the cost cap holds.** Before each model call, the guard reserves the most that call could cost: the prompt as the API's free `count_tokens` counts it, plus a 10% margin (at least 1,000 tokens), plus all 16,000 output tokens, at the dearest rate. If what's spent plus that reservation would pass $0.10, the call isn't sent. The count is an estimate, so in one narrow case a single call can take a run past the cap. The $10 monthly limit I set in the Anthropic Console is the backstop.
 
-**Global limits** (`trigger/`): triage in code, a DynamoDB lock so only one investigation runs at a time, a cap of 20 an hour, and one invoke with no retries. The timeouts nest, each outlasting the one inside it: the guard's 300 s, the Runtime's 360 s, the trigger's 370 s wait, the Lambda's 400 s, and the lock's 420 s.
+**Global limits** (`trigger/`): triage in code, a DynamoDB lock so only one investigation runs at a time, a cap of 20 an hour, and one invoke with no retries. The timeouts nest, each outlasting the one inside it: the guard's 300 s, the Runtime's 360 s, the trigger's 370 s wait, the Lambda's 410 s (room for the 10 s handoff to the remediation flow, with 20 s to spare), and the lock's 430 s.
 
 **Access.** The agent can read and can't write. Each tool Lambda has its own scoped IAM role, and Gateway takes IAM auth only. The agent and CI hold no stored credentials: the agent signs in to Anthropic by workload identity federation, trading an STS-signed JWT for a token that lasts minutes, and GitHub Actions deploys through OIDC.
 
