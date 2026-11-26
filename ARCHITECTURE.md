@@ -1,6 +1,6 @@
 # Architecture
 
-**What's built and what isn't.** Built and running: the demo service, the trigger, the agent on AgentCore Runtime with its four tools behind Gateway, runbook search on a Bedrock knowledge base, and the eval harness. Designed here but not built yet: code execution, the remediation flow, the live trace, and the frontend. Each of those sections says so in its heading.
+**What's built and what isn't.** Built and running: the demo service, the trigger, the agent on AgentCore Runtime with its five tools behind Gateway, runbook search on a Bedrock knowledge base, the remediation flow that opens a draft PR, and the eval harness. Designed here but not built yet: code execution, the live trace, and the frontend. Each of those sections says so in its heading.
 
 ## Design goals
 
@@ -70,13 +70,15 @@ agent/
   pricing.py           # per-token prices, by provider and model
   prompts/
     system.md          # the agent's operating instructions
-  models.py            # Hypothesis (Pydantic); Remediation comes in Phase 4
+  code_snapshot.py     # checkout/'s code at each release, built in memory for runs here
   guards.py            # step cap, token cap, cost cap, timeout
   sources.py           # labels each tool result (m1, l2, d1, r1) so evidence can cite it
   checker/             # recomputes each typed evidence item from the result it cites, in code
   evals/               # sweeps over recorded alarms, rubrics, audits, the pass bar, the CI gate
   trace.py             # writes trace events to DynamoDB (Phase 5, not written yet)
 ```
+
+`Hypothesis`, its patch, and the PR gate live in the shared project `core/` (`sentinelops_core/models.py`), beside the patch check (`patches.py`) and the release map (`releases.py`), so the agent and the remediation flow import one copy of each.
 
 **Model provider.** A setting, not a code path: `SENTINELOPS_MODEL_PROVIDER` is `anthropic` (the default) or `bedrock`, and `SENTINELOPS_MODEL_ID` picks the model. AWS declined my Bedrock quota requests on 2026-10-22, so the agent runs on the Anthropic API with Claude Haiku 5.5, through Strands' Anthropic provider. Bedrock is refused in code until it has quota; switching is then a setting plus its prices in `pricing.py`, since a model without a price can't start. The Anthropic API is signed in to by workload identity federation only; the API key it started with is retired (Security notes).
 
@@ -90,10 +92,10 @@ Tools the agent can call:
 | `get_metrics` | Lambda via Gateway | Built |
 | `get_deploy_history` | Lambda via Gateway | Built |
 | `search_runbooks` | Lambda via Gateway (Bedrock KB `Retrieve`) | Built |
-| `read_repo_file` | Lambda via Gateway (read-only GitHub token) | Phase 4 |
+| `read_repo_file` | Lambda via Gateway (`checkout/`'s code at each release, a snapshot built at deploy; no GitHub credential) | Built |
 | `run_analysis` | AgentCore Code Interpreter (built-in, not a Lambda) | Deferred until the eval shows it's needed |
 
-**Structured output.** The agent ends every run with a `Hypothesis`, through a strict tool schema (`models.py`):
+**Structured output.** The agent ends every run with a `Hypothesis`, through a strict tool schema (`core/sentinelops_core/models.py`):
 
 ```python
 class Evidence(BaseModel):          # one typed statement, citing one tool result
@@ -101,6 +103,15 @@ class Evidence(BaseModel):          # one typed statement, citing one tool resul
     source: str | None              # the result's label: m1, l2, d1
     # plus the fields its kind uses: column, at, start, end, lines, value, low, high, count, seconds
     note: str
+
+class Remediation(BaseModel):       # a fix for a person to review; nothing applies or runs it
+    source: str                     # the read_repo_file result it's against: c1
+    file_path: str                  # checkout/<module>.py, as that read shows it
+    edits: list[Edit]               # 1 to 3 exact-text replacements (old, new)
+    rationale: str
+    version: str | None             # set by code: the release the read showed
+    file_sha256: str | None         # set by code: the file as read
+    diff: str | None                # set by code: rendered from the edits
 
 class Hypothesis(BaseModel):
     root_cause: str
@@ -111,14 +122,18 @@ class Hypothesis(BaseModel):
     affected_component: str
     fault_location: FaultLocation   # this_service, upstream, or undetermined
     runbook_cited: str | None
+    remediation: Remediation | None
+    running_version: str | None     # set by code: the release running when the alarm fired
     halted_by: StopReason | None    # set only by code, hidden from the model's schema
 ```
+
+Fields set by code are left out of the schema the model sees.
 
 Typed evidence is what makes the answer checkable: `agent/checker/` recomputes each item from the result it cites, with no model.
 
 `runbook_cited` names the runbook the diagnosis follows, and code checks it once the run answers (`runner.check_citation`): it stays only if it names, exactly, a runbook a search in this run showed in full. Otherwise it's cleared and logged with its reason (never shown, only listed by name, or cut short by the result's cap), and the model isn't asked again. A runbook is never evidence: an evidence item citing a search (`r1`) is the checker's `miscited` flag.
 
-From Phase 4, a `remediation` field (`file_path`, `base_commit`, `diff`, `rationale`) carries the patch, and the agent writes it itself. Nothing downstream calls a model, so all LLM spend stays inside the guarded session. `remediation` will be `None` when the fix isn't in this service (`downstream_timeout`) or the agent can't name one.
+`remediation` carries the patch, and the agent writes it itself, inside the guarded session. Nothing downstream calls a model, so all LLM spend stays inside the guard. A patch is one to three exact-text edits to one file the run read in full with `read_repo_file`, and code renders the diff, since models write exact replacements far more reliably than unified diffs. Code checks it once the run answers (`runner.check_remediation`): the file must be the one the cited read shows, each edit's passage must occur exactly once with no two overlapping, the patch may add no import and change at most 40 lines, and the patched file must compile (compiled, never run). A patch that fails is cleared and logged with its reason and never sent back, so a bad patch can't cost the diagnosis a resend. One that passes gets the fields only code sets: the release the read showed, the file's SHA-256, and the diff. Code also sets `running_version` from this run's deploy-history reads. `remediation` is `None` when the fix isn't in this service's code (`downstream_timeout` is upstream, and the pool fault is a config change) or the agent can't name one.
 
 **Guards are not optional.** `guards.py` enforces:
 - max 15 tool calls per incident
@@ -142,7 +157,8 @@ tools/                      # one uv project, sentinelops-tools (built 2026-10-2
     deploys.py              # get_deploy_history: deploy and config-change history from DynamoDB, up to now
     toolset.py              # make_tools(env): the functions the model sees, with their docstrings
     runbooks.py             # search_runbooks: one Bedrock KB Retrieve, the 2 closest runbooks in full
-    github_read.py          # planned, Phase 4: read a file, list recent commits
+    repo.py                 # read_repo_file: checkout/'s code at a release, from the snapshot in its zip
+  build_code_snapshot.py    # checkout/ at each release's commit, and the tools' packages, built before a plan
   build_runbooks.py         # the runbooks cut into one document per section, run before a plan
   ingest_runbooks.py        # the deploy's ingestion job, and its check that the KB holds this build
   tests/                    # replay recorded AWS calls through botocore's Stubber
@@ -150,9 +166,9 @@ tools/                      # one uv project, sentinelops-tools (built 2026-10-2
 
 The tools are plain Python functions in one project, which the agent depends on by path and imports directly while developing locally. The model sets only bounded parameters; the log group, the table, and the end of every time range come from the run, and a replay pins the clock to the moment the alarm fired. Logs are read with `FilterLogEvents` as whole lines, not through Logs Insights, which lags by minutes under load and flattens arrays; metrics are the primary source. An AWS error reaches the model as its error code only.
 
-Deployed, each tool is its own Lambda (`sentinelops-tool-metrics`, `-logs`, `-deploys`, and `-runbooks`): a thin handler (`handlers.py`) around the same function, behind an AgentCore Gateway (`sentinelops-tools`, IAM auth) that serves them as MCP tools named `<target>___<tool>`. A handler takes the tool's arguments, plus `as_of` to replay a moment (capped at its own clock), and answers `{"text": ...}`. The agent's tools have the same names and descriptions whether they run locally or through Gateway, and only their bodies call Gateway, so the prompt and its token counts don't change. Only the gateway's role may invoke the functions, and AgentCore may assume that role only for a gateway in this account.
+Deployed, each tool is its own Lambda (`sentinelops-tool-metrics`, `-logs`, `-deploys`, `-runbooks`, and `-code`): a thin handler (`handlers.py`) around the same function, behind an AgentCore Gateway (`sentinelops-tools`, IAM auth) that serves them as MCP tools named `<target>___<tool>`. A handler takes the tool's arguments, plus `as_of` to replay a moment (capped at its own clock), and answers `{"text": ...}`. The agent's tools have the same names and descriptions whether they run locally or through Gateway, and only their bodies call Gateway, so the prompt and its token counts don't change. Only the gateway's role may invoke the functions, and AgentCore may assume that role only for a gateway in this account.
 
-Each tool Lambda has its own IAM role scoped to exactly what it needs. The logs tool cannot write to DynamoDB, and the runbooks tool may only `bedrock:Retrieve` from the one knowledge base. The GitHub tool (Phase 4) won't be able to read CloudWatch, and its token will be read-only: the agent has no way to open a PR. Only the remediation flow will hold a write-capable token. It will also only see the service's own code (`services/checkout-api/checkout/`), never the fault simulator or controller.
+Each tool Lambda has its own IAM role scoped to exactly what it needs. The logs tool cannot write to DynamoDB, and the runbooks tool may only `bedrock:Retrieve` from the one knowledge base. The code tool holds no credential of any kind and reads nothing at run time but the snapshot in its zip: the service's own modules (`services/checkout-api/checkout/`) at each release's commit, built at deploy, never the fault simulator or controller. A path is checked against that list and looked up by exact key, and every path the tool doesn't show gets the same answer, so it can't probe the tree. The agent has no way to reach GitHub, let alone open a PR: only the remediation flow writes there.
 
 ### Knowledge base (`runbooks/`; built, Phase 3)
 
@@ -164,16 +180,41 @@ Seven Markdown runbooks, drafted from the service's actual behavior and reviewed
 
 **Measured** (`tools/tests/fixtures/retrieval/`). On 40 queries a runbook fits, written in the agent's own words: 90% top-2, the bar, met with no margin, and 75% top-1. The 12 written after five runbook fixes, which the fixes never saw, are the fairer number: 83% top-2. Both of their misses, and 3 of the 4 misses overall, are on `memory-leak.md`, whose best-matching section is What this is not, which doesn't rank. A keyword baseline over Symptoms and Diagnosis nearly tied on top-2 (85%, and 83% on the fresh 12) and trailed on top-1 (65%). In the 20-run tuning sweep (2026-11-23), `downstream-timeout.md` ranked above `bad-deploy.md` on every bad deploy, and 3 of 9 pool runs needed a second search, yet the agent cited each fault's own runbook in all 20.
 
-### Remediation flow (`remediation/`; planned, Phase 4)
+### Remediation flow (`remediation/`; built, Phase 4)
 
-Lambda Durable Functions runs the post-diagnosis sequence. It's deterministic, with no model calls:
+A Lambda durable function (`sentinelops-remediation`, Python 3.13, invoked by its alias `live`) runs the steps after a diagnosis. It calls no model: the agent wrote the patch inside its guarded session. The trigger starts it once per answered incident, asynchronously, with only the service and the incident's ID, and names the execution by that ID, so a second start is the same execution. The flow reads the answer from the incident item, never from the event. Each step is checkpointed and runs at most once per attempt, with no retry by the SDK; a failure is recorded as a result.
 
-1. **Gate.** Re-validate the payload into a `Hypothesis` and check `hypothesis.can_open_pr`. If it's False, post the findings to the incident and stop. This step contains no rule of its own: the threshold, the halted-run check, the fault-location check, and (from Phase 4) the `remediation is None` check all live in `can_open_pr` in `models.py`, so the agent's view and the remediation flow's view of "PR-worthy" can't drift apart. `can_open_pr` exists today, and a test fails the build if any other code compares confidence or checks `halted_by`.
-2. **Validate.** The diff must apply cleanly to `base_commit`, and every touched `.py` file must pass `ast.parse`. The real tests run in GitHub Actions on the PR, not here.
-3. **Open or update the PR.** Branch `sentinelops/<fault_mode>`. If an open PR already exists for that fault mode, push to it and add a comment linking the new incident. Without this, a public demo becomes hundreds of identical PRs.
-4. **Notify.**
+1. **Load.** Read the incident and validate its answer into a `Hypothesis`. `hypothesis.can_open_pr` is the one gate: the run wasn't halted, the fault is in this service, confidence is at least 0.7, and the run's check kept a patch made on the release that was running. If it's False, the flow records `no_pr` and stops. The step holds no rule of its own, so the agent's view and the flow's view of "PR-worthy" can't drift apart, and a test fails the build if any other code compares a confidence or checks `halted_by`.
+2. **Open.** Validation comes first (`validate.py`). It reads GitHub as it is and writes nothing:
+   - the gate, again;
+   - the base is that release's branch from the release map, never `main` and never a branch the model named;
+   - the file at the base's head is, byte for byte, the file the agent read (by its SHA-256);
+   - the edits apply again and render the diff the run kept;
+   - the commit hooks' rules, plus one rule against ARNs, find nothing in the patched file or in anything the flow will post;
+   - `main` and the base still refuse updates, deletions, and force pushes.
 
-Durable execution means a failure at step 3 resumes at step 3 rather than re-running the whole thing. The incident ID is the idempotency key for each step.
+   A failed check records `rejected` with the check's name and opens nothing. Then the flow writes three things. The first is the fix branch, `sentinelops/fix-<version>-<module>`: one per release and file, never named for the fault. The second is one commit of the patched file. The third is a draft PR into the release branch. If a PR from that branch is already open, from an earlier incident, the new incident commits only if the file differs, then comments on that PR instead of opening a twin, so repeated breaks don't pile up identical PRs. Every write first looks for its own result (the branch by name, the file by its content, the PR and its comments by the incident's marker), since a step can run twice.
+3. **Wait for CI.** Every 60 s, up to 15 times, the flow reads one check on the branch's head, `test (services/checkout-api)`, until it passes or fails. The tests run in GitHub Actions on the PR, never in the flow.
+4. **Conclude.** If the check passed, the PR is marked ready for review. If it failed or never finished, a comment says so and the PR stays a draft.
+5. **Record.** The result goes on the incident as one map, `remediation`: `ready`, `checks_failed`, `checks_timeout`, `rejected`, `no_pr`, or `failed`, with the PR's number and URL. That record is the only notification, with no email; the frontend (Phase 5) will show it. The trigger notes its handoff in its own fields (`handoff`, `handoff_at`), so neither write can undo the other.
+
+**The PR's text is built by code.** The title, the commit message, and every comment hold typed fields only: the incident, the alarm, the release, the file, the check. The body adds the model's free text, each field in its own fenced code block, so GitHub renders none of it as Markdown. Before that, code strips anything that would act on GitHub even outside a block:
+- every `@`, so nothing mentions anyone;
+- links, autolinks, bare URLs, and images;
+- HTML tags and comments, so no one can forge the flow's own `<!-- incident: ... -->` marker;
+- issue references, so "fixes #1" closes nothing;
+- anything outside printable ASCII.
+
+It's tested on 61 hostile strings, and rendered once through GitHub's `POST /markdown`: no link, image, mention, or issue link survived.
+
+**GitHub access.** The flow is a GitHub App installed on this repository only, with four permissions (Security notes). Its client has a fixed list of endpoints, pinned by a test, and none of them merges, deletes a branch, dispatches a workflow, or changes a setting. A write may only go to a fix branch, and a PR only from a fix branch into a release branch, as a draft. Rulesets do the rest. They lock `main` and `release/**`, close every other branch but `sentinelops/**`, and block merges everywhere, so the App can't merge its own PR even if asked. A person reviews and merges, or closes, every PR.
+
+**Kill switch.** Reserved concurrency 0 on the function drops every new start, and `StopDurableExecution` ends each one already running. Terraform ignores the function's concurrency, so a deploy never lifts the switch. The drill (2026-11-26) showed that a start while the switch is on is dropped at once and never runs later, though Lambda answers it 202. The trigger then notes the incident `handed_off` with no flow behind it, and only the function's `AsyncEventsDropped` metric shows the drop. The README has the commands, and one that lists those incidents. Stopping a running execution hasn't been tested live: none was running during the drill.
+
+**The first live run** (2026-11-26, a `bad_deploy` break). The agent traced the errors to 1.43.0's `apply_promo`, which had lost its `None` check, cited `bad-deploy.md`, and patched `checkout/pricing.py` with one edit restoring the two lines. The flow opened PR #2 into `release/1.43.0` 8 s after the handoff. The PR held one commit, by the App's bot, and the file it committed is 1.42.0's byte for byte. Its CI ran without approval, and the checkout-api tests passed 40 s after the handoff. The flow saw that at its first poll and marked the PR ready 71 s after the handoff: 2 minutes 7 seconds from the alarm. Afterwards:
+- the rendered body held no mention, link, or image;
+- the execution's history and the flow's logs held nothing token-shaped;
+- CloudTrail showed two `kms:Sign` calls, both from the flow's role.
 
 ### Live trace (planned, Phase 5)
 
@@ -208,20 +249,25 @@ a break (the fault controller today, the "Break the service" button from Phase 5
   → agent: get_deploy_history()
   → agent: get_recent_logs()
   → agent: run_analysis(...)           # deferred
-  → agent: read_repo_file(path)        # planned, Phase 4; only if the fix is in this service
-  → agent emits Hypothesis (with Remediation or None, from Phase 4)
+  → agent: read_repo_file(version, path)   # when the cause may be in this service's code
+  → agent emits Hypothesis (with a Remediation, or None)
+  → code checks the citation and the patch, and finds the release that was running
   → trigger stops the session, stores it, releases the lock
-  → Durable Function: gate → validate → open/update PR → notify   # planned, Phase 4
+  → trigger starts the remediation flow (async, named by the incident's ID)
+  → durable function: load (can_open_pr) → open (validate, branch, commit, draft PR)
+      → wait for CI → ready for review, or a comment → record on the incident
   → trace closes, UI shows result                                  # planned, Phase 5
 ```
 
-Measured: alarms fire 36-42 s after a break. The first live run (2026-10-29) took 22 s from start to answer, with 4 tool calls and 4 model calls, for $0.0094, well inside the caps. With runbook search, the 20-run tuning sweep (2026-11-23) took 18 to 48 s a run, with 4 to 7 tool calls, for $0.0084 on average.
+Measured: alarms fire 36-42 s after a break. The first live run (2026-10-29) took 22 s from start to answer, with 4 tool calls and 4 model calls, for $0.0094, well inside the caps. With runbook search, the 20-run tuning sweep (2026-11-23) took 18 to 48 s a run, with 4 to 7 tool calls, for $0.0084 on average. The first live remediation (2026-11-26) took 54 s for the run, with 7 tool calls, 4 model calls, and $0.010, then 71 s from the handoff to a PR ready for review.
 
 ## Security notes
 
 - No long-lived AWS keys in the repo or CI. Local development uses one IAM user key in the `sentinelops` profile; CI uses OIDC.
 - The Code Interpreter sandbox has no network egress. The agent can analyze data you hand it, not reach the internet.
-- Two GitHub tokens, both in Secrets Manager (Phase 4): read-only for the agent's `github_read` tool, and write-scoped (contents and PRs on one repo) for the remediation flow.
+- No GitHub credential for the agent: its code tool reads a snapshot built at deploy. The remediation flow is the only writer, as a GitHub App installed on this repository only with four permissions (contents and pull requests read and write, checks and metadata read; no workflows, administration, actions, or secrets).
+  - **The key.** The App's private key was imported into KMS and can't be read back. The flow signs the App's JWT with `kms:Sign` (RS256 only), and the key's policy denies signing to every principal but the admin user and the flow's role.
+  - **The token.** Each invocation asks for an installation token scoped to this repository and those permissions. It refuses, and revokes, one granted anything more, and revokes the token when it's done. Tokens are never logged, stored, or checkpointed: the first live run's execution history and logs held nothing token-shaped.
 - No Anthropic API key (since 2026-11-12): the agent signs in by Anthropic workload identity federation. The runtime's role gets a JWT from STS `GetWebIdentityToken` (audience `https://api.anthropic.com`, RS256, 300 s), an Anthropic federation rule trusts that exact role, and the SDK trades the JWT for a token of minutes. Local runs assume `sentinelops-local`, which only `sentinelops-dev` may assume and which may only ask STS for that JWT, under a second rule. The key it replaced, first kept in Secrets Manager, is disabled (kept that way, not deleted, until it expires on its own 2027-02-03) and its secret deleted.
 - The public demo has no login, so its protection is the global lock and hourly cap in the trigger Lambda. Per-IP limits alone are not protection. A public demo endpoint plus an LLM is how people get surprise bills.
 - Secrets in Secrets Manager, referenced by ARN in Terraform, never in tfvars committed to git.

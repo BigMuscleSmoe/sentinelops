@@ -1,13 +1,14 @@
 # SentinelOps
 
-SentinelOps is an incident response agent I built on AWS. When a CloudWatch alarm fires on a small demo service, an agent on Bedrock AgentCore reads the service's metrics, logs, and deploy history, searches its runbooks, then answers with a root cause backed by typed evidence, each piece citing the exact tool result it came from. It reads and reasons; it can't change anything. Every investigation is bounded in code (tool calls, tokens, dollars, and time), and everything is deployed with Terraform from GitHub Actions.
+SentinelOps is an incident response agent I built on AWS. When a CloudWatch alarm fires on a small demo service, an agent on Bedrock AgentCore reads the service's metrics, logs, and deploy history, searches its runbooks, then answers with a root cause backed by typed evidence, each piece citing the exact tool result it came from. The agent reads and reasons but can't change anything. When it finds a bug in the service's own code, a separate flow with no model in it opens a draft fix PR that only a person can merge. Every investigation is bounded in code (tool calls, tokens, dollars, and time), and everything is deployed with Terraform from GitHub Actions.
 
 - **55 of 55 runs diagnosed correctly** across 11 held-out incidents, including two where the right answer was "not my service".
+- **From alarm to a tested, ready-for-review fix PR in about 2 minutes**, opened by a bot that can't merge ([PR #2](https://github.com/BigMuscleSmoe/sentinelops/pull/2)).
 - **A pre-registered evaluation that failed** on recall. I reported it as is and found the cause.
 - **Hard limits in code** on tool calls, tokens, cost, and time, and no stored credentials in the agent or CI.
 - **Runbook search over seven runbooks**, with the citation checked in code and retrieval measured on fresh queries.
 
-**Where it stands:** diagnosis works end to end on live alarms and has been through a pre-registered evaluation, written up below. Runbook search is built and measured, also below. Remediation pull requests and the web UI aren't built yet. There's no public demo yet.
+**Where it stands:** diagnosis works end to end on live alarms and has been through a pre-registered evaluation, written up below. Runbook search is built and measured, also below. Remediation is built: on a live bad deploy, the agent wrote a two-line fix, and a flow with no model opened it as a draft pull request and marked it ready for review once the service's tests passed, about two minutes after the alarm. The web UI isn't built yet, and there's no public demo yet.
 
 I built it with Claude Code as a pair programmer.
 
@@ -38,10 +39,16 @@ flowchart TD
     gw --> t2["get_recent_logs"]
     gw --> t3["get_deploy_history"]
     gw --> t4["search_runbooks"]
+    gw --> t5["read_repo_file"]
     t1 --> cw
     t2 --> cw
     t3 --> deploys
     t4 --> kb[("Runbook knowledge base<br/>Bedrock, S3 Vectors")]
+    t5 --> snap[("checkout-api code at each release<br/>a snapshot built at deploy")]
+    trigger -->|answered incidents, async| flow["Remediation flow<br/>Lambda durable function, no model"]
+    flow -->|reads the answer, records the result| incidents
+    flow -->|signs the App JWT| kms["GitHub App key<br/>KMS"]
+    flow -->|draft PR, ready once CI passes| gh["GitHub<br/>the release branch"]
     agent -.->|asks for a signed JWT| sts["AWS STS<br/>GetWebIdentityToken"]
     agent -.->|trades the JWT for a token of minutes| anthropic["Anthropic API"]
     guard -->|model calls| anthropic
@@ -54,12 +61,11 @@ flowchart TD
 1. **A fault starts.** The fault controller sets a flag the service reads, records in the deploy history whatever a real incident of that kind would leave there, and starts a 6-minute traffic burst.
 2. **An alarm fires.** Three alarms watch 10-second periods: pool wait p99 over 100 ms, error rate over 5%, and latency p99 over 1,500 ms, each needing 2 of 3 periods to breach. On live breaks, the first alarm fired 36 to 42 seconds after the break.
 3. **The trigger decides whether to investigate.** EventBridge forwards every alarm change to a Lambda. Triage is plain code, not a model: an alarm with no open incident opens one and starts a run, while a second alarm in the same incident, or the same alarm flapping, is recorded and starts nothing. Then the global limits apply: one investigation at a time, 20 an hour. The trigger calls the Runtime once and never retries.
-4. **The agent investigates.** On AgentCore Runtime, a Strands agent running Claude Haiku 5.5 gets the alarm and four tools served by AgentCore Gateway: `get_metrics`, `get_recent_logs`, `get_deploy_history`, and `search_runbooks`. Each tool is its own Lambda with its own read-only IAM role. Every result comes back labeled (`m1`, `l2`, `d1`, `r1`) so the answer can cite it. Metrics are the primary source, because logs can lag by minutes under load. The prompt has it search the runbooks with what it measured, and treat a runbook's diagnosis steps as checks to run with the other tools, not as conclusions.
+4. **The agent investigates.** On AgentCore Runtime, a Strands agent running Claude Haiku 5.5 gets the alarm and five tools served by AgentCore Gateway: `get_metrics`, `get_recent_logs`, `get_deploy_history`, `search_runbooks`, and `read_repo_file`, which shows the service's own code at a release from a snapshot built at deploy, with no GitHub credential. Each tool is its own Lambda with its own read-only IAM role. Every result comes back labeled (`m1`, `l2`, `d1`, `r1`, `c1`) so the answer can cite it. Metrics are the primary source, because logs can lag by minutes under load. The prompt has it search the runbooks with what it measured, and treat a runbook's diagnosis steps as checks to run with the other tools, not as conclusions.
 5. **Every call goes through the guard first.** It checks the limits below before each model call and each tool call.
-6. **It answers with a `Hypothesis`.** That's a root cause, a confidence, and typed evidence items, each citing the result it came from: a value, a range, a count, a first or last occurrence, an absence, or a gap. It also lists the inferences it drew, what it didn't check, the affected component, and whether the fault is in this service, upstream, or undetermined. If its diagnosis follows a runbook, it names it, and code keeps that citation only if a search in the same run showed that runbook in full.
-7. **The trigger stores it.** It stops the session, saves the answer and the run's full record on the incident in DynamoDB, and releases the lock.
-
-Today the run ends there. Opening a pull request is Phase 4, but whether one may be opened is already decided in exactly one place, `Hypothesis.can_open_pr`: the run wasn't halted, the fault is in this service, and confidence is at least 0.7. A test fails the build if any other code compares a confidence or checks for a halted run.
+6. **It answers with a `Hypothesis`.** That's a root cause, a confidence, and typed evidence items, each citing the result it came from: a value, a range, a count, a first or last occurrence, an absence, or a gap. It also lists the inferences it drew, what it didn't check, the affected component, and whether the fault is in this service, upstream, or undetermined. If its diagnosis follows a runbook, it names it, and code keeps that citation only if a search in the same run showed that runbook in full. When the cause is in this service's code, it adds a patch: one to three exact-text edits to a file it read. Code keeps the patch only if it applies cleanly to the file as that read showed it and the result compiles; otherwise it's dropped and the diagnosis stands.
+7. **The trigger stores it.** It stops the session, saves the answer and the run's full record on the incident in DynamoDB, and releases the lock. Then it hands the incident to the remediation flow.
+8. **The remediation flow opens a pull request, if one may be opened.** It's a Lambda durable function that never calls a model. Whether a PR may be opened is decided in exactly one place, `Hypothesis.can_open_pr`: the run wasn't halted, the fault is in this service, confidence is at least 0.7, and a checked patch was made on the release that was running. A test fails the build if any other code compares a confidence or checks for a halted run. The flow checks the file on GitHub is still the one the agent read, byte for byte, and scans everything it will post with the commit hooks' rules. Then it opens a draft PR into that release's branch, as a GitHub App whose key is in KMS. The PR is marked ready for review once the service's tests pass on it. The App can't merge it: merges are blocked on every branch.
 
 ## The fault scenarios
 
@@ -177,8 +183,7 @@ The queries and the recorded searches are in [`tools/tests/fixtures/retrieval/`]
 
 ## What's next
 
-- **Remediation** (Phase 4, next). A read-only repo tool, a patch drafted inside the guarded session, and a Lambda Durable Function with no model calls that validates the patch and opens one PR per fault mode.
-- **The frontend** (Phase 5). A live trace of each run, a "Break the service" button, and a mobile layout.
+- **The frontend** (Phase 5, next). A live trace of each run, a "Break the service" button, and a mobile layout.
 - **One full evaluation cycle, after Phases 4 and 5**, so it measures the near-final agent. It brings the grader's next iteration (evidence kinds for "unchanged over a period" and "every matching line", a check for claims left in notes, and audit labels that record where each slip sits), synthesized windows for the memory leak and a few trap cases, a retrieval fix for `memory-leak.md` checked on a third round of fresh queries, a new pass bar and freeze, fresh test windows, and a new blind audit.
 - **A public demo** (Phase 6), once there's something to click.
 
@@ -242,14 +247,26 @@ aws lambda stop-durable-execution --durable-execution-arn <arn> --region us-east
 # back on: aws lambda delete-function-concurrency --function-name sentinelops-remediation --region us-east-1
 ```
 
-Concurrency 0 stops every new start and holds an execution that's waiting on CI, but Lambda resumes a held one once concurrency returns, so each running one is stopped too. A PR already open stays open, a draft unless its check passed, and nothing merges either way: merges are blocked on every branch. Terraform ignores the function's concurrency, so a deploy never lifts the switch.
+Concurrency 0 drops every new start. An execution already waiting on CI is only held: AWS's documentation says Lambda keeps retrying its resume until concurrency returns or the execution's 30 minutes run out, so each running one is stopped too. That stop is the one part of the switch not yet tested live, because when I drilled it (2026-11-26) none was running. A PR already open stays open, a draft unless its check passed, and nothing merges either way: merges are blocked on every branch. Terraform ignores the function's concurrency, so a deploy never lifts the switch.
+
+A start the switch drops is lost for good. Lambda still answers it 202, so the trigger notes the incident `handed_off`, but no execution is created and none runs later. Only the function's `AsyncEventsDropped` metric shows it. To find those incidents, list the ones handed off with no result from the flow. One still running shows up too, so compare against the RUNNING list above:
+
+```bash
+aws dynamodb query --table-name sentinelops-incidents --region us-east-1 \
+  --key-condition-expression "pk = :service AND begins_with(sk, :incident)" \
+  --filter-expression "handoff = :handed_off AND attribute_not_exists(remediation)" \
+  --expression-attribute-values '{":service": {"S": "checkout-api"}, ":incident": {"S": "incident#"}, ":handed_off": {"S": "handed_off"}}' \
+  --projection-expression "sk, handoff_at"
+```
 
 ## Repo layout
 
 ```
-agent/                   the agent: loop, guard, prompt, Hypothesis, checker, evals
-tools/                   the four tools, one uv project, a Lambda handler each; the runbooks' build and ingest
-trigger/                 triage, the lock, the hourly cap, the call to the Runtime
+agent/                   the agent: loop, guard, prompt, checker, evals
+tools/                   the five tools, one uv project, a Lambda handler each; the runbooks' build and ingest
+core/                    shared: Hypothesis and its PR gate, the patch check, the release map
+trigger/                 triage, the lock, the hourly cap, the call to the Runtime, the handoff
+remediation/             the durable flow: validation, the PR body's sanitizer, the GitHub App's client
 services/checkout-api/   the demo service, its fault simulator and controller, traffic
 infra/                   Terraform: bootstrap first, then everything else
 runbooks/                the seven runbooks the agent searches
