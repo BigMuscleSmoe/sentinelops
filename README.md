@@ -96,7 +96,7 @@ Hitting a limit doesn't throw. The run ends with a normal `Hypothesis` at confid
 
 **Access.** The agent can read and can't write. Each tool Lambda has its own scoped IAM role, and Gateway takes IAM auth only. The agent and CI hold no stored credentials: the agent signs in to Anthropic by workload identity federation, trading an STS-signed JWT for a token that lasts minutes, and GitHub Actions deploys through OIDC.
 
-**Kill switch.** Disabling one EventBridge rule stops every new investigation. A running one ends within its 300 s, or at once if you stop its session. The commands are under Running it locally.
+**Kill switch.** Disabling one EventBridge rule stops every new investigation. A running one ends within its 300 s, or at once if you stop its session. The remediation flow has its own: reserved concurrency 0 stops every new start, and stopping each running execution ends the ones already waiting on CI. The commands are under Running it locally.
 
 **What it costs.** Idle, the AWS side runs about $5 to $15 a month, mostly the demo service's background traffic and high-resolution metrics. Model spend bills to Anthropic: under a cent a run on Haiku, $0.0084 on average with runbook search. `COSTS.md` has the breakdown and the guardrails.
 
@@ -232,6 +232,17 @@ aws bedrock-agentcore stop-runtime-session --agent-runtime-arn "$(terraform -chd
 ```
 
 Terraform ignores the rule's on/off state, so a deploy never turns a stopped agent back on.
+
+The remediation flow, which opens the PRs:
+
+```bash
+aws lambda put-function-concurrency --function-name sentinelops-remediation --reserved-concurrent-executions 0 --region us-east-1
+aws lambda list-durable-executions-by-function --function-name sentinelops-remediation --statuses RUNNING --region us-east-1
+aws lambda stop-durable-execution --durable-execution-arn <arn> --region us-east-1   # each one listed
+# back on: aws lambda delete-function-concurrency --function-name sentinelops-remediation --region us-east-1
+```
+
+Concurrency 0 stops every new start and holds an execution that's waiting on CI, but Lambda resumes a held one once concurrency returns, so each running one is stopped too. A PR already open stays open, a draft unless its check passed, and nothing merges either way: merges are blocked on every branch. Terraform ignores the function's concurrency, so a deploy never lifts the switch.
 
 ## Repo layout
 
