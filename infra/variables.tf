@@ -40,3 +40,28 @@ variable "anthropic_federation" {
     error_message = "anthropic_federation takes the organization's UUID, a service account ID (svac_), and a rule ID (fdrl_)."
   }
 }
+
+# The GitHub App's client ID and its installation's ID on this repository.
+# Neither signs anything (the key stays in KMS), but they name the App, so they
+# stay out of the repo and the public CI logs, as the federation IDs do: CI
+# passes them from the REMEDIATION_APP secret, a local plan from a gitignored
+# infra/remediation_app.auto.tfvars.
+variable "remediation_app" {
+  description = "The GitHub App's client ID and installation ID, for the remediation flow."
+  type = object({
+    client_id       = string
+    installation_id = number
+  })
+  nullable  = false
+  sensitive = true
+
+  # Required, so a missing secret fails the plan before anything changes.
+  validation {
+    condition = (
+      can(regex("^Iv[0-9A-Za-z.]{10,40}$", var.remediation_app.client_id))
+      && var.remediation_app.installation_id >= 1
+      && floor(var.remediation_app.installation_id) == var.remediation_app.installation_id
+    )
+    error_message = "remediation_app takes the App's client ID (Iv...) and its installation's numeric ID."
+  }
+}

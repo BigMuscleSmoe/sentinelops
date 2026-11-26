@@ -49,3 +49,12 @@ def test_the_deploy_job_runs_only_on_the_push() -> None:
 def test_remediation_has_its_own_test_leg() -> None:
     matrix = [line.strip() for line in lines() if line.strip().startswith("project: [")]
     assert matrix == ["project: [agent, core, tools, services/checkout-api, trigger, remediation]"]
+
+
+def test_the_deploy_builds_the_flow_and_passes_the_apps_ids_from_a_secret() -> None:
+    text = lines()
+    build = text.index("      - name: Build the remediation flow's package")
+    assert text[build + 1 : build + 3] == ["        working-directory: remediation", "        run: python3 build_flow.py"]
+    apply = text.index("      - run: terraform apply -input=false -auto-approve")
+    assert build < apply
+    assert "          TF_VAR_remediation_app: ${{ secrets.REMEDIATION_APP }}" in text[apply : apply + 4]

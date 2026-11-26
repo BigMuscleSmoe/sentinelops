@@ -2,7 +2,8 @@
 # checkout-api's alarms going into ALARM or back to OK to the trigger Lambda,
 # which triages it in code; for a new incident it takes the lock and a slot in
 # the hourly cap of 20, runs one investigation on the Runtime and waits for it,
-# then stops the session and stores the answer. See trigger/trigger.py.
+# then stops the session and stores the answer, and hands an answered
+# incident to the remediation flow (remediation.tf). See trigger/trigger.py.
 #
 # KILL SWITCH: aws events disable-rule --name sentinelops-alarms. Terraform
 # ignores the rule's on/off state, so a deploy never turns a killed agent back
@@ -53,8 +54,9 @@ module "trigger" {
   timeout = 400
 
   environment = {
-    INCIDENTS_TABLE   = aws_dynamodb_table.incidents.name
-    AGENT_RUNTIME_ARN = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
+    INCIDENTS_TABLE          = aws_dynamodb_table.incidents.name
+    AGENT_RUNTIME_ARN        = aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn
+    REMEDIATION_FUNCTION_ARN = aws_lambda_alias.remediation_live.arn
   }
   policy_json = data.aws_iam_policy_document.trigger.json
 
@@ -80,6 +82,14 @@ data "aws_iam_policy_document" "trigger" {
       aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn,
       "${aws_bedrockagentcore_agent_runtime.agent.agent_runtime_arn}/runtime-endpoint/DEFAULT",
     ]
+  }
+
+  # Each answered incident, handed to the remediation flow through its live
+  # alias, and nothing else of it: the flow's own role does its work.
+  statement {
+    sid       = "StartTheRemediationFlow"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [aws_lambda_alias.remediation_live.arn]
   }
 }
 

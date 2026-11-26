@@ -43,3 +43,12 @@ output "runbooks_knowledge_base_id" {
 output "runbooks_data_source_id" {
   value = aws_bedrockagent_data_source.runbooks.data_source_id
 }
+
+output "remediation_function_name" {
+  value = aws_lambda_function.remediation.function_name
+}
+
+# What the trigger invokes; the kill switch's commands name the function.
+output "remediation_alias_arn" {
+  value = aws_lambda_alias.remediation_live.arn
+}

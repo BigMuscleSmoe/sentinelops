@@ -104,6 +104,13 @@ jobs:
         working-directory: tools
         run: uv run --locked python build_code_snapshot.py
 
+      # The remediation flow's package, which the apply zips: the flow, core,
+      # the commit hooks' scanner, and its locked dependencies for Linux arm64
+      # and Python 3.13. Prints the staged folder's SHA-256 to compare.
+      - name: Build the remediation flow's package
+        working-directory: remediation
+        run: python3 build_flow.py
+
       # The knowledge base's documents, one per runbook section, which the apply
       # uploads, and their manifest, which the plan reads. Stdlib only; a runbook
       # that breaks the format fails the deploy here, before anything changes.
@@ -113,12 +120,14 @@ jobs:
 
       - run: terraform fmt -check -recursive
       - run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-      # Federation's IDs for the runtime, as one line of JSON: masked here, and
-      # sensitive in Terraform, so no plan prints them. Required: unset, the
-      # apply fails before it changes anything.
+      # Federation's IDs for the runtime and the GitHub App's for the
+      # remediation flow, each one line of JSON: masked here, and sensitive in
+      # Terraform, so no plan prints them. Required: either unset, the apply
+      # fails before it changes anything.
       - run: terraform apply -input=false -auto-approve
         env:
           TF_VAR_anthropic_federation: ${{ secrets.ANTHROPIC_FEDERATION }}
+          TF_VAR_remediation_app: ${{ secrets.REMEDIATION_APP }}
 
       # Signed with the deploy role's session: every route requires SigV4. A new
       # route or permission can take a few seconds to start answering. The

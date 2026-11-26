@@ -10,10 +10,25 @@
       "Resource": "*"
     },
     {
-      "Sid": "OnlyTheAdminUserUsesTheKey",
+      "Sid": "OnlyTheAdminUserAndTheFlowSign",
       "Effect": "Deny",
       "Principal": { "AWS": "*" },
-      "Action": ["kms:Sign", "kms:Verify", "kms:GetPublicKey"],
+      "Action": "kms:Sign",
+      "Resource": "*",
+      "Condition": {
+        "ArnNotEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::${account_id}:user/sentinelops-dev",
+            "arn:aws:iam::${account_id}:role/${flow_role}"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "OnlyTheAdminUserVerifies",
+      "Effect": "Deny",
+      "Principal": { "AWS": "*" },
+      "Action": ["kms:Verify", "kms:GetPublicKey"],
       "Resource": "*",
       "Condition": {
         "ArnNotEquals": { "aws:PrincipalArn": "arn:aws:iam::${account_id}:user/sentinelops-dev" }

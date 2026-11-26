@@ -20,13 +20,16 @@ resource "aws_kms_external_key" "github_app" {
   # remediation/tests/test_key_policy.py). The account root keeps kms:*, so
   # the key can't be locked out and IAM still governs who manages it: the
   # admin user (AdministratorAccess) and CI's deploy role (PowerUserAccess).
-  # Using it is denied to every principal but the admin user, the deploy role
-  # and root included, whatever IAM or a grant allows: kms:Sign, the one call
-  # that touches the private key, and kms:Verify and kms:GetPublicKey, the
-  # key's other uses (Terraform's reads need neither). Evening 5 adds the
-  # flow's role to kms:Sign's exception.
+  # Using it is denied to every other principal, the deploy role and root
+  # included, whatever IAM or a grant allows: kms:Sign, the one call that
+  # touches the private key, to all but the admin user and the remediation
+  # flow's role (evening 5, the user's note of 2026-11-24); kms:Verify and
+  # kms:GetPublicKey, the key's other uses, to all but the admin user
+  # (Terraform's reads need neither). The role is named in a condition, a
+  # string, so the policy holds whether or not the role exists yet.
   policy = templatefile("${path.module}/github_app_key_policy.json.tftpl", {
     account_id = data.aws_caller_identity.current.account_id
+    flow_role  = aws_iam_role.remediation.name
   })
 
   lifecycle {
