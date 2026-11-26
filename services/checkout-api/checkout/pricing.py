@@ -12,4 +12,6 @@ def price_cart(items: list[tuple[Product, int]], promo: Mapping[str, Any] | None
 
 
 def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:
+    if promo is None:
+        return subtotal_cents
     return subtotal_cents - subtotal_cents * promo["percent_off"] // 100
