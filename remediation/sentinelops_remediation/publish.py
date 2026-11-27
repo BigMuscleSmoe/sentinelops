@@ -7,9 +7,16 @@ the branch by name, the file by its content, the PR by its head and the
 incident's marker in its body, a comment by its marker. Nothing here merges,
 deletes, or touches a branch but the fix branch, and the client's own checks
 (github.py) refuse anything else whatever this module asks.
+
+A PR open for another incident gets at most one same-fix comment a day (UTC;
+Phase 5, decision 20): every public break of the same kind finds that PR, and
+each comment notifies the repo's owner. An incident past the cap still records
+the PR and that it found it ("commented", with commented false).
 """
 
 import base64
+import re
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -23,6 +30,9 @@ CONCLUSIONS = frozenset(
     {"success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale"}
 )
 COMMENT_PAGES = 10
+# A same-fix comment's first line (texts.same_fix_comment): any incident's, not a checks comment.
+SAME_FIX = re.compile(rf"<!-- incident: ({texts.INCIDENT_ID.pattern}) -->", re.ASCII)
+DAY = re.compile(r"\d{4}-\d{2}-\d{2}(?=T)", re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -36,13 +46,18 @@ class Pull:
     draft: bool
     head_sha: str
     pushed: bool  # whether this incident committed the file
+    commented: bool = False  # whether this incident's same-fix comment is on the PR (a day's cap can stop it)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def open_or_update(github: GitHubApp, fix: Validated, hypothesis_body: str, incident: Incident) -> Pull:
-    """The fix branch with the patched file, and a draft PR for it, or a comment on the one open."""
+def open_or_update(github: GitHubApp, fix: Validated, hypothesis_body: str, incident: Incident, today: str) -> Pull:
+    """The fix branch with the patched file, and a draft PR for it, or a comment on the one open.
+
+    today is the UTC date, YYYY-MM-DD: a same-fix comment made then by any
+    incident caps this one's.
+    """
     if _branch_head(github, fix.branch) is None:
         try:
             github.call("create_ref", body={"ref": f"refs/heads/{fix.branch}", "sha": fix.base_sha})
@@ -75,6 +90,7 @@ def open_or_update(github: GitHubApp, fix: Validated, hypothesis_body: str, inci
 
     mine = texts.marker(incident.id)
     found = _open_pull(github, fix)
+    commented = False
     if found is None:
         request = {
             "title": texts.title(fix, incident),
@@ -96,13 +112,16 @@ def open_or_update(github: GitHubApp, fix: Validated, hypothesis_body: str, inci
     else:
         status = "commented"
         number = _number(found)
-        if not _has_comment(github, number, mine):
+        seen = _same_fix_seen(github, number, mine, today)
+        commented = seen == "mine"  # from an earlier try of this step
+        if seen == "none":
             comment = texts.same_fix_comment(fix, incident, pushed)
             try:
                 github.call("create_comment", {"number": number}, body={"body": comment})
             except Unavailable:
                 if not _has_comment(github, number, mine):
                     raise
+            commented = True
     return Pull(
         status=status,
         number=_number(found),
@@ -111,6 +130,7 @@ def open_or_update(github: GitHubApp, fix: Validated, hypothesis_body: str, inci
         draft=found.get("draft") is True,
         head_sha=head,
         pushed=pushed,
+        commented=commented,
     )
 
 
@@ -163,14 +183,33 @@ def _open_pull(github: GitHubApp, fix: Validated) -> dict[str, Any] | None:
 
 
 def _has_comment(github: GitHubApp, number: int, marker: str) -> bool:
+    return any(body.startswith(marker) for body, _ in _comments(github, number))
+
+
+def _same_fix_seen(github: GitHubApp, number: int, mine: str, today: str) -> str:
+    """"mine" if this incident's comment is there, "today" if another's was made today, else "none". One pass."""
+    seen = "none"
+    for body, created in _comments(github, number):
+        if body.startswith(mine):
+            return "mine"
+        first = SAME_FIX.match(body)
+        day = DAY.match(created)
+        if first is not None and day is not None and day[0] == today:
+            seen = "today"
+    return seen
+
+
+def _comments(github: GitHubApp, number: int) -> Iterator[tuple[str, str]]:
+    """Each comment's body and creation time, oldest first, up to COMMENT_PAGES pages."""
     for page in range(1, COMMENT_PAGES + 1):
         comments = github.call("list_comments", {"number": number}, {"per_page": 100, "page": page})
         if not isinstance(comments, list):
             raise Refused("list_comments", 200, "not a list of comments")
-        if any(isinstance(c, dict) and (c.get("body") or "").startswith(marker) for c in comments):
-            return True
+        for c in comments:
+            if isinstance(c, dict):
+                yield str(c.get("body") or ""), str(c.get("created_at") or "")
         if len(comments) < 100:
-            return False
+            return
     raise Refused("list_comments", 200, f"more than {COMMENT_PAGES * 100} comments")
 
 

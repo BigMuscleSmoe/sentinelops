@@ -35,6 +35,7 @@ from fix_github import (
     url,
 )
 
+from sentinelops_core import trace as fmt
 from sentinelops_remediation import body, flow, github
 from sentinelops_remediation.incidents import Answered
 
@@ -79,10 +80,27 @@ def tokens(fake: FakeGitHub, n: int = 20) -> None:
         fake.add_revoke()
 
 
+class FakeTrace:
+    """Stands in for the trace table: each event the flow puts, by step, or the error it's told to raise."""
+
+    def __init__(self, fail: Exception | None = None) -> None:
+        self.events: list[tuple[str, str, fmt.EventModel]] = []
+        self.fail = fail
+
+    def put(self, incident_id: str, step: str, at: Any, event: fmt.EventModel) -> None:
+        if self.fail is not None:
+            raise self.fail
+        self.events.append((incident_id, step, event))
+
+    def steps(self) -> list[tuple[str, fmt.EventModel]]:
+        assert {incident for incident, _, _ in self.events} <= {INCIDENT_ID}
+        return [(step, event) for _, step, event in self.events]
+
+
 class Flow:
     """The flow's handler, as handler.py builds it, over fakes; every App it made counted."""
 
-    def __init__(self, incidents: FakeIncidents, fake: FakeGitHub) -> None:
+    def __init__(self, incidents: FakeIncidents, fake: FakeGitHub, trace: Any = None) -> None:
         self.incidents, self.fake, self.made = incidents, fake, 0
 
         def make() -> github.GitHubApp:
@@ -91,7 +109,7 @@ class Flow:
 
         @durable_execution
         def handler(event: Any, context: DurableContext) -> dict[str, Any]:
-            return flow.invocation(event, context, incidents, make, ACCOUNT)
+            return flow.invocation(event, context, incidents, make, ACCOUNT, trace)
 
         self.handler = handler
 
@@ -321,3 +339,116 @@ def test_steps_are_never_retried_by_the_sdk() -> None:
     assert flow.ONCE.retry_strategy is not None
     decision = flow.ONCE.retry_strategy(RuntimeError("x"), 1)
     assert decision.should_retry is False
+
+
+# --- the trace: each step's event for the page --------------------------------------------
+
+
+def opened_and_ready(fake: FakeGitHub) -> None:
+    tokens(fake)
+    validation(fake)
+    new_fix(fake, body.marker(INCIDENT_ID) + "\nbody")
+    checks(fake, [check_run("in_progress", None)], [check_run("completed", "success")])
+    ready(fake)
+
+
+def test_each_step_writes_its_event_once_in_order() -> None:
+    incidents, fake, trace = FakeIncidents(answered()), FakeGitHub(), FakeTrace()
+    opened_and_ready(fake)
+
+    result_of(Flow(incidents, fake, trace).run())
+
+    assert trace.steps() == [
+        ("load", fmt.HandedOff()),
+        ("open", fmt.PrOpened(number=NUMBER)),
+        ("checks-1", fmt.PrChecks(check=body.CHECK, state="pending", poll=1)),
+        ("checks-2", fmt.PrChecks(check=body.CHECK, state="success", poll=2)),
+        ("conclude", fmt.PrReady(number=NUMBER)),
+    ]
+    keys = [fmt.flow_key(step) for step, _ in trace.steps()]
+    assert keys == sorted(keys) == ["flow#00", "flow#02", "flow#03", "flow#04", "flow#20"]
+
+
+def test_a_trace_that_fails_changes_nothing_the_flow_does(capsys: pytest.CaptureFixture[str]) -> None:
+    traced, plain = FakeGitHub(), FakeGitHub()
+    opened_and_ready(traced)
+    opened_and_ready(plain)
+    error = ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "arn:aws:dynamodb:x"}}, "PutItem")
+    with_trace = FakeIncidents(answered())
+
+    result = result_of(Flow(with_trace, traced, FakeTrace(fail=error)).run())
+    expected = result_of(Flow(FakeIncidents(answered()), plain).run())
+
+    assert {k: v for k, v in result.items() if k != "finished_at"} == {
+        k: v for k, v in expected.items() if k != "finished_at"
+    }
+    assert [(m, u) for m, u in traced.sent()] == [(m, u) for m, u in plain.sent()]
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if "trace_write_failed" in line]
+    assert [line["step"] for line in lines] == ["load", "open", "checks-1", "checks-2", "conclude"]
+    assert {line["error"] for line in lines} == {"ResourceNotFoundException"}
+    assert "arn:aws" not in json.dumps(lines)
+
+
+def test_a_same_fix_is_traced_and_recorded_with_whether_it_commented() -> None:
+    incidents, fake, trace = FakeIncidents(answered()), FakeGitHub(), FakeTrace()
+    tokens(fake)
+    validation(fake)
+    other = body.marker("checkout-api-20261124T010000Z") + "\nbody"
+    fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
+    fake.add("GET", FILE_ON_BRANCH, 200, file(PRICING_1_42_0, BLOB_1_42_0))
+    fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
+    fake.add("GET", PULLS, 200, [pull(other)])
+    # Another incident's same-fix comment, made today by the flow's clock: this one's is capped.
+    today = flow.datetime.now(flow.UTC).date().isoformat()
+    third = body.marker("checkout-api-20261126T120000Z") + "\nsame fix"
+    fake.add("GET", COMMENTS, 200, [{"body": third, "created_at": f"{today}T00:00:01Z"}])
+    checks(fake, [check_run("completed", "success")])
+    ready(fake)
+
+    result = result_of(Flow(incidents, fake, trace).run())
+
+    assert (result["pr"], result["commented"]) == ("commented", False)
+    assert incidents.records[0][2]["commented"] is False
+    assert not any(u == url("create_comment", {"number": NUMBER}) for _, u in fake.sent())
+    assert trace.steps()[1] == ("open", fmt.PrSameFix(number=NUMBER, commented=False))
+
+
+def test_a_rejected_patch_and_a_missing_incident_are_traced_by_their_names() -> None:
+    rejected, missing = FakeTrace(), FakeTrace()
+    fake = FakeGitHub()
+    tokens(fake)
+    fake.add_recorded("get_ref-release-1.43.0")
+    changed = {**recorded("get_file-pricing-at-release-1.43.0")["json"]}
+    changed["content"] = base64.b64encode((PRICING_1_43_0 + "# changed\n").encode("utf-8")).decode("ascii")
+    fake.add_recorded("get_file-pricing-at-release-1.43.0", changed)
+
+    result_of(Flow(FakeIncidents(answered()), fake, rejected).run())
+    result_of(Flow(FakeIncidents(None), FakeGitHub(), missing).run())
+
+    assert rejected.steps() == [("load", fmt.HandedOff()), ("open", fmt.PrRejected(check="base"))]
+    assert missing.steps() == [("load", fmt.HandedOff()), ("load-result", fmt.FlowFailed(error="no such incident"))]
+
+
+def test_an_answer_that_opens_no_pr_is_traced_as_handed_off_only() -> None:
+    trace = FakeTrace()
+    result_of(Flow(FakeIncidents(answered(confidence=0.2)), FakeGitHub(), trace).run())
+    assert trace.steps() == [("load", fmt.HandedOff())]
+
+
+def test_the_trace_table_writes_each_event_at_its_steps_slot_with_7_days_to_live() -> None:
+    sent: list[dict[str, Any]] = []
+
+    class Client:
+        def put_item(self, **request: Any) -> dict[str, Any]:
+            sent.append(request)
+            return {}
+
+    at = flow.datetime(2026, 11, 26, 18, 38, 29, 453000, tzinfo=flow.UTC)
+    flow.TraceTable(Client(), "sentinelops-trace").put(INCIDENT_ID, "checks-1", at, fmt.PrChecks(check=body.CHECK, state="success", poll=1))
+
+    [request] = sent
+    assert request["TableName"] == "sentinelops-trace"
+    item = request["Item"]
+    assert (item["pk"], item["sk"], item["at"]) == ({"S": INCIDENT_ID}, {"S": "flow#03"}, {"S": "2026-11-26T18:38:29.453Z"})
+    assert item["expires_at"] == {"N": str(int(at.timestamp()) + 7 * 24 * 3600)}
+    assert fmt.read(item)[2] == fmt.PrChecks(check=body.CHECK, state="success", poll=1)

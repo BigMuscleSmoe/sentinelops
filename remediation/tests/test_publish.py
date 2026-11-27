@@ -41,6 +41,7 @@ INCIDENT = Incident(INCIDENT_ID, "sentinelops-checkout-errors", "2026-11-25T04:3
 OTHER = Incident("checkout-api-20261126T010000Z", "sentinelops-checkout-errors", "2026-11-26T01:00:00.000Z")
 FIXED = Validated("1.43.0", BASE, BASE_SHA, PATH, PRICING_1_42_0, "diff", FIX)
 MINE = body.marker(INCIDENT_ID) + "\nthe body"
+TODAY = "2026-11-26"
 
 
 def writes(fake: FakeGitHub) -> list[tuple[str, str, dict]]:
@@ -58,7 +59,7 @@ def test_a_new_fix_makes_the_branch_commits_the_file_and_opens_a_draft() -> None
     fake.add_token()
     new_fix(fake, MINE)
 
-    result = publish.open_or_update(app(fake), FIXED, MINE, INCIDENT)
+    result = publish.open_or_update(app(fake), FIXED, MINE, INCIDENT, TODAY)
 
     assert result == Pull("opened", NUMBER, f"https://github.com/BigMuscleSmoe/sentinelops/pull/{NUMBER}", f"PR_kwTest{NUMBER}", True, HEAD_SHA, True)
     assert fake.unused() == []
@@ -85,7 +86,7 @@ def test_a_second_try_finds_what_the_first_wrote_and_writes_nothing() -> None:
     fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
     fake.add("GET", PULLS, 200, [pull(MINE)])
 
-    result = publish.open_or_update(app(fake), FIXED, MINE, INCIDENT)
+    result = publish.open_or_update(app(fake), FIXED, MINE, INCIDENT, TODAY)
 
     assert (result.status, result.pushed) == ("opened", False)
     assert writes(fake) == [] and fake.unused() == []
@@ -101,9 +102,9 @@ def test_another_incidents_open_pr_gets_one_comment_not_a_twin() -> None:
     fake.add("GET", url("list_comments", {"number": NUMBER}, {"per_page": 100, "page": 1}), 200, [{"body": "a person's note"}])
     fake.add("POST", url("create_comment", {"number": NUMBER}), 201, {"id": 1})
 
-    result = publish.open_or_update(app(fake), FIXED, "the other body", OTHER)
+    result = publish.open_or_update(app(fake), FIXED, "the other body", OTHER, TODAY)
 
-    assert result.status == "commented"
+    assert (result.status, result.commented) == ("commented", True)
     [(method, sent_to, sent)] = writes(fake)
     assert sent == {"body": body.same_fix_comment(FIXED, OTHER, pushed=False)}
     assert sent["body"].startswith(body.marker(OTHER.id))
@@ -118,8 +119,62 @@ def test_the_comment_is_made_once() -> None:
     fake.add("GET", PULLS, 200, [pull(MINE)])
     fake.add("GET", COMMENTS, 200, [{"body": body.marker(OTHER.id) + "\nalready said"}])
 
-    assert publish.open_or_update(app(fake), FIXED, "the other body", OTHER).status == "commented"
+    found = publish.open_or_update(app(fake), FIXED, "the other body", OTHER, TODAY)
+    assert (found.status, found.commented) == ("commented", True)  # its own, from an earlier try
     assert writes(fake) == []
+
+
+def same_fix_pr(fake: FakeGitHub, comments: list[dict]) -> None:
+    """The fix's branch and file already there, and the PR another incident opened, with these comments."""
+    fake.add_token()
+    fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
+    fake.add("GET", FILE_ON_BRANCH, 200, file(PRICING_1_42_0, BLOB_1_42_0))
+    fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
+    fake.add("GET", PULLS, 200, [pull(MINE)])
+    fake.add("GET", COMMENTS, 200, comments)
+
+
+def test_a_same_fix_comment_made_today_by_another_incident_caps_this_ones() -> None:
+    fake = FakeGitHub()
+    third = body.marker("checkout-api-20261126T120000Z") + "\nsame fix"
+    same_fix_pr(fake, [{"body": third, "created_at": "2026-11-26T12:01:07Z"}])
+
+    found = publish.open_or_update(app(fake), FIXED, "the other body", OTHER, TODAY)
+
+    assert (found.status, found.commented, found.number) == ("commented", False, NUMBER)
+    assert writes(fake) == [] and fake.unused() == []
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        {"body": body.marker("checkout-api-20261125T120000Z") + "\nsame fix", "created_at": "2026-11-25T23:59:59Z"},
+        {"body": body.marker(INCIDENT_ID, "checks") + "\nchecks", "created_at": "2026-11-26T09:00:00Z"},
+        {"body": "a person's note, <!-- incident: checkout-api-20261126T120000Z --> quoted", "created_at": "2026-11-26T09:00:00Z"},
+        {"body": body.marker("checkout-api-20261126T120000Z"), "created_at": None},
+    ],
+    ids=["yesterdays", "a-checks-comment", "not-its-first-line", "no-time"],
+)
+def test_only_another_incidents_same_fix_comment_from_today_counts(comment: dict) -> None:
+    fake = FakeGitHub()
+    same_fix_pr(fake, [comment])
+    fake.add("POST", url("create_comment", {"number": NUMBER}), 201, {"id": 3})
+
+    found = publish.open_or_update(app(fake), FIXED, "the other body", OTHER, TODAY)
+
+    assert (found.status, found.commented) == ("commented", True)
+    [(_, _, sent)] = writes(fake)
+    assert sent["body"].startswith(body.marker(OTHER.id))
+
+
+def test_this_incidents_own_comment_counts_as_made_whatever_else_is_there() -> None:
+    fake = FakeGitHub()
+    third = {"body": body.marker("checkout-api-20261126T120000Z"), "created_at": "2026-11-26T12:01:07Z"}
+    same_fix_pr(fake, [third, {"body": body.marker(OTHER.id) + "\nmine", "created_at": "2026-11-26T13:00:00Z"}])
+
+    found = publish.open_or_update(app(fake), FIXED, "the other body", OTHER, TODAY)
+
+    assert found.commented is True and writes(fake) == []
 
 
 def test_a_create_that_timed_out_but_landed_isnt_made_twice() -> None:
@@ -132,7 +187,7 @@ def test_a_create_that_timed_out_but_landed_isnt_made_twice() -> None:
     fake.add("POST", url("create_pull"), 502)
     fake.add("GET", PULLS, 200, [pull(MINE)])
 
-    assert publish.open_or_update(app(fake), FIXED, MINE, INCIDENT).status == "opened"
+    assert publish.open_or_update(app(fake), FIXED, MINE, INCIDENT, TODAY).status == "opened"
     assert [method for method, _, _ in writes(fake)] == ["POST"]  # sent once: a create never retries a 5xx
 
 
@@ -147,7 +202,7 @@ def test_a_create_that_never_landed_fails() -> None:
     fake.add("GET", PULLS, 200, [])
 
     with pytest.raises(Unavailable):
-        publish.open_or_update(app(fake), FIXED, MINE, INCIDENT)
+        publish.open_or_update(app(fake), FIXED, MINE, INCIDENT, TODAY)
 
 
 def test_a_branch_made_a_moment_ago_is_used() -> None:
@@ -161,7 +216,7 @@ def test_a_branch_made_a_moment_ago_is_used() -> None:
     fake.add("GET", BRANCH, 200, ref(HEAD_SHA))
     fake.add("GET", PULLS, 200, [pull(MINE)])
 
-    assert publish.open_or_update(app(fake), FIXED, MINE, INCIDENT).pushed is False
+    assert publish.open_or_update(app(fake), FIXED, MINE, INCIDENT, TODAY).pushed is False
 
 
 @pytest.mark.parametrize(

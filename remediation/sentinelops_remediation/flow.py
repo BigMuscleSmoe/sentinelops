@@ -18,6 +18,11 @@ reads itself; a failure is a result):
             and the PR stays a draft
   record    the result on the incident, as one map
 
+Each step but record also writes its event to the incident's trace for the
+page (sentinelops_core.trace), best-effort: one try, a short timeout, a failure
+logged by its code and never raised, so the trace never changes the flow. A
+step run again writes the same item (its slot, trace.FLOW_SLOTS).
+
 A step returns only typed facts (no token, no model text but the stored
 Hypothesis, which is in DynamoDB already), so nothing secret is ever in a
 checkpoint or the execution's history. Steps catch the errors they expect and
@@ -39,6 +44,7 @@ from aws_durable_execution_sdk_python.retries import RetryPresets
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
 
+from sentinelops_core import trace as fmt
 from sentinelops_core.models import Hypothesis
 from sentinelops_remediation import body, publish
 from sentinelops_remediation.body import CHECK, Incident
@@ -58,6 +64,7 @@ RECORDED = (
     "pr_number",
     "pr_url",
     "pushed",
+    "commented",
     "checks",
     "conclusion",
     "failed_check",
@@ -69,12 +76,24 @@ RECORDED = (
 INVESTIGATION_STATUSES = frozenset({"done", "failed", "refused", "invalid", "error", "busy", "capped", "investigating"})
 
 
+class TraceTable:
+    """The trace table, for the flow's events: put raises what the client raises (the flow's _trace catches it)."""
+
+    def __init__(self, client: Any, table: str) -> None:
+        self._client = client
+        self._table = table
+
+    def put(self, incident_id: str, step: str, at: datetime, event: fmt.EventModel) -> None:
+        fmt.put(self._client, self._table, incident_id, fmt.flow_key(step), at, event)
+
+
 @dataclass
 class Deps:
     incidents: Incidents
     github: Callable[[], GitHubApp]  # one App per invocation; the handler revokes its token when the invocation ends
     account_id: str
     clock: Callable[[], float] = field(default=time.time)
+    trace: TraceTable | None = None  # None: no trace table set; the flow runs the same
 
 
 class Session:
@@ -99,13 +118,18 @@ class Session:
 
 
 def invocation(
-    event: Any, context: DurableContext, incidents: Incidents, make_github: Callable[[], GitHubApp], account_id: str
+    event: Any,
+    context: DurableContext,
+    incidents: Incidents,
+    make_github: Callable[[], GitHubApp],
+    account_id: str,
+    trace: TraceTable | None = None,
 ) -> dict[str, Any]:
     """One invocation of the flow: the first, or one after a wait. Its token, if it made one, ends with it,
     however it ends: a durable wait suspends the invocation by raising through here."""
     session = Session(make_github)
     try:
-        return run(event, context, Deps(incidents, session.github, account_id))
+        return run(event, context, Deps(incidents, session.github, account_id, trace=trace))
     finally:
         session.close()
 
@@ -151,6 +175,14 @@ def run(event: Any, context: DurableContext, deps: Deps) -> dict[str, Any]:
 
 def load(deps: Deps, service: str, incident_id: str) -> dict[str, Any]:
     """The incident's answer, and whether it may open a PR: can_open_pr decides, nothing else."""
+    _trace(deps, incident_id, "load", fmt.HandedOff())
+    loaded = _load(deps, service, incident_id)
+    if loaded["status"] == "failed":
+        _trace(deps, incident_id, "load-result", fmt.FlowFailed(error=loaded["error"][:200]))
+    return loaded
+
+
+def _load(deps: Deps, service: str, incident_id: str) -> dict[str, Any]:
     try:
         item = deps.incidents.get(service, incident_id)
     except (ClientError, BotoCoreError) as error:
@@ -182,6 +214,21 @@ def load(deps: Deps, service: str, incident_id: str) -> dict[str, Any]:
 
 def open_pr(deps: Deps, loaded: dict[str, Any]) -> dict[str, Any]:
     """Validate, build and scan every text, then the branch, the file, and the draft PR or a comment."""
+    opened = _open_pr(deps, loaded)
+    incident_id = loaded["incident"]["id"]
+    if opened["status"] == "opened":
+        _trace(deps, incident_id, "open", fmt.PrOpened(number=opened["pull"]["number"]))
+    elif opened["status"] == "commented":
+        pull = opened["pull"]
+        _trace(deps, incident_id, "open", fmt.PrSameFix(number=pull["number"], commented=pull["commented"]))
+    elif opened["status"] == "rejected":
+        _trace(deps, incident_id, "open", fmt.PrRejected(check=opened["rejected_check"]))
+    else:
+        _trace(deps, incident_id, "open", fmt.FlowFailed(error=str(opened.get("error"))[:200]))
+    return opened
+
+
+def _open_pr(deps: Deps, loaded: dict[str, Any]) -> dict[str, Any]:
     hypothesis = Hypothesis.model_validate_json(loaded["hypothesis"])
     incident = Incident(**loaded["incident"])
     try:
@@ -201,7 +248,8 @@ def open_pr(deps: Deps, loaded: dict[str, Any]) -> dict[str, Any]:
         rejected = scanned(outgoing, deps.account_id)
         if rejected is not None:
             return _rejected(incident.id, rejected)
-        pull = publish.open_or_update(github, fix, pr_body, incident)
+        today = datetime.fromtimestamp(deps.clock(), UTC).date().isoformat()
+        pull = publish.open_or_update(github, fix, pr_body, incident, today)
     except (GitHubError, SigningFailed, NotAllowed, ValueError) as error:
         return _failed("open", github_error(error), incident.id)
     log(
@@ -212,6 +260,7 @@ def open_pr(deps: Deps, loaded: dict[str, Any]) -> dict[str, Any]:
             "status": pull.status,
             "pr_number": pull.number,
             "pushed": pull.pushed,
+            "commented": pull.commented,
         }
     )
     return {"status": pull.status, "pull": pull.to_dict()}
@@ -224,12 +273,19 @@ def poll(deps: Deps, incident_id: str, sha: str, n: int) -> dict[str, Any]:
     except (GitHubError, SigningFailed, NotAllowed) as error:
         state = {"state": "pending", "conclusion": None, "error": github_error(error)}
     log({"event": "remediation", "incident": incident_id, "step": f"checks-{n}", **state})
+    _trace(deps, incident_id, f"checks-{n}", fmt.PrChecks(check=CHECK, state=state["state"], poll=n))
     return state
 
 
 def conclude(deps: Deps, pull: Pull, incident: Incident, checks: dict[str, Any]) -> dict[str, Any]:
     """Ready for review if the check passed; otherwise a comment saying so, the PR left a draft."""
-    result: dict[str, Any] = {"pr": pull.status, "pr_number": pull.number, "pr_url": pull.url, "pushed": pull.pushed}
+    result: dict[str, Any] = {
+        "pr": pull.status,
+        "pr_number": pull.number,
+        "pr_url": pull.url,
+        "pushed": pull.pushed,
+        "commented": pull.commented if pull.status == "commented" else None,
+    }
     try:
         github = deps.github()
         if checks["state"] == "success":
@@ -247,6 +303,10 @@ def conclude(deps: Deps, pull: Pull, incident: Incident, checks: dict[str, Any])
     except (GitHubError, SigningFailed, NotAllowed) as error:
         result |= {"status": "failed", "error": github_error(error)}
     log({"event": "remediation", "incident": incident.id, "step": "conclude", "status": result["status"]})
+    if result["status"] == "ready":
+        _trace(deps, incident.id, "conclude", fmt.PrReady(number=pull.number))
+    elif result["status"] == "failed":
+        _trace(deps, incident.id, "conclude", fmt.FlowFailed(error=result["error"][:200]))
     return result
 
 
@@ -276,6 +336,16 @@ def _rejected(incident_id: str, rejected: Rejected) -> dict[str, Any]:
 def _failed(step: str, error: str, incident_id: str | None = None) -> dict[str, Any]:
     log({"event": "remediation", "incident": incident_id, "step": step, "status": "failed", "error": error})
     return {"status": "failed", "error": error}
+
+
+def _trace(deps: Deps, incident_id: str, step: str, event: fmt.EventModel) -> None:
+    """The step's event on the trace, once: never raises, so the trace can't change what the flow does."""
+    if deps.trace is None:
+        return
+    try:
+        deps.trace.put(incident_id, step, datetime.fromtimestamp(deps.clock(), UTC), event)
+    except Exception as error:  # noqa: BLE001 - best-effort, by design
+        log({"event": "trace_write_failed", "incident": incident_id, "step": step, "error": aws_error(error)})
 
 
 def aws_error(error: Exception) -> str:

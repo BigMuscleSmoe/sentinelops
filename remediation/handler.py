@@ -11,6 +11,9 @@ KILL SWITCH (README, "Kill switch"): reserved concurrency 0 stops every start
 and holds a waiting execution; stop-durable-execution ends one for good.
 Terraform ignores the function's reserved concurrency, so a deploy never
 lifts it.
+
+The trace table (SENTINELOPS_TRACE_TABLE) gets each step's event for the page:
+one try with short timeouts, so a slow table never holds a step up.
 """
 
 import os
@@ -31,6 +34,12 @@ _CLIENT_ID = os.environ["GITHUB_APP_CLIENT_ID"]
 _INSTALLATION_ID = int(os.environ["GITHUB_APP_INSTALLATION_ID"])
 # For the commit hooks' account rule, which the flow's scan applies to everything it posts.
 _ACCOUNT_ID = os.environ["SENTINELOPS_ACCOUNT_ID"]
+_TRACE_CLIENT = Config(connect_timeout=1, read_timeout=2, retries={"mode": "standard", "total_max_attempts": 1})
+_TRACE = (
+    flow.TraceTable(boto3.client("dynamodb", config=_TRACE_CLIENT), os.environ["SENTINELOPS_TRACE_TABLE"])
+    if os.environ.get("SENTINELOPS_TRACE_TABLE")
+    else None
+)
 
 
 def _github() -> GitHubApp:
@@ -39,4 +48,4 @@ def _github() -> GitHubApp:
 
 @durable_execution
 def handler(event: Any, context: DurableContext) -> dict[str, Any]:
-    return flow.invocation(event, context, _INCIDENTS, _github, _ACCOUNT_ID)
+    return flow.invocation(event, context, _INCIDENTS, _github, _ACCOUNT_ID, _TRACE)
