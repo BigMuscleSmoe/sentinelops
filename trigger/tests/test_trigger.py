@@ -124,8 +124,8 @@ class FakeRuntime:
         self.answer = answer
         self.error = error
 
-    def investigate(self, alarm: str, session_id: str) -> Any:
-        self.calls.append(("investigate", alarm, session_id))
+    def investigate(self, alarm: str, incident_id: str, session_id: str) -> Any:
+        self.calls.append(("investigate", alarm, incident_id, session_id))
         if self.error is not None:
             raise self.error
         return self.answer
@@ -172,7 +172,7 @@ def test_a_new_incident_runs_one_investigation_then_stops_stores_unlocks_and_han
         ("lock", SESSION),
         ("cap",),
         ("update", "investigating"),
-        ("investigate", ERRORS, SESSION),
+        ("investigate", ERRORS, INCIDENT, SESSION),  # the incident names the run's trace
         ("stop", SESSION),
         ("update", "done"),
         ("unlock", SESSION),
@@ -200,7 +200,7 @@ def test_only_the_first_of_a_days_alarms_reaches_the_runtime() -> None:
     for change in OCT_27:
         trigger.handle(event(change.alarm, change.state, iso(change.at)))
 
-    assert [c for c in calls if c[0] == "investigate"] == [("investigate", POOL, SESSION)]
+    assert [c for c in calls if c[0] == "investigate"] == [("investigate", POOL, "checkout-api-20261027T185646Z", SESSION)]
     assert list(store.incidents) == ["checkout-api-20261027T185646Z"]
 
 
@@ -359,12 +359,12 @@ def test_the_runtime_gets_a_live_investigation_of_the_alarm() -> None:
             "runtimeSessionId": SESSION,
             "contentType": "application/json",
             "accept": "application/json",
-            "payload": b'{"alarm": "sentinelops-checkout-errors"}',
+            "payload": b'{"alarm": "sentinelops-checkout-errors", "incident": "checkout-api-20261027T190557Z"}',
         },
     )
 
     with stubber:
-        assert runtime.investigate(ERRORS, SESSION) == DONE
+        assert runtime.investigate(ERRORS, INCIDENT, SESSION) == DONE
 
 
 def test_stopping_reports_a_session_already_gone_by_its_code() -> None:

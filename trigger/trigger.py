@@ -75,15 +75,18 @@ class AgentRuntime:
         self._client = client
         self._arn = runtime_arn
 
-    def investigate(self, alarm: str, session_id: str) -> Any:
-        """One live investigation of the alarm: the app's answer, parsed (agent/app.py)."""
+    def investigate(self, alarm: str, incident_id: str, session_id: str) -> Any:
+        """One live investigation of the alarm: the app's answer, parsed (agent/app.py).
+
+        The incident's ID names the run's trace for the page (agent/run_trace.py).
+        """
         response = self._client.invoke_agent_runtime(
             agentRuntimeArn=self._arn,
             qualifier=QUALIFIER,
             runtimeSessionId=session_id,
             contentType="application/json",
             accept="application/json",
-            payload=json.dumps({"alarm": alarm}).encode(),
+            payload=json.dumps({"alarm": alarm, "incident": incident_id}).encode(),
         )
         return json.loads(response["response"].read())
 
@@ -183,7 +186,7 @@ class Trigger:
             # The session to stop, for the kill switch, while the run is going.
             log({"event": "investigating", "incident": incident.id, "alarm": alarm, "session_id": session_id})
             try:
-                fields = answer_fields(self._runtime.investigate(alarm, session_id))
+                fields = answer_fields(self._runtime.investigate(alarm, incident.id, session_id))
             except (ClientError, BotoCoreError, ValueError) as e:
                 fields = {"status": "error", "error": error_name(e)}
             finally:
