@@ -1,6 +1,7 @@
 """The agent on AgentCore Runtime: the HTTP app the Runtime's contract asks for.
 
     POST /invocations  {"alarm": "sentinelops-checkout-errors"}
+                       {"alarm": "sentinelops-checkout-errors", "incident": "checkout-api-20261126T183624Z"}
                        {"alarm": "sentinelops-checkout-errors", "as_of": "2026-10-27T19:06:00Z"}
     GET  /ping
 
@@ -12,7 +13,8 @@ runtime's role may call the Gateway and read none of what the tools read.
 The model is signed in to by federation as the runtime's role, with the
 SENTINELOPS_ANTHROPIC_* IDs Terraform sets; without them, every run is refused.
 Only the trigger invokes this, one run at a time; the global limits live
-there.
+there. It names the incident, and a live run with one writes its trace for
+the page (run_trace.py) to SENTINELOPS_TRACE_TABLE, best-effort.
 
 Started as the Runtime starts it: python app.py, on 0.0.0.0:8080.
 """
@@ -34,9 +36,11 @@ from investigation import Refused, investigate_alarm, parse_utc
 from main import configure_logging
 from pricing import UnknownModelPrice, price_for
 from providers import Settings, SettingsError
+from sentinelops_core.trace import INCIDENT_ID
+from run_trace import open_trace
 
 GATEWAY_URL = "SENTINELOPS_GATEWAY_URL"
-FIELDS = {"alarm", "as_of"}
+FIELDS = {"alarm", "as_of", "incident"}
 SESSION_HEADER = "x-amzn-bedrock-agentcore-runtime-session-id"
 
 logger = logging.getLogger("sentinelops.app")
@@ -62,7 +66,7 @@ def create_app(
     async def invocations(request: Request) -> Response:
         session_id = request.headers.get(SESSION_HEADER)
         try:
-            alarm_name, as_of = parse_body(await request.body())
+            alarm_name, as_of, incident = parse_body(await request.body())
         except ValueError as e:
             _log(session_id, "invalid", reason=str(e))
             return _answer({"outcome": "invalid", "reason": str(e)}, status_code=400)
@@ -76,17 +80,25 @@ def create_app(
         except (SettingsError, UnknownModelPrice) as e:
             return _refuse(session_id, str(e))
 
-        outcome = await investigate_alarm(
-            alarm_name,
-            as_of,
-            gateway_url=gateway_url,
-            settings=settings,
-            price=price,
-            session=(session_factory or _aws_session)(settings.region),
-            http_client=http_client,
-            token_http_client=token_http_client,
-            gateway_transport=gateway_transport,
-        )
+        session = (session_factory or _aws_session)(settings.region)
+        trace = None if incident is None else open_trace(environ, session, incident, price)
+        try:
+            outcome = await investigate_alarm(
+                alarm_name,
+                as_of,
+                gateway_url=gateway_url,
+                settings=settings,
+                price=price,
+                session=session,
+                http_client=http_client,
+                token_http_client=token_http_client,
+                gateway_transport=gateway_transport,
+                trace=trace,
+            )
+        finally:
+            # The queued writes land before the answer: the trigger stops the session once it has it.
+            if trace is not None:
+                trace.close()
         if isinstance(outcome, Refused):
             return _refuse(session_id, outcome.reason)
         report = outcome.report
@@ -102,8 +114,8 @@ def create_app(
     )
 
 
-def parse_body(body: bytes) -> tuple[str, datetime | None]:
-    """The alarm's name, and as_of for a replay. Raises ValueError on anything else."""
+def parse_body(body: bytes) -> tuple[str, datetime | None, str | None]:
+    """The alarm's name, as_of for a replay, and the incident a live run is for. Raises ValueError on anything else."""
     try:
         payload = json.loads(body)
     except ValueError:
@@ -112,16 +124,23 @@ def parse_body(body: bytes) -> tuple[str, datetime | None]:
         raise ValueError('The body must be a JSON object, like {"alarm": "<name>"}.')
     unknown = sorted(set(payload) - FIELDS)
     if unknown:
-        raise ValueError(f"Unknown fields: {', '.join(unknown)}. Send only alarm, and as_of for a replay.")
+        raise ValueError(
+            f"Unknown fields: {', '.join(unknown)}. Send only alarm, and as_of for a replay or incident for a live run."
+        )
     alarm = payload.get("alarm")
     if not isinstance(alarm, str) or not alarm:
         raise ValueError("alarm must be the alarm's name.")
+    incident = payload.get("incident")
+    if incident is not None and (not isinstance(incident, str) or not INCIDENT_ID.fullmatch(incident)):
+        raise ValueError("incident must be an incident's ID, like checkout-api-20261126T183624Z.")
     as_of = payload.get("as_of")
     if as_of is None:
-        return alarm, None
+        return alarm, None, incident
+    if incident is not None:
+        raise ValueError("incident is for a live run; a replay writes no trace.")
     if not isinstance(as_of, str):
         raise ValueError("as_of must be an ISO 8601 time with its time zone.")
-    return alarm, parse_utc(as_of)
+    return alarm, parse_utc(as_of), None
 
 
 def _aws_session(region: str) -> Any:

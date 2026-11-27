@@ -3,7 +3,8 @@
     uv run python build_runtime.py        # from agent/, before any plan; CI runs it before its apply
 
 The Runtime runs direct code on arm64 Linux with Python 3.12: our modules,
-prompts/, sentinelops_core/, and sentinelops_tools/ at the root, beside every locked dependency
+prompts/, sentinelops_core/, sentinelops_tools/, and the commit hooks'
+commit_scan.py at the root, beside every locked dependency
 installed from arm64 wheels. Terraform's archive_file zips the staged folder,
 infra/.build/agent-runtime/, when it plans, so a plan needs this run first.
 
@@ -24,24 +25,27 @@ AGENT = Path(__file__).resolve().parent
 REPO = AGENT.parent
 TOOLS_PACKAGE = REPO / "tools" / "sentinelops_tools"
 CORE_PACKAGE = REPO / "core" / "sentinelops_core"
+# The commit hooks' rules, which the trace applies to every text it writes (run_trace.py): one copy.
+COMMIT_SCAN = REPO / ".githooks" / "commit_scan.py"
 OUT = REPO / "infra" / ".build" / "agent-runtime"
 REQUIREMENTS = OUT.parent / "agent-runtime-requirements.txt"
 PLATFORM = "aarch64-manylinux2014"
 PYTHON = "3.12"
 ENTRY = "app.py"
 # Tooling that runs on this machine, not in the Runtime.
-NOT_SHIPPED = {"build_runtime.py", "gateway_tools.py"}
+NOT_SHIPPED = {"build_runtime.py", "gateway_tools.py", "backfill_trace.py"}
 TEXT_SUFFIXES = {".py", ".md", ".json", ".txt"}
 # The Runtime's limit for direct code, unzipped.
 MAX_UNZIPPED_BYTES = 750 * 1024 * 1024
 
 
 def ours() -> dict[str, Path]:
-    """What we ship by top-level name: the agent's modules, its prompts, and the shared and tools packages."""
+    """What we ship by top-level name: the agent's modules, its prompts, the shared and tools packages, and the scan."""
     shipped = {path.stem: path for path in sorted(AGENT.glob("*.py")) if path.name not in NOT_SHIPPED}
     shipped["prompts"] = AGENT / "prompts"
     shipped["sentinelops_core"] = CORE_PACKAGE
     shipped["sentinelops_tools"] = TOOLS_PACKAGE
+    shipped["commit_scan"] = COMMIT_SCAN
     return shipped
 
 

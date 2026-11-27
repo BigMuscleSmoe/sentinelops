@@ -15,12 +15,14 @@ import app as runtime_app
 from app import GATEWAY_URL, SESSION_HEADER, create_app
 from fake_anthropic import ACCESS_TOKEN, FEDERATION_IDS, FakeAnthropic, answer
 from fake_gateway import URL, FakeGateway
+from investigation import Refused
 from sentinelops_tools.env import ToolEnv
 from sources import unmark
 from stubs import AGENT_FIXTURES, TOOL_FIXTURES, WEB_IDENTITY_TOKEN, FakeSession, load
 from test_main import DIAGNOSIS, ERRORS, TOOL_FIXTURE_NAMES, investigating, replay_session
 
 REPLAY = {"alarm": ERRORS, "as_of": "2026-10-27T19:06:00Z"}
+INCIDENT = "checkout-api-20261126T183624Z"
 
 
 def call(app: object, method: str, path: str, body: bytes | None = None, **headers: str) -> httpx.Response:
@@ -159,6 +161,9 @@ def test_a_model_without_a_price_is_refused_before_anything_runs() -> None:
         (json.dumps({**REPLAY, "as_of": 1793127960}).encode(), "as_of must be an ISO 8601 time"),
         (json.dumps({**REPLAY, "as_of": "2026-10-27T19:06:00"}).encode(), "has no time zone"),
         (json.dumps({**REPLAY, "as_of": "yesterday"}).encode(), "Invalid isoformat string"),
+        (json.dumps({"alarm": ERRORS, "incident": "checkout-api-1"}).encode(), "incident must be an incident's ID"),
+        (json.dumps({"alarm": ERRORS, "incident": 20261126}).encode(), "incident must be an incident's ID"),
+        (json.dumps({**REPLAY, "incident": INCIDENT}).encode(), "a replay writes no trace"),
     ],
 )
 def test_a_body_it_cannot_use_is_answered_400_before_anything_runs(body: bytes, reason: str) -> None:
@@ -177,3 +182,56 @@ def test_only_the_two_routes_answer() -> None:
     assert call(app, "GET", "/invocations").status_code == 405
     assert call(app, "POST", "/ping").status_code == 405
     assert call(app, "GET", "/").status_code == 404
+
+
+class Opened:
+    """What open_trace was asked for, and a trace that notes when it's closed."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str | None, str]] = []
+        self.closed = False
+        self.hooks = object()
+
+    def open(self, environ: dict, session: object, incident: str, price: object) -> "Opened":
+        self.asked.append((environ.get("SENTINELOPS_TRACE_TABLE"), incident))
+        return self
+
+    def close(self) -> dict:
+        self.closed = True
+        return {}
+
+
+def test_a_live_run_for_an_incident_has_its_trace_closed_before_the_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    trace, seen = Opened(), {}
+
+    async def investigate_alarm(alarm: str, as_of: object, **kwargs: object) -> Refused:
+        seen["trace"], seen["closed_while_running"] = kwargs["trace"], trace.closed
+        return Refused("stopped here")
+
+    monkeypatch.setattr(runtime_app, "open_trace", trace.open)
+    monkeypatch.setattr(runtime_app, "investigate_alarm", investigate_alarm)
+    session = FakeSession()
+    environ = {GATEWAY_URL: URL, **FEDERATION_IDS, "SENTINELOPS_TRACE_TABLE": "sentinelops-trace"}
+    app = create_app(environ=environ, session_factory=lambda region: session)
+
+    response = call(app, "POST", "/invocations", json.dumps({"alarm": ERRORS, "incident": INCIDENT}).encode())
+
+    assert response.json() == {"outcome": "refused", "reason": "stopped here"}
+    assert trace.asked == [("sentinelops-trace", INCIDENT)]
+    assert seen == {"trace": trace, "closed_while_running": False} and trace.closed
+
+
+def test_a_run_naming_no_incident_has_no_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    trace, seen = Opened(), {}
+
+    async def investigate_alarm(alarm: str, as_of: object, **kwargs: object) -> Refused:
+        seen["trace"] = kwargs["trace"]
+        return Refused("stopped here")
+
+    monkeypatch.setattr(runtime_app, "open_trace", trace.open)
+    monkeypatch.setattr(runtime_app, "investigate_alarm", investigate_alarm)
+    app = create_app(environ={GATEWAY_URL: URL, **FEDERATION_IDS}, session_factory=lambda region: FakeSession())
+
+    call(app, "POST", "/invocations", json.dumps({"alarm": ERRORS}).encode())
+
+    assert seen == {"trace": None} and trace.asked == []

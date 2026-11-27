@@ -21,7 +21,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+# ../.githooks holds commit_scan.py, the commit hooks' rules, which the
+# trace applies to every text it writes (run_trace.py); the Runtime ships it.
+pythonpath = [".", "../.githooks"]
 
 [tool.uv.sources]
 sentinelops-core = { path = "../core", editable = true }

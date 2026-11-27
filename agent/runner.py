@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +77,7 @@ async def investigate(
     limits: Limits = Limits(),
     clock: Callable[[], float] = time.monotonic,
     fired_at: datetime | None = None,
+    observers: Sequence[Any] = (),
 ) -> RunReport:
     """Run the agent on one alarm's prompt and return what it found, and what it spent.
 
@@ -87,7 +88,8 @@ async def investigate(
     checks against a file this run read in full (check_remediation). The
     answer's running_version is the release running at fired_at, as the run's
     own deploy-history reads show it (running_release); without fired_at it's
-    None, and no answer can open a PR.
+    None, and no answer can open a PR. observers are more hook providers, which
+    only read the run's events (the live trace's, run_trace.Trace.hooks).
     """
     from strands import Agent, ModelRetryStrategy, tool
     from strands.agent.conversation_manager import NullConversationManager
@@ -111,7 +113,7 @@ async def investigate(
         tool_executor=SequentialToolExecutor(),
         # Only throttling is retried; the guard sees each retry as a new call.
         retry_strategy=ModelRetryStrategy(max_attempts=3, initial_delay=2, max_delay=8),
-        hooks=[hooks],
+        hooks=[hooks, *observers],
     )
     # Each call's cost is reserved, or the call refused, on the request about to go out.
     agent.add_middleware(InvokeModelStage.Input, hooks.before_send)

@@ -92,6 +92,7 @@ async def investigate_alarm(
     limits: Limits = Limits(),
     knowledge_base_id: str | None = None,
     code: Mapping[str, Mapping[str, str]] | None = None,
+    trace: Any = None,
 ) -> Investigation | Refused:
     """Investigate the alarm live, or as of a past moment, where every tool reads as of then.
 
@@ -100,6 +101,8 @@ async def investigate_alarm(
     finds and checks it); through Gateway, the search's Lambda has its own.
     code is checkout-api's code by release, for the read tool run here
     (code_snapshot.build); through Gateway, the read tool's Lambda ships its own.
+    trace is a live run's run_trace.Trace, told when the run starts and how it ended;
+    a refused run writes none.
     http_client, token_http_client, and gateway_transport are for tests: a fake
     Messages API, token endpoint, and Gateway.
     """
@@ -130,6 +133,8 @@ async def investigate_alarm(
             session, now=(lambda: fired_at) if replay else utc_now, knowledge_base_id=knowledge_base_id, code=code
         )
         tools = make_tools(env)
+    if trace is not None:
+        trace.started(alarm.name)
     try:
         report = await investigate(
             alarm.prompt(),
@@ -139,11 +144,14 @@ async def investigate_alarm(
             max_output_tokens=settings.max_output_tokens,
             limits=limits,
             fired_at=fired_at,
+            observers=() if trace is None else (trace.hooks,),
         )
     finally:
         await model.client.close()
         if gateway is not None:
             await gateway.aclose()
+    if trace is not None:
+        trace.finished(report)
     return Investigation(alarm, settings, report, replay=replay, gateway=gateway is not None)
 
 
