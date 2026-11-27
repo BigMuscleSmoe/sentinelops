@@ -132,4 +132,6 @@ From Phase 3 through 2026-11-23, the answer schema's evidence examples included 
 
 The 2 downstream_timeout alarms had no leak like that. The prompt and schema did name payments-api: as the dependency whose latency and timeouts the metrics table shows, in the fault location's description, in an evidence example that rules it out, and in a root-cause example about an expired TLS certificate on its endpoint. None of them named the downstream fault itself: not its timeout setting, the 504 it returns, or its error type.
 
-The numbers in this report are unchanged. The next evaluation cycle uses the clean schema: since 2026-11-24 its examples are values this service doesn't have, and a test fails if anything the model is sent names a release, a commit, or a fault's file, function, error, or config key.
+Added 2026-11-26: the schema also gave `07:46:29.556`, a real 1.43.0 deploy's time from 2026-11-12, as an example in `Evidence.at`'s description, in every request at both test sweeps' commits; the deploy tool showed that record at 5 of the 11 held-out alarms, only when 20 records were asked for, and 1 of the 55 test runs saw it: a Haiku pool run whose answer didn't use it.
+
+The numbers in this report are unchanged. The next evaluation cycle uses the clean schema: since 2026-11-24 its examples are values this service doesn't have, except `07:46:29.556`, which the next cycle removes before its sweep, and a test fails if anything the model is sent names a release, a commit, or a fault's file, function, error, or config key.
