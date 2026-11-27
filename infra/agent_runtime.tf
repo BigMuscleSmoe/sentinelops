@@ -160,6 +160,27 @@ data "aws_iam_policy_document" "agent_runtime" {
       values   = ["300"]
     }
   }
+
+  # The live run's trace, for the page (trace.tf; agent/run_trace.py): PutItem only, on checkout-api's incidents' items.
+  # ForAllValues passes a request with no key at all, so the Null test
+  # requires one.
+  statement {
+    sid       = "WriteTheTrace"
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.trace.arn]
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "dynamodb:LeadingKeys"
+      values   = ["checkout-api-*"]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "dynamodb:LeadingKeys"
+      values   = ["false"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "agent_runtime" {
@@ -204,12 +225,15 @@ resource "aws_bedrockagentcore_agent_runtime" "agent" {
   }]
 
   # Federation's IDs, for the app to sign in as this role. They're sensitive,
-  # so a plan never shows them.
+  # so a plan never shows them. The trace's table, and the account ID for the
+  # commit hooks' account rule, which the trace applies to every text it writes.
   environment_variables = {
     SENTINELOPS_GATEWAY_URL                  = aws_bedrockagentcore_gateway.tools.gateway_url
     SENTINELOPS_ANTHROPIC_ORGANIZATION_ID    = var.anthropic_federation.organization_id
     SENTINELOPS_ANTHROPIC_SERVICE_ACCOUNT_ID = var.anthropic_federation.service_account_id
     SENTINELOPS_ANTHROPIC_FEDERATION_RULE_ID = var.anthropic_federation.rule_id
+    SENTINELOPS_TRACE_TABLE                  = aws_dynamodb_table.trace.name
+    SENTINELOPS_ACCOUNT_ID                   = data.aws_caller_identity.current.account_id
   }
 
   # The role must be able to log and call the gateway before a session starts.

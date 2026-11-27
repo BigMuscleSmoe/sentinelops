@@ -94,6 +94,27 @@ data "aws_iam_policy_document" "remediation" {
       values   = ["false"]
     }
   }
+
+  # Each step's event on the incident's trace, for the page (trace.tf): PutItem only, on checkout-api's incidents' items.
+  # ForAllValues passes a request with no key at all, so the Null test
+  # requires one.
+  statement {
+    sid       = "WriteTheTrace"
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.trace.arn]
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "dynamodb:LeadingKeys"
+      values   = ["checkout-api-*"]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "dynamodb:LeadingKeys"
+      values   = ["false"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "remediation" {
@@ -130,7 +151,8 @@ resource "aws_lambda_function" "remediation" {
       GITHUB_APP_CLIENT_ID       = var.remediation_app.client_id
       GITHUB_APP_INSTALLATION_ID = tostring(var.remediation_app.installation_id)
       # For the commit hooks' account rule, which the scan applies to all it posts.
-      SENTINELOPS_ACCOUNT_ID = data.aws_caller_identity.current.account_id
+      SENTINELOPS_ACCOUNT_ID  = data.aws_caller_identity.current.account_id
+      SENTINELOPS_TRACE_TABLE = aws_dynamodb_table.trace.name
     }
   }
 

@@ -51,10 +51,17 @@ def test_its_role_is_boundary_fenced_and_lambdas_alone() -> None:
     assert re.findall(r'^resource "aws_iam_role" ', TF, re.M) == ['resource "aws_iam_role" ']
 
 
-def test_the_role_holds_exactly_four_statements_each_scoped() -> None:
+def test_the_role_holds_exactly_five_statements_each_scoped() -> None:
     policy = block('data "aws_iam_policy_document" "remediation"')
-    assert re.findall(r'sid       = "(\w+)"', policy) == ["WriteOwnLogs", "DurableExecution", "SignTheAppsJwt", "CheckoutIncidents"]
-    assert "*" not in policy.replace(":*", "").replace("# ", "")
+    assert re.findall(r'sid       = "(\w+)"', policy) == [
+        "WriteOwnLogs",
+        "DurableExecution",
+        "SignTheAppsJwt",
+        "CheckoutIncidents",
+        "WriteTheTrace",
+    ]
+    # No wildcard but a log group's streams and the trace's key prefix, a condition's value.
+    assert "*" not in policy.replace(":*", "").replace("# ", "").replace('"checkout-api-*"', "")
     durable = statement("DurableExecution")
     assert 'actions   = ["lambda:CheckpointDurableExecution", "lambda:GetDurableExecutionState"]' in durable
     assert 'resources = [local.remediation_function_arn, "${local.remediation_function_arn}:*"]' in durable
@@ -65,6 +72,17 @@ def test_the_role_holds_exactly_four_statements_each_scoped() -> None:
     assert 'actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]' in incidents
     assert 'test     = "ForAllValues:StringEquals"\n      variable = "dynamodb:LeadingKeys"\n      values   = ["checkout-api"]' in incidents
     assert 'test     = "Null"\n      variable = "dynamodb:LeadingKeys"\n      values   = ["false"]' in incidents
+    trace = statement("WriteTheTrace")
+    assert 'actions   = ["dynamodb:PutItem"]' in trace and "resources = [aws_dynamodb_table.trace.arn]" in trace
+    assert 'test     = "ForAllValues:StringLike"\n      variable = "dynamodb:LeadingKeys"\n      values   = ["checkout-api-*"]' in trace
+    assert 'test     = "Null"\n      variable = "dynamodb:LeadingKeys"\n      values   = ["false"]' in trace
+
+
+def test_it_writes_the_trace_the_stack_makes() -> None:
+    assert "SENTINELOPS_TRACE_TABLE = aws_dynamodb_table.trace.name" in FUNCTION
+    table = block('resource "aws_dynamodb_table" "trace"', (REPO / "infra" / "trace.tf").read_text(encoding="utf-8"))
+    assert 'name         = "sentinelops-trace"' in table and 'billing_mode = "PAY_PER_REQUEST"' in table
+    assert 'attribute_name = "expires_at"\n    enabled        = true' in table
 
 
 def test_the_function_is_the_durable_one_the_build_stages() -> None:
