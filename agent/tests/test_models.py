@@ -275,6 +275,15 @@ def test_an_item_missing_what_its_kind_needs_is_rejected(evidence: dict, message
         Hypothesis.model_validate({**VALID, "evidence": [evidence]})
 
 
+def test_the_time_error_names_forms_never_a_time() -> None:
+    # The model reads it in a resend; an example time could be a recorded window's own.
+    with pytest.raises(ValidationError) as caught:
+        Hypothesis.model_validate({**VALID, "evidence": [item("value", source="m1", column="err%", at="soon", value="1")]})
+
+    [error] = caught.value.errors()
+    assert "HH:MM:SS.fff" in error["msg"] and not re.search(r"[0-9]", error["msg"])
+
+
 def test_a_sentence_is_not_an_evidence_item() -> None:
     with pytest.raises(ValidationError):
         Hypothesis.model_validate({**VALID, "evidence": ["payments-api p99 4.8s at 14:03"]})

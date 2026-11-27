@@ -57,10 +57,10 @@ def _no_markup(text: str) -> str:
 
 
 def _a_time(text: str | None) -> str | None:
+    # A resend carries this to the model, so it names forms, never a time: its
+    # old examples held a recorded window's 1.43.0 deploy time (2026-11-24).
     if text is not None and not _TIME.fullmatch(text):
-        raise ValueError(
-            "must be a time as the source shows it, such as 18:59:00, 08:03:17.897, or 2026-11-12T07:46:29.556Z"
-        )
+        raise ValueError("must be a time as the source shows it: HH:MM:SS, HH:MM:SS.fff, or YYYY-MM-DDTHH:MM:SS.fffZ")
     return text
 
 
