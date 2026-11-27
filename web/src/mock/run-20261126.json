@@ -1,0 +1,2009 @@
+{
+ "about": "The live bad_deploy break of 2026-11-26 (PR #2), shaped as web/src/api/contract.ts: the incident, its trace with the run's real times from its log lines, the mockup player's checkpoints, the agent's own 10 s metrics table (m1) as the live metrics, and the summary rule's other outcomes as illustrative variants. Every text field capped at 4,000 characters and scanned with the remediation flow's rules.",
+ "estimated": [
+  "t3 get_deploy_history result at +0.6 s (no log line marks it)",
+  "t6 read_repo_file result at +0.5 s (no log line marks it)",
+  "t7 get_recent_logs result at +3.6 s (no log line marks it)",
+  "the visitor's ending: pr_same_fix at handoff + 6.0 s (synthesized from the flow's same-fix path)"
+ ],
+ "break": {
+  "mode": "bad_deploy",
+  "at": "2026-11-26T18:35:50.391Z",
+  "fault_ends_at": "2026-11-26T18:42:20.391Z"
+ },
+ "incident": {
+  "id": "checkout-api-20261126T183624Z",
+  "service": "checkout-api",
+  "opened_at": "2026-11-26T18:36:24.319Z",
+  "closed_at": "2026-11-26T18:52:44.000Z",
+  "alarms": [
+   {
+    "alarm": "errors",
+    "label": "Errors over 5%",
+    "at": "2026-11-26T18:36:24.319Z",
+    "ok_at": "2026-11-26T18:42:44.000Z"
+   }
+  ],
+  "status": "answered",
+  "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR #2 ready for review",
+  "run": {
+   "seconds": 54.3,
+   "tool_calls": 7,
+   "model_calls": 4,
+   "input_tokens": 78289,
+   "cost_usd": 0.010148
+  },
+  "injected": {
+   "mode": "bad_deploy",
+   "at": "2026-11-26T18:35:50.391Z",
+   "fault_ends_at": "2026-11-26T18:42:20.391Z",
+   "runbook_matches": true
+  },
+  "pr_state": "ready",
+  "trace": [
+   {
+    "seq": 1,
+    "at": "2026-11-26T18:36:25.594Z",
+    "kind": "run_started",
+    "alarm": "errors"
+   },
+   {
+    "seq": 2,
+    "at": "2026-11-26T18:36:38.769Z",
+    "kind": "model_call",
+    "n": 1,
+    "input_tokens": 7797,
+    "output_tokens": 197,
+    "cost_usd": 0.000878
+   },
+   {
+    "seq": 3,
+    "at": "2026-11-26T18:36:38.770Z",
+    "kind": "tool_call",
+    "call": "t1",
+    "tool": "get_metrics",
+    "args": {
+     "minutes": 15,
+     "period_seconds": 10
+    }
+   },
+   {
+    "seq": 4,
+    "at": "2026-11-26T18:36:43.312Z",
+    "kind": "tool_result",
+    "call": "t1",
+    "source": "m1",
+    "chars": 13025,
+    "text": "checkout-api metrics, 10 s periods, 18:21:40 to 18:36:42 UTC, oldest first. Each row starts at its time. err% is the share of requests that failed; a timeout to payments-api counts under payments_timeouts, not err%.\ntime       req  err%  p50_ms  p99_ms  pool_wait_p99_ms  pool_active_max  concurrent_max  db_query_p50_ms  payments_p99_ms  payments_timeouts\n18:21:40     2   0.0    64.6    65.7               0.3                1               1             60.2                -                  -\n18:21:50     1   0.0    79.8    79.8               0.0                1               1             75.4                -                  -\n18:22:00     2   0.0    49.8     126               0.2                1               1             45.3                -                  -\n18:22:10     3   0.0    55.6    58.0               0.0                1               1             50.8                -                  -\n18:22:20     2   0.0    49.8    79.0               0.4                1               1             45.3                -                  -\n18:22:30     2   0.0    88.2     290               0.0                1               1             88.2             60.4                  0\n18:22:40     2   0.0    25.5    57.9               0.5                1               1             21.1                -                  -\n18:22:50     1   0.0    52.2    52.2               0.0                1               1             48.2                -                  -\n18:23:00     2   0.0    41.1    60.7               0.0                1               1             37.4                -                  -\n18:23:10     3   0.0    57.4    62.1               0.2                1               1             52.2                -                  -\n18:23:20     2   0.0    60.2    95.0               0.2                1               1             49.8                -                  -\n18:23:30     2   0.0    37.4    51.7               0.5                1               1             34.0                -                  -\n18:23:40     2   0.0    72.9     323               0.4                1               1             66.3              128                  0\n18:23:50     1   0.0    54.5    54.5               0.3                1               1             50.3                -                  -\n18:24:00     2   0.0     277     518               0.5                1               1              208             58.1                  0\n18:24:10     2   0.0    54.8     116               0.3                1               1             49.8                -                  -\n18:24:20     3   0.0    76.4     327               0.3                1               1             69.5              118                  0\n18:24:30     2   0.0    34.0    57.3               0.4                1               1             25.5                -                  -\n18:24:40     2   0.0    37.4     413               0.3                1               1             34.0              180                  0\n18:24:50     1   0.0    77.8    77.8               0.0                1               1             72.9                -                  -\n18:25:00     2   0.0    54.8    57.4               0.4                1               1             49.8                -                  -\n18:25:10     2   0.0    66.3     317               0.2                1               1             60.2             51.6                  0\n18:25:20     3   0.0    63.2    91.8               0.4                1               1             63.2                -                  -\n18:25:30     2   0.0    45.3     339               0.5                1               1             41.1             61.9                  0\n18:25:40     2   0.0    60.2    79.7               0.1                1               1             54.8                -                  -\n18:25:50     1   0.0     322     322               0.5                1               1              257             5",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 5,
+    "at": "2026-11-26T18:36:43.313Z",
+    "kind": "tool_call",
+    "call": "t2",
+    "tool": "get_recent_logs",
+    "args": {
+     "minutes": 15,
+     "limit": 20
+    }
+   },
+   {
+    "seq": 6,
+    "at": "2026-11-26T18:36:46.884Z",
+    "kind": "tool_result",
+    "call": "t2",
+    "source": "l1",
+    "chars": 11441,
+    "text": "20 checkout-api error lines, oldest first, newest 7 s old. Searched 18:36:16 to 18:36:46 UTC. Only the newest 20 of 28 found are shown.\nLogs can trail the metrics by minutes under load; recent lines may be missing.\n[1] {\"timestamp\":\"2026-11-26T18:36:22.359Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"1465c711-f701-4eb6-9f89-3b3f46af86e2\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[2] {\"timestamp\":\"2026-11-26T18:36:22.639Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"03bf61f6-dc06-4681-9cde-34900f488042\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[3] {\"timestamp\":\"2026-11-26T18:36:22.674Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"0faf43b2-b646-47ee-9c9b-642551f87d93\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[4] {\"timestamp\":\"2026-11-26T18:36:26.938Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"69adc03f-1ec6-4a30-9008-39ab2587dee2\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[5] {\"timestamp\":\"2026-11-26T18:36:28.384Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"49e092b6-be01-41b5-b014-88ffdc74f503\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[6] {\"timestamp\":\"2026-11-26T18:36:29.257Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"44f6785f-2255-400d-877e-60ef4f586cb0\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[7] {\"timestamp\":\"2026-11-26T18:36:29.406Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"368f5395-6d32-4088-b9d5-ca8d9bb5758a\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 7,
+    "at": "2026-11-26T18:36:46.885Z",
+    "kind": "tool_call",
+    "call": "t3",
+    "tool": "get_deploy_history",
+    "args": {
+     "limit": 5
+    }
+   },
+   {
+    "seq": 8,
+    "at": "2026-11-26T18:36:47.485Z",
+    "kind": "tool_result",
+    "call": "t3",
+    "source": "d1",
+    "chars": 1247,
+    "text": "The 5 most recent deploys and config changes to checkout-api up to 2026-11-26T18:36:50.003Z, newest first.\nOlder records exist; ask for a larger limit (at most 20).\n{\"ts\":\"2026-11-26T18:35:50.391Z\",\"kind\":\"deploy\",\"version\":\"1.43.0\",\"commit\":\"9c41e7b\",\"author\":\"tomas\",\"message\":\"Simplify promo pricing\",\"changes\":[{\"key\":\"version\",\"old\":\"1.42.0\",\"new\":\"1.43.0\"}]}\n{\"ts\":\"2026-11-26T14:34:19.493Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"ken\",\"message\":\"Keep abandoned carts for two days\",\"changes\":[{\"key\":\"CART_TTL_HOURS\",\"old\":\"24\",\"new\":\"48\"}]}\n{\"ts\":\"2026-11-17T05:57:43.000Z\",\"kind\":\"deploy\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"oncall\",\"message\":\"Roll back to 1.42.0\",\"changes\":[{\"key\":\"version\",\"old\":\"1.43.0\",\"new\":\"1.42.0\"}]}\n{\"ts\":\"2026-11-17T05:51:12.756Z\",\"kind\":\"deploy\",\"version\":\"1.43.0\",\"commit\":\"9c41e7b\",\"author\":\"tomas\",\"message\":\"Simplify promo pricing\",\"changes\":[{\"key\":\"version\",\"old\":\"1.42.0\",\"new\":\"1.43.0\"}]}\n{\"ts\":\"2026-11-17T04:26:26.186Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"maya\",\"message\":\"Turn on product recommendations\",\"changes\":[{\"key\":\"RECOMMENDATIONS_ENABLED\",\"old\":\"false\",\"new\":\"true\"}]}\n[budget: 12 steps, 192k tokens, $0.099, 280s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 9,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "model_call",
+    "n": 2,
+    "input_tokens": 17462,
+    "output_tokens": 467,
+    "cost_usd": 0.00198
+   },
+   {
+    "seq": 10,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "thinking",
+    "text": "The deploy of 1.43.0 at 18:35:50 lines up with when the errors began, and the failure is at pricing.py line 15 in apply_promo. I'll pull pricing.py at both 1.43.0 and 1.42.0 to compare, and search the runbook at the same time."
+   },
+   {
+    "seq": 11,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "said",
+    "text": "The error rate jumped at 18:35:50, the same second as the 1.43.0 deploy, and every failure is the same TypeError in `apply_promo`. I'll check the runbooks and the pricing code at both versions."
+   },
+   {
+    "seq": 12,
+    "at": "2026-11-26T18:36:53.218Z",
+    "kind": "tool_call",
+    "call": "t4",
+    "tool": "search_runbooks",
+    "args": {
+     "query": "checkout-api 500 errors started right after deploy 1.43.0; TypeError NoneType not subscriptable in apply_promo on POST /checkout; error rate jumped to ~15% while latency p50 and pool wait stayed flat,"
+    }
+   },
+   {
+    "seq": 13,
+    "at": "2026-11-26T18:36:57.310Z",
+    "kind": "tool_result",
+    "call": "t4",
+    "source": "r1",
+    "chars": 10681,
+    "text": "The 2 runbooks closest to the query, in full: Symptoms, What this is not, Diagnosis. The rest are listed after them, by name only.\n\n=== downstream-timeout.md: payments-api timeouts (a slow downstream) ===\n\n## Symptoms\n\ncheckout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. The fault is in the dependency, not in this service: nothing in checkout-api changes, and its deploy history shows no change that acts on the payments call.\n\n**The latency alarm fires; the error and pool-wait alarms stay OK**\n\n- p99 latency over all routes passes the 1.5 s threshold soon after the slowdown begins and stays above it. Checkouts are a minority of requests, but their tail is the payments call, and it sets the p99\n- p99 above 2 s, checkout only: `POST /checkout` p99 sits just above the 2000 ms timeout. Other routes stay fast: `GET /products/{id}` and `POST /cart/items` never call payments-api\n- Payments p99 near the timeout: `payments_p99_ms` rises from its usual level to about the timeout, since a timed-out call is recorded at the timeout. The typical call (the request lines' `upstream_latency_ms`) slows well past its usual level, though most calls still finish inside the timeout\n- A few timeouts a minute: `payments_timeouts` stays above 0 under load, a small share of checkouts, not all of them\n- `concurrent_max` climbs under load, since each checkout holds its request open for the call. The extra instances' cold starts can lift the other routes' p99 a little; their warm requests are unchanged\n\n**err% stays at 0.** A 504 is the upstream's failure, not this service's: its log line has `error: 0`, and it counts under `payments_timeouts`, never err%. A flat error rate does not rule this out.\n\n**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect. On the slow checkouts that finish, `upstream_latency_ms` is most of `latency_ms`.\n\n**Throughout:** `pool_wait_p99_ms` stays near zero, `db_query_p50_ms` stays flat, and `pool_active_max` stays below `pool_max_size`. The order's connection goes back to the pool before the charge, so a slow payments-api holds no connection.\n\n## What this is not\n\nIf `pool_wait_p99_ms` rises with the latency, the time is spent waiting for a connection: that is pool exhaustion (see `db-pool-exhaustion.md`), not this.\n\nIf `db_query_p50_ms` rises with the latency, the time is in the database's queries, and every route slows, not only checkout (see `slow-database.md`).\n\nIf err% jumps, the failures are 500s with a stack, or a new version appears in the logs or the deploy history, check for a bad deploy (see `bad-deploy.md`). A slow payments-api produces no 500s.\n\nIf `payments_timeouts` rises while payments-api's typical call stays at its usual latency, the timeout itself may have been lowered. Check the deploy history for a change to `PAYMENTS_TIMEOUT_MS`, and read the timeout the 504 lines name. That change is in this service, and is fixed here.\n\n## Diagnosis\n\n1. Read the metrics. If `payments_p99_ms` and `payments_timeouts` rose at the onset while `pool_wait_p99_ms` and `db_query_p50_ms` stayed flat, the time is in payments-api.\n2. Read the failing log lines. 504s with `UpstreamTimeout` naming payments-api, and no 500s, confirm it.\n3. On the 504 lines, compare `upstream_latency_ms` with `upstream_timeout_ms`. `upstream_timeout_ms` is the limit in effect for that request, and a timed-out call's `upstream_latency_ms` sits at it: payments-api used the whole limit and never answered. If `upstream_timeout_ms` is below the configured `PAYMENTS_TIMEOUT_MS`, the timeout was lowered, a",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 14,
+    "at": "2026-11-26T18:36:57.311Z",
+    "kind": "tool_call",
+    "call": "t5",
+    "tool": "read_repo_file",
+    "args": {
+     "version": "1.43.0",
+     "path": "checkout/pricing.py"
+    }
+   },
+   {
+    "seq": 15,
+    "at": "2026-11-26T18:36:59.751Z",
+    "kind": "tool_result",
+    "call": "t5",
+    "source": "c1",
+    "chars": 686,
+    "text": "checkout/pricing.py at 1.43.0: 15 lines\n     1\t\"\"\"Order pricing.\"\"\"\n     2\t\n     3\tfrom collections.abc import Mapping\n     4\tfrom typing import Any\n     5\t\n     6\tfrom checkout.catalog import Product\n     7\t\n     8\t\n     9\tdef price_cart(items: list[tuple[Product, int]], promo: Mapping[str, Any] | None) -> int:\n    10\t    subtotal = sum(product.price_cents * quantity for product, quantity in items)\n    11\t    return apply_promo(subtotal, promo)\n    12\t\n    13\t\n    14\tdef apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n    15\t    return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n[budget: 10 steps, 174k tokens, $0.097, 271s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 16,
+    "at": "2026-11-26T18:36:59.752Z",
+    "kind": "tool_call",
+    "call": "t6",
+    "tool": "read_repo_file",
+    "args": {
+     "version": "1.42.0",
+     "path": "checkout/pricing.py"
+    }
+   },
+   {
+    "seq": 17,
+    "at": "2026-11-26T18:37:00.252Z",
+    "kind": "tool_result",
+    "call": "t6",
+    "source": "c2",
+    "chars": 751,
+    "text": "checkout/pricing.py at 1.42.0: 17 lines\n     1\t\"\"\"Order pricing.\"\"\"\n     2\t\n     3\tfrom collections.abc import Mapping\n     4\tfrom typing import Any\n     5\t\n     6\tfrom checkout.catalog import Product\n     7\t\n     8\t\n     9\tdef price_cart(items: list[tuple[Product, int]], promo: Mapping[str, Any] | None) -> int:\n    10\t    subtotal = sum(product.price_cents * quantity for product, quantity in items)\n    11\t    return apply_promo(subtotal, promo)\n    12\t\n    13\t\n    14\tdef apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n    15\t    if promo is None:\n    16\t        return subtotal_cents\n    17\t    return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n[budget: 9 steps, 174k tokens, $0.097, 270s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 18,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "model_call",
+    "n": 3,
+    "input_tokens": 22366,
+    "output_tokens": 369,
+    "cost_usd": 0.002421
+   },
+   {
+    "seq": 19,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "thinking",
+    "text": "The 1.42.0 release had a None check that 1.43.0 dropped, and every failing line has has_promo set to false. I want to see whether successful 1.43.0 requests split on has_promo too, so I'll pull a sample of POST /checkout requests with errors_only off, limited to about 30, and also check whether the failure rate tracks the no-promo share. I'll also look at app.py line 72.\n\nI'm skipping the app.py check since the stack trace already agrees, and I'll make one more call."
+   },
+   {
+    "seq": 20,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "said",
+    "text": "The 1.42.0 version of `apply_promo` returns early when `promo is None`, and 1.43.0 removed that check. One more check: whether successful checkouts on 1.43.0 are the ones that carry a promo."
+   },
+   {
+    "seq": 21,
+    "at": "2026-11-26T18:37:03.480Z",
+    "kind": "tool_call",
+    "call": "t7",
+    "tool": "get_recent_logs",
+    "args": {
+     "minutes": 2,
+     "errors_only": false,
+     "route": "POST /checkout",
+     "limit": 30
+    }
+   },
+   {
+    "seq": 22,
+    "at": "2026-11-26T18:37:07.080Z",
+    "kind": "tool_result",
+    "call": "t7",
+    "source": "l2",
+    "chars": 16671,
+    "text": "30 checkout-api request lines on POST /checkout, oldest first, newest 1 s old. Searched 18:36:33 to 18:37:03 UTC. Only the newest 30 of 43 found are shown.\nLogs can trail the metrics by minutes under load; recent lines may be missing.\n[1] {\"timestamp\":\"2026-11-26T18:36:42.290Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"4f5ffe98-7caa-4a62-a270-28a71ec2869f\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[2] {\"timestamp\":\"2026-11-26T18:36:42.293Z\",\"level\":\"INFO\",\"message\":\"POST /checkout 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"2ac03c1c-56f4-4053-9db8-fa2a7d652559\",\"route\":\"POST /checkout\",\"status\":200,\"latency_ms\":359.1,\"error\":0,\"has_promo\":true,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":288.1,\"dependency\":\"payments-api\",\"upstream_timeout_ms\":2000.0,\"upstream_timeout\":0,\"upstream_latency_ms\":66.8,\"cold_start\":false}\n[3] {\"timestamp\":\"2026-11-26T18:36:42.950Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"4b12e44a-ed7b-4c2f-a66d-a91dbefb4850\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":4.6,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[4] {\"timestamp\":\"2026-11-26T18:36:44.232Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"49501580-e750-4425-af08-70ab7d2e78b7\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":4.3,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[5] {\"timestamp\":\"2026-11-26T18:36:45.309Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"40c5a543-37fe-4c1d-8b51-348e93ebf019\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[6] {\"timestamp\":\"2026-11-26T18:36:48.454Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"37c8a303-f741-495d-8395-77c88e602b31\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":3.8,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[7] {\"timestamp\":\"2026-11-26T18:36:49.407Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"9842179e-f033-473f-9fd4-5e6413d0f054\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checko",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 23,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "model_call",
+    "n": 4,
+    "input_tokens": 30664,
+    "output_tokens": 3605,
+    "cost_usd": 0.004869
+   },
+   {
+    "seq": 24,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "thinking",
+    "text": "All the 500 errors line up with the promo being absent, and all the successful responses have a promo present, so I'm settling on the missing promo as the cause. The fix is to restore the None check in pricing.py for the 1.43.0 release, wrapping the percent-off calculation so it only runs when a promo exists.\n\nI'm pulling the error and pool-wait figures from the metrics around 18:35:50, where the error rate jumps to about 15.8%, and checking the deploy timing against the 1.43.0 rollout. The unrelated config entries don't line up with the failing window, so I'm counting the TypeError lines and the has_promo split in the logs to confirm.\n\nI'm tallying the request logs to confirm the split: 22 of the 500s had no promo and 8 of the successful responses had one. I'm also counting the TypeError lines from the pricing stack at apply_promo and noting that payments and database query times look normal, with pool wait peaking at 0.5."
+   },
+   {
+    "seq": 25,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "said",
+    "text": "All 500s share one cause: a promo-less checkout on 1.43.0. Diagnosis below."
+   },
+   {
+    "seq": 26,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "answered",
+    "confidence": 0.95
+   },
+   {
+    "seq": 27,
+    "at": "2026-11-26T18:37:19.860Z",
+    "kind": "check",
+    "check": "citation",
+    "kept": true,
+    "detail": "bad-deploy.md was shown in full in this run, so the citation stands."
+   },
+   {
+    "seq": 28,
+    "at": "2026-11-26T18:37:19.860Z",
+    "kind": "check",
+    "check": "patch",
+    "kept": true,
+    "detail": "1 edit to checkout/pricing.py at 1.43.0: +2 lines, applies exactly once, compiles."
+   },
+   {
+    "seq": 29,
+    "at": "2026-11-26T18:37:19.935Z",
+    "kind": "handed_off"
+   },
+   {
+    "seq": 30,
+    "at": "2026-11-26T18:37:28.735Z",
+    "kind": "pr_opened",
+    "number": 2
+   },
+   {
+    "seq": 31,
+    "at": "2026-11-26T18:38:29.417Z",
+    "kind": "pr_checks",
+    "check": "test (services/checkout-api)",
+    "state": "success",
+    "poll": 1
+   },
+   {
+    "seq": 32,
+    "at": "2026-11-26T18:38:31.013Z",
+    "kind": "pr_ready",
+    "number": 2
+   }
+  ],
+  "answer": {
+   "root_cause": "Deploy 1.43.0 (commit 9c41e7b, \"Simplify promo pricing\") removed the `if promo is None: return subtotal_cents` guard from apply_promo in checkout/pricing.py. Every POST /checkout with no promo code now evaluates promo[\"percent_off\"] on None and raises TypeError, returning a 500. Checkouts that carry a promo still succeed. The error rate stepped from 0% to about 12-17% in the same 10-second period the deploy went live.",
+   "confidence": 0.95,
+   "fault_location": "this_service",
+   "affected_component": "checkout-api (pricing.py apply_promo, release 1.43.0)",
+   "running_version": "1.43.0",
+   "runbook": {
+    "file": "bad-deploy.md",
+    "title": "Bad deploy (a release that fails requests)"
+   },
+   "evidence": [
+    {
+     "id": "e1",
+     "kind": "value",
+     "source": "m1",
+     "column": "err%",
+     "at": "18:35:40",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "0.0",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "error rate at 0% in the period before the onset"
+    },
+    {
+     "id": "e2",
+     "kind": "range",
+     "source": "m1",
+     "column": "err%",
+     "at": null,
+     "start": "18:35:50",
+     "end": "18:36:10",
+     "lines": null,
+     "value": null,
+     "low": 12.0,
+     "high": 17.2,
+     "count": null,
+     "seconds": null,
+     "note": "error rate steps up at once to 12-17% and holds; the 18:36:20 and 18:36:30 rows are still filling in and are not cited"
+    },
+    {
+     "id": "e3",
+     "kind": "range",
+     "source": "m1",
+     "column": "pool_wait_p99_ms",
+     "at": null,
+     "start": "18:35:50",
+     "end": "18:36:10",
+     "lines": null,
+     "value": null,
+     "low": 0.5,
+     "high": 0.5,
+     "count": null,
+     "seconds": null,
+     "note": "pool wait stays near zero through the onset"
+    },
+    {
+     "id": "e4",
+     "kind": "range",
+     "source": "m1",
+     "column": "payments_p99_ms",
+     "at": null,
+     "start": "18:35:50",
+     "end": "18:36:10",
+     "lines": null,
+     "value": null,
+     "low": 70.4,
+     "high": 139.0,
+     "count": null,
+     "seconds": null,
+     "note": "payments-api latency in its usual range; no timeouts (payments_timeouts 0 in these rows)"
+    },
+    {
+     "id": "e5",
+     "kind": "range",
+     "source": "m1",
+     "column": "db_query_p50_ms",
+     "at": null,
+     "start": "18:35:50",
+     "end": "18:36:10",
+     "lines": null,
+     "value": null,
+     "low": 57.1,
+     "high": 61.0,
+     "count": null,
+     "seconds": null,
+     "note": "database time flat"
+    },
+    {
+     "id": "e6",
+     "kind": "value",
+     "source": "d1",
+     "column": "version",
+     "at": "2026-11-26T18:35:50.391Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "1.43.0",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "the deploy whose time matches the onset to the second; it is the newest deploy and the only one before the errors"
+    },
+    {
+     "id": "e7",
+     "kind": "value",
+     "source": "d1",
+     "column": "CART_TTL_HOURS",
+     "at": "2026-11-26T14:34:19.493Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "24->48",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "config change about four hours before the onset; cart TTL does not act on pricing or checkout's failing step, so it is not the cause"
+    },
+    {
+     "id": "e8",
+     "kind": "value",
+     "source": "d1",
+     "column": "version",
+     "at": "2026-11-17T05:51:12.756Z",
+     "start": null,
+     "end": null,
+     "lines": null,
+     "value": "1.43.0",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "earlier 1.43.0 deploy, rolled back on 11-17; it is not in the current window and does not match the onset"
+    },
+    {
+     "id": "e9",
+     "kind": "count",
+     "source": "l1",
+     "column": "error_type",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+     ],
+     "value": "TypeError",
+     "low": null,
+     "high": null,
+     "count": 20,
+     "seconds": null,
+     "note": "every shown failure is a TypeError on POST /checkout, version 1.43.0, with stack checkout/app.py:72 -> app.py:136 -> pricing.py:11 -> pricing.py:15 apply_promo"
+    },
+    {
+     "id": "e10",
+     "kind": "count",
+     "source": "l2",
+     "column": "has_promo",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      1,
+      3,
+      4,
+      5,
+      6,
+      7,
+      9,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      21,
+      24,
+      25,
+      26,
+      27,
+      29
+     ],
+     "value": "false",
+     "low": null,
+     "high": null,
+     "count": 22,
+     "seconds": null,
+     "note": "all 22 of the 500s in the sample have has_promo false"
+    },
+    {
+     "id": "e11",
+     "kind": "count",
+     "source": "l2",
+     "column": "status",
+     "at": null,
+     "start": null,
+     "end": null,
+     "lines": [
+      2,
+      8,
+      10,
+      20,
+      22,
+      23,
+      28,
+      30
+     ],
+     "value": "200",
+     "low": null,
+     "high": null,
+     "count": 8,
+     "seconds": null,
+     "note": "all 8 successful checkouts in the sample carry has_promo true, so the failing path is the no-promo path"
+    },
+    {
+     "id": "e12",
+     "kind": "value",
+     "source": "l2",
+     "column": "latency_ms",
+     "at": "2026-11-26T18:36:42.950Z",
+     "start": null,
+     "end": null,
+     "lines": [
+      3
+     ],
+     "value": "4.6",
+     "low": null,
+     "high": null,
+     "count": null,
+     "seconds": null,
+     "note": "failing requests answer in a few ms, before any database or payments work, consistent with a code fault rather than a dependency"
+    }
+   ],
+   "inferences": [
+    {
+     "claim": "The 1.43.0 deploy at 18:35:50 caused the 500s: the onset matches its deploy time to the second, and the stack points at the function it changed.",
+     "rests_on": [
+      "e6",
+      "e7",
+      "e8",
+      "e9"
+     ]
+    },
+    {
+     "claim": "The removed guard is the defect: 1.42.0 had `if promo is None: return subtotal_cents` (source c2, lines 15-16), and 1.43.0 dropped it (source c1, line 15), so a None promo reaches promo[\"percent_off\"].",
+     "rests_on": [
+      "e9",
+      "e10",
+      "e11"
+     ]
+    },
+    {
+     "claim": "The failures are not a payments or database problem: payments latency, pool wait, and database time stay in their normal ranges while the 500s appear, and the 500s return in a few milliseconds.",
+     "rests_on": [
+      "e2",
+      "e3",
+      "e4",
+      "e5",
+      "e12"
+     ]
+    }
+   ],
+   "not_checked": [
+    "How many checkouts in total carry no promo, so the exact expected share of failures; the samples show it is roughly two-thirds of POST /checkout lines.",
+    "Whether any 500 on 1.43.0 has has_promo true; the samples show none, but only 30 lines were read.",
+    "Whether the 1.43.0 deploy also changed other code paths; only pricing.py was read for both versions.",
+    "Whether any other route calls apply_promo; only POST /checkout failures were checked."
+   ]
+  },
+  "pr": {
+   "state": "ready",
+   "blockers": [],
+   "number": 2,
+   "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+   "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+   "branch": "sentinelops/fix-1.43.0-pricing",
+   "base": "release/1.43.0",
+   "check": {
+    "name": "test (services/checkout-api)",
+    "conclusion": "success"
+   },
+   "file": "services/checkout-api/checkout/pricing.py",
+   "release": "1.43.0",
+   "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+   "additions": 2,
+   "deletions": 0,
+   "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+   "as_of": "2026-11-26T18:38:31.013Z"
+  }
+ },
+ "checkpoints": [
+  {
+   "at": "2026-11-26T18:36:24.319Z",
+   "phase": "investigating",
+   "status": "investigating",
+   "pr_state": "none",
+   "pr": null,
+   "answer": false,
+   "run": null,
+   "alarm_ok": false,
+   "closed": false,
+   "summary": "Errors over 5% since 18:36:24 UTC; investigating"
+  },
+  {
+   "at": "2026-11-26T18:37:19.860Z",
+   "phase": "remediating",
+   "status": "answered",
+   "pr_state": "opening",
+   "pr": {
+    "state": "opening",
+    "blockers": [],
+    "number": null,
+    "url": null,
+    "title": null,
+    "branch": null,
+    "base": null,
+    "check": null,
+    "file": null,
+    "release": null,
+    "diff": null,
+    "additions": 0,
+    "deletions": 0,
+    "rationale": null,
+    "as_of": null
+   },
+   "answer": true,
+   "run": {
+    "seconds": 54.3,
+    "tool_calls": 7,
+    "model_calls": 4,
+    "input_tokens": 78289,
+    "cost_usd": 0.010148
+   },
+   "alarm_ok": false,
+   "closed": false,
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR opening"
+  },
+  {
+   "at": "2026-11-26T18:37:28.735Z",
+   "phase": "remediating",
+   "status": "answered",
+   "pr_state": "draft",
+   "pr": {
+    "state": "draft",
+    "blockers": [],
+    "number": 2,
+    "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+    "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+    "branch": "sentinelops/fix-1.43.0-pricing",
+    "base": "release/1.43.0",
+    "check": {
+     "name": "test (services/checkout-api)",
+     "conclusion": "pending"
+    },
+    "file": "services/checkout-api/checkout/pricing.py",
+    "release": "1.43.0",
+    "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+    "additions": 2,
+    "deletions": 0,
+    "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+    "as_of": null
+   },
+   "answer": true,
+   "run": {
+    "seconds": 54.3,
+    "tool_calls": 7,
+    "model_calls": 4,
+    "input_tokens": 78289,
+    "cost_usd": 0.010148
+   },
+   "alarm_ok": false,
+   "closed": false,
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR #2 opened, waiting on CI"
+  },
+  {
+   "at": "2026-11-26T18:38:31.013Z",
+   "phase": "settling",
+   "status": "answered",
+   "pr_state": "ready",
+   "pr": {
+    "state": "ready",
+    "blockers": [],
+    "number": 2,
+    "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+    "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+    "branch": "sentinelops/fix-1.43.0-pricing",
+    "base": "release/1.43.0",
+    "check": {
+     "name": "test (services/checkout-api)",
+     "conclusion": "success"
+    },
+    "file": "services/checkout-api/checkout/pricing.py",
+    "release": "1.43.0",
+    "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+    "additions": 2,
+    "deletions": 0,
+    "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+    "as_of": "2026-11-26T18:38:31.013Z"
+   },
+   "answer": true,
+   "run": {
+    "seconds": 54.3,
+    "tool_calls": 7,
+    "model_calls": 4,
+    "input_tokens": 78289,
+    "cost_usd": 0.010148
+   },
+   "alarm_ok": false,
+   "closed": false,
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR #2 ready for review"
+  },
+  {
+   "at": "2026-11-26T18:42:44.000Z",
+   "phase": "settling",
+   "status": "answered",
+   "pr_state": "ready",
+   "pr": {
+    "state": "ready",
+    "blockers": [],
+    "number": 2,
+    "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+    "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+    "branch": "sentinelops/fix-1.43.0-pricing",
+    "base": "release/1.43.0",
+    "check": {
+     "name": "test (services/checkout-api)",
+     "conclusion": "success"
+    },
+    "file": "services/checkout-api/checkout/pricing.py",
+    "release": "1.43.0",
+    "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+    "additions": 2,
+    "deletions": 0,
+    "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+    "as_of": "2026-11-26T18:38:31.013Z"
+   },
+   "answer": true,
+   "run": {
+    "seconds": 54.3,
+    "tool_calls": 7,
+    "model_calls": 4,
+    "input_tokens": 78289,
+    "cost_usd": 0.010148
+   },
+   "alarm_ok": true,
+   "closed": false,
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR #2 ready for review"
+  },
+  {
+   "at": "2026-11-26T18:52:44.000Z",
+   "phase": "ready",
+   "status": "answered",
+   "pr_state": "ready",
+   "pr": {
+    "state": "ready",
+    "blockers": [],
+    "number": 2,
+    "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+    "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+    "branch": "sentinelops/fix-1.43.0-pricing",
+    "base": "release/1.43.0",
+    "check": {
+     "name": "test (services/checkout-api)",
+     "conclusion": "success"
+    },
+    "file": "services/checkout-api/checkout/pricing.py",
+    "release": "1.43.0",
+    "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+    "additions": 2,
+    "deletions": 0,
+    "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+    "as_of": "2026-11-26T18:38:31.013Z"
+   },
+   "answer": true,
+   "run": {
+    "seconds": 54.3,
+    "tool_calls": 7,
+    "model_calls": 4,
+    "input_tokens": 78289,
+    "cost_usd": 0.010148
+   },
+   "alarm_ok": true,
+   "closed": true,
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR #2 ready for review"
+  }
+ ],
+ "metrics_rows": [
+  {
+   "at": "2026-11-26T18:21:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 65.7,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:21:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 79.8,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:22:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 126.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:22:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 58.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:22:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 79.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:22:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 290.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:22:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 57.9,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:22:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 52.2,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:23:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 60.7,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:23:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 62.1,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:23:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 95.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:23:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 51.7,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:23:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 323.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:23:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 54.5,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:24:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 518.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:24:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 116.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:24:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 327.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:24:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 57.3,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:24:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 413.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:24:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 77.8,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:25:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 57.4,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:25:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 317.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:25:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 91.8,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:25:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 339.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:25:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 79.7,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:25:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 322.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:26:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 581.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:26:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 83.2,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:26:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 260.0,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:26:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 279.0,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:26:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 102.0,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:26:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 77.6,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:27:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 346.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:27:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 247.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:27:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 82.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:27:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 69.2,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:27:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 611.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:27:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 61.4,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:28:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 117.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:28:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 447.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:28:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 70.9,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:28:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 61.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:28:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 41.9,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:28:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 50.1,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:29:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 395.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:29:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 140.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:29:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 52.8,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:29:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 501.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:29:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 347.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:30:00.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 513.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:30:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 394.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:30:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 316.0,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:30:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 321.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:30:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 287.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:30:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 34.3,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:31:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 374.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:31:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 377.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:31:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 82.0,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:31:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 721.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:31:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 282.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:31:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 75.6,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:32:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 541.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:32:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 425.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:32:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 70.3,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:32:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 364.0,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:32:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 111.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:32:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 40.9,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:33:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 49.2,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:33:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 97.6,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:33:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 449.0,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:33:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 317.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:33:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 252.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:33:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 72.9,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:34:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 91.9,
+   "pool_wait": 0.4
+  },
+  {
+   "at": "2026-11-26T18:34:10.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 96.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:34:20.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 73.1,
+   "pool_wait": 0.1
+  },
+  {
+   "at": "2026-11-26T18:34:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 47.6,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:34:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 59.6,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:34:50.000Z",
+   "settled": true,
+   "requests": 1,
+   "errors": 0.0,
+   "latency": 529.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:35:00.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 57.7,
+   "pool_wait": 0.2
+  },
+  {
+   "at": "2026-11-26T18:35:10.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 134.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:35:20.000Z",
+   "settled": true,
+   "requests": 3,
+   "errors": 0.0,
+   "latency": 623.0,
+   "pool_wait": 0.3
+  },
+  {
+   "at": "2026-11-26T18:35:30.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 71.0,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:35:40.000Z",
+   "settled": true,
+   "requests": 2,
+   "errors": 0.0,
+   "latency": 79.5,
+   "pool_wait": 0.0
+  },
+  {
+   "at": "2026-11-26T18:35:50.000Z",
+   "settled": true,
+   "requests": 57,
+   "errors": 15.8,
+   "latency": 342.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:36:00.000Z",
+   "settled": true,
+   "requests": 75,
+   "errors": 12.0,
+   "latency": 280.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:36:10.000Z",
+   "settled": true,
+   "requests": 87,
+   "errors": 17.2,
+   "latency": 725.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:36:20.000Z",
+   "settled": false,
+   "requests": 69,
+   "errors": 17.4,
+   "latency": 447.0,
+   "pool_wait": 0.5
+  },
+  {
+   "at": "2026-11-26T18:36:30.000Z",
+   "settled": false,
+   "requests": 83,
+   "errors": 13.3,
+   "latency": 602.0,
+   "pool_wait": 0.5
+  }
+ ],
+ "variants": [
+  {
+   "case": "still investigating",
+   "summary": "Errors over 5% since 18:36:24 UTC; investigating"
+  },
+  {
+   "case": "pool exhaustion: no code fix",
+   "summary": "Pool wait p99 over 100 ms since 18:36:24 UTC; then latency p99 over 1.5 s at 18:36:31; diagnosed in 61 s: this service, db-pool-exhaustion.md, confidence 0.90; no PR: no code fix proposed"
+  },
+  {
+   "case": "slow downstream: upstream",
+   "summary": "Latency p99 over 1.5 s since 18:36:31 UTC; diagnosed in 61 s: upstream, downstream-timeout.md, confidence 0.85; no PR: the fault is outside this service"
+  },
+  {
+   "case": "a repeat bad deploy",
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 61 s: this service, bad-deploy.md, confidence 0.95; the same fix is already open (PR #2)"
+  },
+  {
+   "case": "CI failed",
+   "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 61 s: this service, bad-deploy.md, confidence 0.90; fix PR #3: CI failed"
+  },
+  {
+   "case": "halted",
+   "summary": "Errors over 5% since 18:36:24 UTC; halted at the tool-call limit"
+  },
+  {
+   "case": "not investigated",
+   "summary": "Errors over 5% since 18:36:24 UTC; not investigated"
+  }
+ ],
+ "repeat": {
+  "trace": [
+   {
+    "seq": 1,
+    "at": "2026-11-26T18:36:25.594Z",
+    "kind": "run_started",
+    "alarm": "errors"
+   },
+   {
+    "seq": 2,
+    "at": "2026-11-26T18:36:38.769Z",
+    "kind": "model_call",
+    "n": 1,
+    "input_tokens": 7797,
+    "output_tokens": 197,
+    "cost_usd": 0.000878
+   },
+   {
+    "seq": 3,
+    "at": "2026-11-26T18:36:38.770Z",
+    "kind": "tool_call",
+    "call": "t1",
+    "tool": "get_metrics",
+    "args": {
+     "minutes": 15,
+     "period_seconds": 10
+    }
+   },
+   {
+    "seq": 4,
+    "at": "2026-11-26T18:36:43.312Z",
+    "kind": "tool_result",
+    "call": "t1",
+    "source": "m1",
+    "chars": 13025,
+    "text": "checkout-api metrics, 10 s periods, 18:21:40 to 18:36:42 UTC, oldest first. Each row starts at its time. err% is the share of requests that failed; a timeout to payments-api counts under payments_timeouts, not err%.\ntime       req  err%  p50_ms  p99_ms  pool_wait_p99_ms  pool_active_max  concurrent_max  db_query_p50_ms  payments_p99_ms  payments_timeouts\n18:21:40     2   0.0    64.6    65.7               0.3                1               1             60.2                -                  -\n18:21:50     1   0.0    79.8    79.8               0.0                1               1             75.4                -                  -\n18:22:00     2   0.0    49.8     126               0.2                1               1             45.3                -                  -\n18:22:10     3   0.0    55.6    58.0               0.0                1               1             50.8                -                  -\n18:22:20     2   0.0    49.8    79.0               0.4                1               1             45.3                -                  -\n18:22:30     2   0.0    88.2     290               0.0                1               1             88.2             60.4                  0\n18:22:40     2   0.0    25.5    57.9               0.5                1               1             21.1                -                  -\n18:22:50     1   0.0    52.2    52.2               0.0                1               1             48.2                -                  -\n18:23:00     2   0.0    41.1    60.7               0.0                1               1             37.4                -                  -\n18:23:10     3   0.0    57.4    62.1               0.2                1               1             52.2                -                  -\n18:23:20     2   0.0    60.2    95.0               0.2                1               1             49.8                -                  -\n18:23:30     2   0.0    37.4    51.7               0.5                1               1             34.0                -                  -\n18:23:40     2   0.0    72.9     323               0.4                1               1             66.3              128                  0\n18:23:50     1   0.0    54.5    54.5               0.3                1               1             50.3                -                  -\n18:24:00     2   0.0     277     518               0.5                1               1              208             58.1                  0\n18:24:10     2   0.0    54.8     116               0.3                1               1             49.8                -                  -\n18:24:20     3   0.0    76.4     327               0.3                1               1             69.5              118                  0\n18:24:30     2   0.0    34.0    57.3               0.4                1               1             25.5                -                  -\n18:24:40     2   0.0    37.4     413               0.3                1               1             34.0              180                  0\n18:24:50     1   0.0    77.8    77.8               0.0                1               1             72.9                -                  -\n18:25:00     2   0.0    54.8    57.4               0.4                1               1             49.8                -                  -\n18:25:10     2   0.0    66.3     317               0.2                1               1             60.2             51.6                  0\n18:25:20     3   0.0    63.2    91.8               0.4                1               1             63.2                -                  -\n18:25:30     2   0.0    45.3     339               0.5                1               1             41.1             61.9                  0\n18:25:40     2   0.0    60.2    79.7               0.1                1               1             54.8                -                  -\n18:25:50     1   0.0     322     322               0.5                1               1              257             5",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 5,
+    "at": "2026-11-26T18:36:43.313Z",
+    "kind": "tool_call",
+    "call": "t2",
+    "tool": "get_recent_logs",
+    "args": {
+     "minutes": 15,
+     "limit": 20
+    }
+   },
+   {
+    "seq": 6,
+    "at": "2026-11-26T18:36:46.884Z",
+    "kind": "tool_result",
+    "call": "t2",
+    "source": "l1",
+    "chars": 11441,
+    "text": "20 checkout-api error lines, oldest first, newest 7 s old. Searched 18:36:16 to 18:36:46 UTC. Only the newest 20 of 28 found are shown.\nLogs can trail the metrics by minutes under load; recent lines may be missing.\n[1] {\"timestamp\":\"2026-11-26T18:36:22.359Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"1465c711-f701-4eb6-9f89-3b3f46af86e2\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[2] {\"timestamp\":\"2026-11-26T18:36:22.639Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"03bf61f6-dc06-4681-9cde-34900f488042\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[3] {\"timestamp\":\"2026-11-26T18:36:22.674Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"0faf43b2-b646-47ee-9c9b-642551f87d93\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[4] {\"timestamp\":\"2026-11-26T18:36:26.938Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"69adc03f-1ec6-4a30-9008-39ab2587dee2\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[5] {\"timestamp\":\"2026-11-26T18:36:28.384Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"49e092b6-be01-41b5-b014-88ffdc74f503\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[6] {\"timestamp\":\"2026-11-26T18:36:29.257Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"44f6785f-2255-400d-877e-60ef4f586cb0\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[7] {\"timestamp\":\"2026-11-26T18:36:29.406Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"368f5395-6d32-4088-b9d5-ca8d9bb5758a\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 7,
+    "at": "2026-11-26T18:36:46.885Z",
+    "kind": "tool_call",
+    "call": "t3",
+    "tool": "get_deploy_history",
+    "args": {
+     "limit": 5
+    }
+   },
+   {
+    "seq": 8,
+    "at": "2026-11-26T18:36:47.485Z",
+    "kind": "tool_result",
+    "call": "t3",
+    "source": "d1",
+    "chars": 1247,
+    "text": "The 5 most recent deploys and config changes to checkout-api up to 2026-11-26T18:36:50.003Z, newest first.\nOlder records exist; ask for a larger limit (at most 20).\n{\"ts\":\"2026-11-26T18:35:50.391Z\",\"kind\":\"deploy\",\"version\":\"1.43.0\",\"commit\":\"9c41e7b\",\"author\":\"tomas\",\"message\":\"Simplify promo pricing\",\"changes\":[{\"key\":\"version\",\"old\":\"1.42.0\",\"new\":\"1.43.0\"}]}\n{\"ts\":\"2026-11-26T14:34:19.493Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"ken\",\"message\":\"Keep abandoned carts for two days\",\"changes\":[{\"key\":\"CART_TTL_HOURS\",\"old\":\"24\",\"new\":\"48\"}]}\n{\"ts\":\"2026-11-17T05:57:43.000Z\",\"kind\":\"deploy\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"oncall\",\"message\":\"Roll back to 1.42.0\",\"changes\":[{\"key\":\"version\",\"old\":\"1.43.0\",\"new\":\"1.42.0\"}]}\n{\"ts\":\"2026-11-17T05:51:12.756Z\",\"kind\":\"deploy\",\"version\":\"1.43.0\",\"commit\":\"9c41e7b\",\"author\":\"tomas\",\"message\":\"Simplify promo pricing\",\"changes\":[{\"key\":\"version\",\"old\":\"1.42.0\",\"new\":\"1.43.0\"}]}\n{\"ts\":\"2026-11-17T04:26:26.186Z\",\"kind\":\"config\",\"version\":\"1.42.0\",\"commit\":\"3f8a2d1\",\"author\":\"maya\",\"message\":\"Turn on product recommendations\",\"changes\":[{\"key\":\"RECOMMENDATIONS_ENABLED\",\"old\":\"false\",\"new\":\"true\"}]}\n[budget: 12 steps, 192k tokens, $0.099, 280s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 9,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "model_call",
+    "n": 2,
+    "input_tokens": 17462,
+    "output_tokens": 467,
+    "cost_usd": 0.00198
+   },
+   {
+    "seq": 10,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "thinking",
+    "text": "The deploy of 1.43.0 at 18:35:50 lines up with when the errors began, and the failure is at pricing.py line 15 in apply_promo. I'll pull pricing.py at both 1.43.0 and 1.42.0 to compare, and search the runbook at the same time."
+   },
+   {
+    "seq": 11,
+    "at": "2026-11-26T18:36:53.217Z",
+    "kind": "said",
+    "text": "The error rate jumped at 18:35:50, the same second as the 1.43.0 deploy, and every failure is the same TypeError in `apply_promo`. I'll check the runbooks and the pricing code at both versions."
+   },
+   {
+    "seq": 12,
+    "at": "2026-11-26T18:36:53.218Z",
+    "kind": "tool_call",
+    "call": "t4",
+    "tool": "search_runbooks",
+    "args": {
+     "query": "checkout-api 500 errors started right after deploy 1.43.0; TypeError NoneType not subscriptable in apply_promo on POST /checkout; error rate jumped to ~15% while latency p50 and pool wait stayed flat,"
+    }
+   },
+   {
+    "seq": 13,
+    "at": "2026-11-26T18:36:57.310Z",
+    "kind": "tool_result",
+    "call": "t4",
+    "source": "r1",
+    "chars": 10681,
+    "text": "The 2 runbooks closest to the query, in full: Symptoms, What this is not, Diagnosis. The rest are listed after them, by name only.\n\n=== downstream-timeout.md: payments-api timeouts (a slow downstream) ===\n\n## Symptoms\n\ncheckout-api calls payments-api once per checkout, after the order is written, and waits at most `PAYMENTS_TIMEOUT_MS` (2000 ms). When payments-api slows down, checkouts slow down with it, and the slowest become 504s. The fault is in the dependency, not in this service: nothing in checkout-api changes, and its deploy history shows no change that acts on the payments call.\n\n**The latency alarm fires; the error and pool-wait alarms stay OK**\n\n- p99 latency over all routes passes the 1.5 s threshold soon after the slowdown begins and stays above it. Checkouts are a minority of requests, but their tail is the payments call, and it sets the p99\n- p99 above 2 s, checkout only: `POST /checkout` p99 sits just above the 2000 ms timeout. Other routes stay fast: `GET /products/{id}` and `POST /cart/items` never call payments-api\n- Payments p99 near the timeout: `payments_p99_ms` rises from its usual level to about the timeout, since a timed-out call is recorded at the timeout. The typical call (the request lines' `upstream_latency_ms`) slows well past its usual level, though most calls still finish inside the timeout\n- A few timeouts a minute: `payments_timeouts` stays above 0 under load, a small share of checkouts, not all of them\n- `concurrent_max` climbs under load, since each checkout holds its request open for the call. The extra instances' cold starts can lift the other routes' p99 a little; their warm requests are unchanged\n\n**err% stays at 0.** A 504 is the upstream's failure, not this service's: its log line has `error: 0`, and it counts under `payments_timeouts`, never err%. A flat error rate does not rule this out.\n\n**Logs:** each timeout is a line with `status: 504`, `level: ERROR`, and `UpstreamTimeout: payments-api did not respond within 2000 ms`, with no stack, on the version already running, with and without a promo. Its `latency_ms` is just over the 2000 ms timeout. The failures-only log read returns these lines, and the message names the timeout in effect. On the slow checkouts that finish, `upstream_latency_ms` is most of `latency_ms`.\n\n**Throughout:** `pool_wait_p99_ms` stays near zero, `db_query_p50_ms` stays flat, and `pool_active_max` stays below `pool_max_size`. The order's connection goes back to the pool before the charge, so a slow payments-api holds no connection.\n\n## What this is not\n\nIf `pool_wait_p99_ms` rises with the latency, the time is spent waiting for a connection: that is pool exhaustion (see `db-pool-exhaustion.md`), not this.\n\nIf `db_query_p50_ms` rises with the latency, the time is in the database's queries, and every route slows, not only checkout (see `slow-database.md`).\n\nIf err% jumps, the failures are 500s with a stack, or a new version appears in the logs or the deploy history, check for a bad deploy (see `bad-deploy.md`). A slow payments-api produces no 500s.\n\nIf `payments_timeouts` rises while payments-api's typical call stays at its usual latency, the timeout itself may have been lowered. Check the deploy history for a change to `PAYMENTS_TIMEOUT_MS`, and read the timeout the 504 lines name. That change is in this service, and is fixed here.\n\n## Diagnosis\n\n1. Read the metrics. If `payments_p99_ms` and `payments_timeouts` rose at the onset while `pool_wait_p99_ms` and `db_query_p50_ms` stayed flat, the time is in payments-api.\n2. Read the failing log lines. 504s with `UpstreamTimeout` naming payments-api, and no 500s, confirm it.\n3. On the 504 lines, compare `upstream_latency_ms` with `upstream_timeout_ms`. `upstream_timeout_ms` is the limit in effect for that request, and a timed-out call's `upstream_latency_ms` sits at it: payments-api used the whole limit and never answered. If `upstream_timeout_ms` is below the configured `PAYMENTS_TIMEOUT_MS`, the timeout was lowered, a",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 14,
+    "at": "2026-11-26T18:36:57.311Z",
+    "kind": "tool_call",
+    "call": "t5",
+    "tool": "read_repo_file",
+    "args": {
+     "version": "1.43.0",
+     "path": "checkout/pricing.py"
+    }
+   },
+   {
+    "seq": 15,
+    "at": "2026-11-26T18:36:59.751Z",
+    "kind": "tool_result",
+    "call": "t5",
+    "source": "c1",
+    "chars": 686,
+    "text": "checkout/pricing.py at 1.43.0: 15 lines\n     1\t\"\"\"Order pricing.\"\"\"\n     2\t\n     3\tfrom collections.abc import Mapping\n     4\tfrom typing import Any\n     5\t\n     6\tfrom checkout.catalog import Product\n     7\t\n     8\t\n     9\tdef price_cart(items: list[tuple[Product, int]], promo: Mapping[str, Any] | None) -> int:\n    10\t    subtotal = sum(product.price_cents * quantity for product, quantity in items)\n    11\t    return apply_promo(subtotal, promo)\n    12\t\n    13\t\n    14\tdef apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n    15\t    return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n[budget: 10 steps, 174k tokens, $0.097, 271s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 16,
+    "at": "2026-11-26T18:36:59.752Z",
+    "kind": "tool_call",
+    "call": "t6",
+    "tool": "read_repo_file",
+    "args": {
+     "version": "1.42.0",
+     "path": "checkout/pricing.py"
+    }
+   },
+   {
+    "seq": 17,
+    "at": "2026-11-26T18:37:00.252Z",
+    "kind": "tool_result",
+    "call": "t6",
+    "source": "c2",
+    "chars": 751,
+    "text": "checkout/pricing.py at 1.42.0: 17 lines\n     1\t\"\"\"Order pricing.\"\"\"\n     2\t\n     3\tfrom collections.abc import Mapping\n     4\tfrom typing import Any\n     5\t\n     6\tfrom checkout.catalog import Product\n     7\t\n     8\t\n     9\tdef price_cart(items: list[tuple[Product, int]], promo: Mapping[str, Any] | None) -> int:\n    10\t    subtotal = sum(product.price_cents * quantity for product, quantity in items)\n    11\t    return apply_promo(subtotal, promo)\n    12\t\n    13\t\n    14\tdef apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n    15\t    if promo is None:\n    16\t        return subtotal_cents\n    17\t    return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n[budget: 9 steps, 174k tokens, $0.097, 270s remaining]",
+    "truncated": false,
+    "error": false
+   },
+   {
+    "seq": 18,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "model_call",
+    "n": 3,
+    "input_tokens": 22366,
+    "output_tokens": 369,
+    "cost_usd": 0.002421
+   },
+   {
+    "seq": 19,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "thinking",
+    "text": "The 1.42.0 release had a None check that 1.43.0 dropped, and every failing line has has_promo set to false. I want to see whether successful 1.43.0 requests split on has_promo too, so I'll pull a sample of POST /checkout requests with errors_only off, limited to about 30, and also check whether the failure rate tracks the no-promo share. I'll also look at app.py line 72.\n\nI'm skipping the app.py check since the stack trace already agrees, and I'll make one more call."
+   },
+   {
+    "seq": 20,
+    "at": "2026-11-26T18:37:03.479Z",
+    "kind": "said",
+    "text": "The 1.42.0 version of `apply_promo` returns early when `promo is None`, and 1.43.0 removed that check. One more check: whether successful checkouts on 1.43.0 are the ones that carry a promo."
+   },
+   {
+    "seq": 21,
+    "at": "2026-11-26T18:37:03.480Z",
+    "kind": "tool_call",
+    "call": "t7",
+    "tool": "get_recent_logs",
+    "args": {
+     "minutes": 2,
+     "errors_only": false,
+     "route": "POST /checkout",
+     "limit": 30
+    }
+   },
+   {
+    "seq": 22,
+    "at": "2026-11-26T18:37:07.080Z",
+    "kind": "tool_result",
+    "call": "t7",
+    "source": "l2",
+    "chars": 16671,
+    "text": "30 checkout-api request lines on POST /checkout, oldest first, newest 1 s old. Searched 18:36:33 to 18:37:03 UTC. Only the newest 30 of 43 found are shown.\nLogs can trail the metrics by minutes under load; recent lines may be missing.\n[1] {\"timestamp\":\"2026-11-26T18:36:42.290Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"4f5ffe98-7caa-4a62-a270-28a71ec2869f\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.2,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[2] {\"timestamp\":\"2026-11-26T18:36:42.293Z\",\"level\":\"INFO\",\"message\":\"POST /checkout 200\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"2ac03c1c-56f4-4053-9db8-fa2a7d652559\",\"route\":\"POST /checkout\",\"status\":200,\"latency_ms\":359.1,\"error\":0,\"has_promo\":true,\"pool_max_size\":20,\"pool_active_connections\":1,\"pool_wait_time_ms\":0.0,\"concurrent_requests\":1,\"db_query_ms\":288.1,\"dependency\":\"payments-api\",\"upstream_timeout_ms\":2000.0,\"upstream_timeout\":0,\"upstream_latency_ms\":66.8,\"cold_start\":false}\n[3] {\"timestamp\":\"2026-11-26T18:36:42.950Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"4b12e44a-ed7b-4c2f-a66d-a91dbefb4850\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":4.6,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[4] {\"timestamp\":\"2026-11-26T18:36:44.232Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"49501580-e750-4425-af08-70ab7d2e78b7\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":4.3,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[5] {\"timestamp\":\"2026-11-26T18:36:45.309Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"40c5a543-37fe-4c1d-8b51-348e93ebf019\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[6] {\"timestamp\":\"2026-11-26T18:36:48.454Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"37c8a303-f741-495d-8395-77c88e602b31\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":3.8,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checkout/pricing.py:11 in price_cart\",\"checkout/pricing.py:15 in apply_promo\"],\"cold_start\":false}\n[7] {\"timestamp\":\"2026-11-26T18:36:49.407Z\",\"level\":\"ERROR\",\"message\":\"TypeError: 'NoneType' object is not subscriptable\",\"service\":\"checkout-api\",\"version\":\"1.43.0\",\"request_id\":\"9842179e-f033-473f-9fd4-5e6413d0f054\",\"route\":\"POST /checkout\",\"status\":500,\"latency_ms\":0.1,\"error\":1,\"has_promo\":false,\"error_type\":\"TypeError\",\"error_message\":\"'NoneType' object is not subscriptable\",\"stack\":[\"checkout/app.py:72 in handle\",\"checkout/app.py:136 in _checkout\",\"checko",
+    "truncated": true,
+    "error": false
+   },
+   {
+    "seq": 23,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "model_call",
+    "n": 4,
+    "input_tokens": 30664,
+    "output_tokens": 3605,
+    "cost_usd": 0.004869
+   },
+   {
+    "seq": 24,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "thinking",
+    "text": "All the 500 errors line up with the promo being absent, and all the successful responses have a promo present, so I'm settling on the missing promo as the cause. The fix is to restore the None check in pricing.py for the 1.43.0 release, wrapping the percent-off calculation so it only runs when a promo exists.\n\nI'm pulling the error and pool-wait figures from the metrics around 18:35:50, where the error rate jumps to about 15.8%, and checking the deploy timing against the 1.43.0 rollout. The unrelated config entries don't line up with the failing window, so I'm counting the TypeError lines and the has_promo split in the logs to confirm.\n\nI'm tallying the request logs to confirm the split: 22 of the 500s had no promo and 8 of the successful responses had one. I'm also counting the TypeError lines from the pricing stack at apply_promo and noting that payments and database query times look normal, with pool wait peaking at 0.5."
+   },
+   {
+    "seq": 25,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "said",
+    "text": "All 500s share one cause: a promo-less checkout on 1.43.0. Diagnosis below."
+   },
+   {
+    "seq": 26,
+    "at": "2026-11-26T18:37:19.625Z",
+    "kind": "answered",
+    "confidence": 0.95
+   },
+   {
+    "seq": 27,
+    "at": "2026-11-26T18:37:19.860Z",
+    "kind": "check",
+    "check": "citation",
+    "kept": true,
+    "detail": "bad-deploy.md was shown in full in this run, so the citation stands."
+   },
+   {
+    "seq": 28,
+    "at": "2026-11-26T18:37:19.860Z",
+    "kind": "check",
+    "check": "patch",
+    "kept": true,
+    "detail": "1 edit to checkout/pricing.py at 1.43.0: +2 lines, applies exactly once, compiles."
+   },
+   {
+    "seq": 29,
+    "at": "2026-11-26T18:37:19.935Z",
+    "kind": "handed_off"
+   },
+   {
+    "seq": 30,
+    "at": "2026-11-26T18:37:25.935Z",
+    "kind": "pr_same_fix",
+    "number": 2,
+    "commented": true
+   }
+  ],
+  "checkpoints": [
+   {
+    "at": "2026-11-26T18:36:24.319Z",
+    "phase": "investigating",
+    "status": "investigating",
+    "pr_state": "none",
+    "pr": null,
+    "answer": false,
+    "run": null,
+    "alarm_ok": false,
+    "closed": false,
+    "summary": "Errors over 5% since 18:36:24 UTC; investigating"
+   },
+   {
+    "at": "2026-11-26T18:37:19.860Z",
+    "phase": "remediating",
+    "status": "answered",
+    "pr_state": "opening",
+    "pr": {
+     "state": "opening",
+     "blockers": [],
+     "number": null,
+     "url": null,
+     "title": null,
+     "branch": null,
+     "base": null,
+     "check": null,
+     "file": null,
+     "release": null,
+     "diff": null,
+     "additions": 0,
+     "deletions": 0,
+     "rationale": null,
+     "as_of": null
+    },
+    "answer": true,
+    "run": {
+     "seconds": 54.3,
+     "tool_calls": 7,
+     "model_calls": 4,
+     "input_tokens": 78289,
+     "cost_usd": 0.010148
+    },
+    "alarm_ok": false,
+    "closed": false,
+    "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; fix PR opening"
+   },
+   {
+    "at": "2026-11-26T18:37:25.935Z",
+    "phase": "settling",
+    "status": "answered",
+    "pr_state": "same_fix_open",
+    "pr": {
+     "state": "same_fix_open",
+     "blockers": [],
+     "number": 2,
+     "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+     "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+     "branch": "sentinelops/fix-1.43.0-pricing",
+     "base": "release/1.43.0",
+     "check": {
+      "name": "test (services/checkout-api)",
+      "conclusion": "success"
+     },
+     "file": "services/checkout-api/checkout/pricing.py",
+     "release": "1.43.0",
+     "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+     "additions": 2,
+     "deletions": 0,
+     "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+     "as_of": "2026-11-26T18:37:25.935Z"
+    },
+    "answer": true,
+    "run": {
+     "seconds": 54.3,
+     "tool_calls": 7,
+     "model_calls": 4,
+     "input_tokens": 78289,
+     "cost_usd": 0.010148
+    },
+    "alarm_ok": false,
+    "closed": false,
+    "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; the same fix is already open (PR #2)"
+   },
+   {
+    "at": "2026-11-26T18:42:44.000Z",
+    "phase": "settling",
+    "status": "answered",
+    "pr_state": "same_fix_open",
+    "pr": {
+     "state": "same_fix_open",
+     "blockers": [],
+     "number": 2,
+     "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+     "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+     "branch": "sentinelops/fix-1.43.0-pricing",
+     "base": "release/1.43.0",
+     "check": {
+      "name": "test (services/checkout-api)",
+      "conclusion": "success"
+     },
+     "file": "services/checkout-api/checkout/pricing.py",
+     "release": "1.43.0",
+     "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+     "additions": 2,
+     "deletions": 0,
+     "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+     "as_of": "2026-11-26T18:37:25.935Z"
+    },
+    "answer": true,
+    "run": {
+     "seconds": 54.3,
+     "tool_calls": 7,
+     "model_calls": 4,
+     "input_tokens": 78289,
+     "cost_usd": 0.010148
+    },
+    "alarm_ok": true,
+    "closed": false,
+    "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; the same fix is already open (PR #2)"
+   },
+   {
+    "at": "2026-11-26T18:52:44.000Z",
+    "phase": "ready",
+    "status": "answered",
+    "pr_state": "same_fix_open",
+    "pr": {
+     "state": "same_fix_open",
+     "blockers": [],
+     "number": 2,
+     "url": "https://github.com/BigMuscleSmoe/sentinelops/pull/2",
+     "title": "Fix checkout/pricing.py on release 1.43.0 (incident checkout-api-20261126T183624Z)",
+     "branch": "sentinelops/fix-1.43.0-pricing",
+     "base": "release/1.43.0",
+     "check": {
+      "name": "test (services/checkout-api)",
+      "conclusion": "success"
+     },
+     "file": "services/checkout-api/checkout/pricing.py",
+     "release": "1.43.0",
+     "diff": "--- a/services/checkout-api/checkout/pricing.py\n+++ b/services/checkout-api/checkout/pricing.py\n@@ -12,4 +12,6 @@\n \n \n def apply_promo(subtotal_cents: int, promo: Mapping[str, Any] | None) -> int:\n+    if promo is None:\n+        return subtotal_cents\n     return subtotal_cents - subtotal_cents * promo[\"percent_off\"] // 100\n",
+     "additions": 2,
+     "deletions": 0,
+     "rationale": "Restores the None guard that 1.42.0 had and 1.43.0 removed, so checkouts without a promo return the subtotal instead of raising TypeError. Rolling back to 1.42.0 would also clear the errors.",
+     "as_of": "2026-11-26T18:37:25.935Z"
+    },
+    "answer": true,
+    "run": {
+     "seconds": 54.3,
+     "tool_calls": 7,
+     "model_calls": 4,
+     "input_tokens": 78289,
+     "cost_usd": 0.010148
+    },
+    "alarm_ok": true,
+    "closed": true,
+    "summary": "Errors over 5% since 18:36:24 UTC; diagnosed in 54 s: this service, bad-deploy.md, confidence 0.95; the same fix is already open (PR #2)"
+   }
+  ]
+ }
+}

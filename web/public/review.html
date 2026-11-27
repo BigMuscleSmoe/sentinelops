@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SentinelOps mockup: desktop and phone</title>
+    <!-- Mockup review only: the page at desktop and phone widths side by side, in one state. Not deployed. -->
+    <style>
+      body { margin: 0; background: #e9e7e1; font: 14px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: #1b1a18; }
+      header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 20px; background: #fff; border-bottom: 1px solid #d6d3cb; }
+      header b { margin-right: 8px; }
+      select, button { font: inherit; height: 32px; padding: 0 10px; border: 1px solid #c9c6bc; border-radius: 6px; background: #fff; }
+      .frames { display: flex; gap: 28px; align-items: flex-start; padding: 20px; overflow-x: auto; }
+      figure { margin: 0; }
+      figcaption { margin-bottom: 6px; color: #6c6961; }
+      .desk { width: 768px; height: 560px; overflow: hidden; border: 1px solid #c9c6bc; background: #fff; }
+      .desk iframe { width: 1280px; height: 933px; border: 0; transform: scale(0.6); transform-origin: 0 0; }
+      .phone { width: 390px; height: 844px; border: 1px solid #b9b6ac; border-radius: 22px; overflow: hidden; background: #fff; }
+      .phone iframe { width: 390px; height: 844px; border: 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>SentinelOps mockup</b>
+      <label>State
+        <select id="state">
+          <option value="latest">Ready: latest run shown</option>
+          <option value="live">My break, live</option>
+          <option value="busy">Someone else's break</option>
+          <option value="settling">Incident settling</option>
+          <option value="cooldown">My 20-minute cooldown</option>
+          <option value="visitor_day">My 3 today used</option>
+          <option value="daily">Day's 20 used</option>
+          <option value="monthly">Month's 200 used</option>
+          <option value="paused">Paused</option>
+          <option value="unavailable">Break fails (unavailable)</option>
+        </select>
+      </label>
+      <label>Speed
+        <select id="speed"><option>1</option><option selected>4</option><option>16</option></select>
+      </label>
+      <button id="go" type="button">Restart both</button>
+      <a href="/">Open the page alone</a>
+    </header>
+    <div class="frames">
+      <figure><figcaption>Desktop, 1280 px (shown at 60%)</figcaption><div class="desk"><iframe id="desk" title="Desktop"></iframe></div></figure>
+      <figure><figcaption>Phone, 390 px</figcaption><div class="phone"><iframe id="phone" title="Phone"></iframe></div></figure>
+    </div>
+    <script>
+      function go() {
+        var q = "?bar=0&s=" + document.getElementById("state").value + "&speed=" + document.getElementById("speed").value;
+        document.getElementById("desk").src = "/index.html" + q;
+        document.getElementById("phone").src = "/index.html" + q;
+      }
+      document.getElementById("go").onclick = go;
+      document.getElementById("state").onchange = go;
+      document.getElementById("speed").onchange = go;
+      go();
+    </script>
+  </body>
+</html>
